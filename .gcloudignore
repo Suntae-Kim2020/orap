@@ -1,0 +1,25 @@
+# This file specifies files that are intentionally untracked by gcloud.
+.gcloudignore
+.git
+.gitignore
+README.md
+*.pyc
+__pycache__/
+.env
+.venv/
+venv/
+.DS_Store
+*.log
+uploads/temp/
+*.db-journal
+*.db-wal
+*.db-shm
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

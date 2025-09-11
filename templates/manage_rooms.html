@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}분석방 관리 - JBNU Publication Database{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="mb-0">
+                    <i class="fas fa-cog"></i> 분석방 관리
+                </h3>
+                <a href="{{ url_for('create_room') }}" class="btn btn-primary">
+                    <i class="fas fa-plus-circle"></i> 새 분석방 만들기
+                </a>
+            </div>
+            <div class="card-body">
+                {% if rooms %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>분석방ID</th>
+                                <th>분석방명</th>
+                                <th>데이터 범위</th>
+                                <th>기준일</th>
+                                <th>파일 수</th>
+                                <th>데이터 수</th>
+                                <th>작업</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for room in rooms %}
+                            <tr>
+                                <td>{{ room.room_id }}</td>
+                                <td>{{ room.room_name }}</td>
+                                <td>{{ room.year_from }}년 ~ {{ room.year_to }}년</td>
+                                <td>{{ room.cutoff_date }}</td>
+                                <td>
+                                    <span class="badge bg-info">{{ room.file_count or 0 }}개</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-success">{{ room.data_count or 0 }}건</span>
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('create_room', room_id=room.room_id) }}" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-cog"></i> 관리
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRoom({{ room.room_id }}, '{{ room.room_name }}')">
+                                        <i class="fas fa-trash"></i> 삭제
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">생성된 분석방이 없습니다</h5>
+                    <p class="text-muted">새로운 분석방을 만들어 시작하세요.</p>
+                    <a href="{{ url_for('create_room') }}" class="btn btn-primary">
+                        <i class="fas fa-plus-circle"></i> 새 분석방 만들기
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 삭제 확인 모달 -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle text-warning"></i> 분석방 삭제 확인
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>분석방:</strong> <span id="deleteRoomName"></span></p>
+                <p class="text-danger">이 분석방과 관련된 모든 데이터가 삭제됩니다. 이 작업은 취소할 수 없습니다.</p>
+                <p>정말로 삭제하시겠습니까?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-danger" id="confirmDelete">
+                    <i class="fas fa-trash"></i> 삭제하기
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let deleteRoomId = null;
+
+function deleteRoom(roomId, roomName) {
+    deleteRoomId = roomId;
+    document.getElementById('deleteRoomName').textContent = roomName;
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+
+document.getElementById('confirmDelete').addEventListener('click', function() {
+    if (deleteRoomId) {
+        fetch('/delete_room', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                room_id: deleteRoomId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('분석방이 삭제되었습니다.');
+                location.reload();
+            } else {
+                alert('삭제 중 오류가 발생했습니다: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('삭제 중 오류가 발생했습니다: ' + error);
+        });
+        
+        bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+    }
+});
+</script>
+{% endblock %}

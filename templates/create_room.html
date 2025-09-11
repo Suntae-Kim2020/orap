@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}{% if room %}분석방 관리{% else %}새 분석방 만들기{% endif %} - JBNU Publication Database{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="mb-0">
+                    <i class="fas fa-plus-circle"></i> {% if room %}분석방 관리{% else %}새 분석방 만들기{% endif %}
+                </h3>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('save_room') }}">
+                    {% if room %}
+                    <input type="hidden" name="existing_room_id" value="{{ room.room_id }}">
+                    {% endif %}
+                    <div class="mb-3">
+                        <label for="room_name" class="form-label">분석방 이름 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="room_name" name="room_name" required 
+                               value="{{ room.room_name if room else '' }}"
+                               placeholder="예: 2023년 논문 분석">
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="year_from" class="form-label">데이터 범위 시작년도 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="year_from" name="year_from" required>
+                                <option value="">선택하세요</option>
+                                {% for year in range(2000, 2026) %}
+                                <option value="{{ year }}" {% if room and room.year_from == year %}selected{% endif %}>{{ year }}년</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="year_to" class="form-label">데이터 범위 끝년도 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="year_to" name="year_to" required>
+                                <option value="">선택하세요</option>
+                                {% for year in range(2000, 2026) %}
+                                <option value="{{ year }}" {% if room and room.year_to == year %}selected{% endif %}>{{ year }}년</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="cutoff_date" class="form-label">데이터 입력 기준일 <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="cutoff_date" name="cutoff_date" 
+                               value="{{ room.cutoff_date if room else '' }}" required>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('manage_rooms') if room else url_for('index') }}" class="btn btn-secondary me-md-2">취소</a>
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <i class="fas fa-save" id="submitIcon"></i> <span id="submitText">{% if room %}다음{% else %}저장{% endif %}</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 초기 폼 값들 저장
+let originalFormData = {};
+let isExistingRoom = {% if room %}true{% else %}false{% endif %};
+
+function saveOriginalFormData() {
+    const form = document.querySelector('form');
+    const formData = new FormData(form);
+    originalFormData = {};
+    for (let [key, value] of formData.entries()) {
+        originalFormData[key] = value;
+    }
+}
+
+function checkFormChanges() {
+    if (!isExistingRoom) return; // 새 분석방일 때는 체크하지 않음
+    
+    const form = document.querySelector('form');
+    const currentFormData = new FormData(form);
+    let hasChanges = false;
+    
+    // 현재 값과 원본 값 비교
+    for (let [key, value] of currentFormData.entries()) {
+        if (originalFormData[key] !== value) {
+            hasChanges = true;
+            break;
+        }
+    }
+    
+    // 버튼 텍스트 및 아이콘 업데이트
+    const submitText = document.getElementById('submitText');
+    const submitIcon = document.getElementById('submitIcon');
+    
+    if (hasChanges) {
+        submitText.textContent = '저장';
+        submitIcon.className = 'fas fa-save';
+    } else {
+        submitText.textContent = '다음';
+        submitIcon.className = 'fas fa-arrow-right';
+    }
+}
+
+document.getElementById('year_from').addEventListener('change', function() {
+    const yearFrom = parseInt(this.value);
+    const yearToSelect = document.getElementById('year_to');
+    
+    // 시작년도보다 이전 년도는 선택할 수 없도록 비활성화
+    Array.from(yearToSelect.options).forEach(option => {
+        if (option.value && parseInt(option.value) < yearFrom) {
+            option.disabled = true;
+        } else {
+            option.disabled = false;
+        }
+    });
+    
+    // 현재 선택된 끝년도가 시작년도보다 이전이면 초기화
+    if (yearToSelect.value && parseInt(yearToSelect.value) < yearFrom) {
+        yearToSelect.value = '';
+    }
+    
+    // 폼 변경 감지
+    checkFormChanges();
+});
+
+// 페이지 로드시 초기화
+window.addEventListener('load', function() {
+    saveOriginalFormData();
+    
+    // 년도 검증 실행
+    document.getElementById('year_from').dispatchEvent(new Event('change'));
+    
+    // 초기 아이콘 설정
+    if (isExistingRoom) {
+        document.getElementById('submitIcon').className = 'fas fa-arrow-right';
+    }
+    
+    // 모든 input, select 요소에 change 이벤트 추가
+    const formElements = document.querySelectorAll('input, select');
+    formElements.forEach(element => {
+        element.addEventListener('change', checkFormChanges);
+        element.addEventListener('input', checkFormChanges);
+    });
+});
+</script>
+{% endblock %}

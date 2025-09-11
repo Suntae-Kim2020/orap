@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block title %}데이터 업로드 - JBNU Publication Database{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="mb-0">
+                    <i class="fas fa-upload"></i> 데이터 업로드 - {{ room.room_name }}
+                </h3>
+                <small class="text-muted">
+                    데이터 범위: {{ room.year_from }}년 ~ {{ room.year_to }}년 | 
+                    기준일: {{ room.cutoff_date }}
+                </small>
+            </div>
+            <div class="card-body">
+                <!-- 1단계: 데이터 설정 -->
+                <div id="step1" class="step-section">
+                    <h5><i class="fas fa-cog"></i> 1단계: 데이터 설정</h5>
+                    <form id="settingsForm">
+                        <input type="hidden" name="room_id" value="{{ room.room_id }}">
+                        
+                        <div class="mb-3">
+                            <label for="data_category" class="form-label">데이터 카테고리 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="data_category" name="data_category" required>
+                                <option value="">선택하세요</option>
+                                <option value="학술성과">학술성과</option>
+                                <option value="연구사업성과">연구사업성과</option>
+                                <option value="기타성과">기타성과</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3" id="data_source_div" style="display: none;">
+                            <label for="data_source" class="form-label">데이터 소스 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="data_source" name="data_source">
+                                <option value="">선택하세요</option>
+                                <option value="전체논문데이터">전체논문데이터</option>
+                                <option value="1%">1%</option>
+                                <option value="10%">10%</option>
+                                <option value="25%">25%</option>
+                                <option value="SDGs">SDGs</option>
+                                <option value="International">International</option>
+                            </select>
+                        </div>
+                        
+                        <button type="button" class="btn btn-success" id="saveSettings">
+                            <i class="fas fa-check"></i> 설정 저장
+                        </button>
+                    </form>
+                </div>
+                
+                <!-- 2단계: 파일 업로드 -->
+                <div id="step2" class="step-section" style="display: none;">
+                    <hr class="my-4">
+                    <h5><i class="fas fa-file-upload"></i> 2단계: 파일 업로드</h5>
+                    
+                    <form id="uploadForm" enctype="multipart/form-data">
+                        <input type="hidden" name="room_id" value="{{ room.room_id }}">
+                        
+                        <div class="mb-3">
+                            <label for="file" class="form-label">엑셀 파일 선택 <span class="text-danger">*</span></label>
+                            <input type="file" class="form-control" id="file" name="file" 
+                                   accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">
+                                지원 형식: Excel (.xlsx, .xls), CSV (.csv)
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary" id="uploadBtn">
+                            <i class="fas fa-upload"></i> 업로드 시작
+                        </button>
+                    </form>
+                </div>
+                
+                <!-- 3단계: 진행 상황 -->
+                <div id="step3" class="step-section" style="display: none;">
+                    <hr class="my-4">
+                    <h5><i class="fas fa-spinner"></i> 3단계: 업로드 진행 상황</h5>
+                    
+                    <div class="progress mb-3">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%"></div>
+                    </div>
+                    
+                    <div id="status-message" class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">처리 중...</span>
+                        </div>
+                        <p class="mt-2">파일을 처리하고 있습니다...</p>
+                    </div>
+                </div>
+                
+                <!-- 4단계: 결과 -->
+                <div id="step4" class="step-section" style="display: none;">
+                    <hr class="my-4">
+                    <h5><i class="fas fa-check-circle text-success"></i> 4단계: 업로드 완료</h5>
+                    
+                    <div id="result-summary" class="alert alert-success">
+                        <!-- 결과가 여기에 표시됩니다 -->
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('analysis') }}" class="btn btn-success">
+                            <i class="fas fa-chart-bar"></i> 분석하러 가기
+                        </a>
+                        <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                            <i class="fas fa-home"></i> 홈으로
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 데이터 카테고리 변경 시 데이터 소스 표시/숨김
+document.getElementById('data_category').addEventListener('change', function() {
+    const dataSourceDiv = document.getElementById('data_source_div');
+    const dataSource = document.getElementById('data_source');
+    
+    if (this.value === '학술성과') {
+        dataSourceDiv.style.display = 'block';
+        dataSource.required = true;
+    } else {
+        dataSourceDiv.style.display = 'none';
+        dataSource.required = false;
+        dataSource.value = '';
+    }
+});
+
+// 설정 저장
+document.getElementById('saveSettings').addEventListener('click', function() {
+    const formData = new FormData(document.getElementById('settingsForm'));
+    
+    fetch('/update_room_settings', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('step1').style.display = 'none';
+            document.getElementById('step2').style.display = 'block';
+        } else {
+            alert('설정 저장 중 오류가 발생했습니다: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('설정 저장 중 오류가 발생했습니다: ' + error);
+    });
+});
+
+// 파일 업로드
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const progressBar = document.querySelector('.progress-bar');
+    
+    // 3단계 표시
+    document.getElementById('step2').style.display = 'none';
+    document.getElementById('step3').style.display = 'block';
+    
+    // 진행률 애니메이션 시작
+    progressBar.style.width = '20%';
+    
+    fetch('/upload_file', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        progressBar.style.width = '60%';
+        if (!response.ok && response.status === 413) {
+            throw new Error('파일이 너무 큽니다. 100MB 이하의 파일을 업로드해주세요.');
+        }
+        return response.json();
+    })
+    .then(data => {
+        progressBar.style.width = '100%';
+        
+        setTimeout(() => {
+            if (data.success) {
+                // 성공 결과 표시
+                const resultDiv = document.getElementById('result-summary');
+                resultDiv.innerHTML = `
+                    <h6><i class="fas fa-check-circle"></i> 업로드가 성공적으로 완료되었습니다!</h6>
+                    <div class="row text-center mt-3">
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 class="card-title text-primary">${data.total_records}</h5>
+                                    <p class="card-text">전체 레코드</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 class="card-title text-success">${data.success_count}</h5>
+                                    <p class="card-text">성공</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 class="card-title text-danger">${data.error_count}</h5>
+                                    <p class="card-text">실패</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('step3').style.display = 'none';
+                document.getElementById('step4').style.display = 'block';
+            } else {
+                // 오류 결과 표시
+                const resultDiv = document.getElementById('result-summary');
+                resultDiv.className = 'alert alert-danger';
+                resultDiv.innerHTML = `
+                    <h6><i class="fas fa-exclamation-circle"></i> 업로드 중 오류가 발생했습니다</h6>
+                    <p>${data.error}</p>
+                `;
+                
+                document.getElementById('step3').style.display = 'none';
+                document.getElementById('step4').style.display = 'block';
+            }
+        }, 1000);
+    })
+    .catch(error => {
+        progressBar.style.width = '100%';
+        
+        setTimeout(() => {
+            const resultDiv = document.getElementById('result-summary');
+            resultDiv.className = 'alert alert-danger';
+            resultDiv.innerHTML = `
+                <h6><i class="fas fa-exclamation-circle"></i> 업로드 중 오류가 발생했습니다</h6>
+                <p>${error}</p>
+            `;
+            
+            document.getElementById('step3').style.display = 'none';
+            document.getElementById('step4').style.display = 'block';
+        }, 1000);
+    });
+});
+</script>
+{% endblock %}
