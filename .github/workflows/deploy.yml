@@ -9,7 +9,7 @@ on:
       - main
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  PROJECT_ID: orap
   GAR_LOCATION: asia-northeast3
   SERVICE: jbnu-publication-db
   REGION: asia-northeast3
