@@ -13,7 +13,8 @@ app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
 
-UPLOAD_FOLDER = 'uploads'
+# Cloud Run에서는 /tmp 사용, 로컬에서는 uploads 사용
+UPLOAD_FOLDER = '/tmp/uploads' if os.getenv('PORT') else 'uploads'
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -37,7 +38,19 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def get_db_connection():
-    conn = sqlite3.connect('jbnu.db')
+    import os
+    import shutil
+    
+    # Cloud Run에서는 /tmp에 DB를 복사해서 사용
+    if os.getenv('PORT'):  # Cloud Run 환경
+        db_path = '/tmp/jbnu.db'
+        # DB가 없으면 복사
+        if not os.path.exists(db_path):
+            shutil.copy2('jbnu.db', db_path)
+    else:  # 로컬 환경
+        db_path = 'jbnu.db'
+    
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -50,19 +63,22 @@ def update_progress(task_id, current, total, message=""):
         'percentage': int((current / total) * 100) if total > 0 else 0,
         'message': message
     }
-    with open(f'progress_{task_id}.json', 'w') as f:
+    progress_file = f'/tmp/progress_{task_id}.json' if os.getenv('PORT') else f'progress_{task_id}.json'
+    with open(progress_file, 'w') as f:
         json.dump(progress_data, f)
 
 def get_progress(task_id):
     try:
-        with open(f'progress_{task_id}.json', 'r') as f:
+        progress_file = f'/tmp/progress_{task_id}.json' if os.getenv('PORT') else f'progress_{task_id}.json'
+        with open(progress_file, 'r') as f:
             return json.load(f)
     except:
         return {'current': 0, 'total': 0, 'percentage': 0, 'message': ''}
 
 def cleanup_progress(task_id):
     try:
-        os.remove(f'progress_{task_id}.json')
+        progress_file = f'/tmp/progress_{task_id}.json' if os.getenv('PORT') else f'progress_{task_id}.json'
+        os.remove(progress_file)
     except:
         pass
 
