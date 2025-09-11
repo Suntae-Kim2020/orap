@@ -12,12 +12,9 @@ COPY . ./
 # Install production dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create uploads directory with proper permissions
-RUN mkdir -p uploads/temp && chmod 755 uploads && chmod 755 uploads/temp
-
-# Create directory for SQLite database with write permissions
-RUN mkdir -p /app/data && chmod 755 /app/data
+# Create uploads directory
+RUN mkdir -p uploads/temp
 
 # Run the web service on container startup
-# Render provides PORT environment variable
-CMD exec gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 120 app:app
+# Cloud Run provides PORT environment variable
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
