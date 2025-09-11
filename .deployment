@@ -1,0 +1,7 @@
+# Deployment trigger file
+# This file triggers GitHub Actions deployment to Cloud Run
+
+Deployment started: 2025-01-14
+Project: orap-471814
+Service: jbnu-publication-db
+Region: asia-northeast3
