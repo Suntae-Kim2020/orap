@@ -1,0 +1,733 @@
+{% extends "base.html" %}
+
+{% block title %}분석방 관리 - JBNU Publication Database{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="mb-0">
+                    <i class="fas fa-cog"></i> 분석방 관리
+                </h3>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createRoomModal">
+                    <i class="fas fa-plus"></i> 새 분석방 만들기
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="roomsList">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">로딩 중...</span>
+                        </div>
+                        <p class="mt-2">분석방 목록을 불러오고 있습니다...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 분석방 생성 모달 -->
+<div class="modal fade" id="createRoomModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">새 분석방 만들기</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createRoomForm">
+                    <div class="mb-3">
+                        <label for="room_name" class="form-label">분석방 이름 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="room_name" name="room_name" required>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="year_from" class="form-label">시작년도 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="year_from" name="year_from" required>
+                                <option value="">선택</option>
+                                {% for year in range(2000, 2026) %}
+                                <option value="{{ year }}">{{ year }}년</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="year_to" class="form-label">끝년도 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="year_to" name="year_to" required>
+                                <option value="">선택</option>
+                                {% for year in range(2000, 2026) %}
+                                <option value="{{ year }}">{{ year }}년</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="cutoff_date" class="form-label">기준일 <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="cutoff_date" name="cutoff_date" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" id="saveRoomBtn">
+                    <i class="fas fa-save"></i> 생성
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 분석방 편집 및 파일 업로드 모달 -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="uploadModalTitle">분석방 관리</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 탭 네비게이션 -->
+                <ul class="nav nav-tabs mb-3" id="roomTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="room-info-tab" data-bs-toggle="tab" data-bs-target="#room-info" type="button" role="tab">
+                            <i class="fas fa-info-circle"></i> 분석방 정보
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="file-upload-tab" data-bs-toggle="tab" data-bs-target="#file-upload" type="button" role="tab">
+                            <i class="fas fa-upload"></i> 파일 업로드
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="file-list-tab" data-bs-toggle="tab" data-bs-target="#file-list" type="button" role="tab">
+                            <i class="fas fa-list"></i> 파일 목록
+                        </button>
+                    </li>
+                </ul>
+
+                <!-- 탭 내용 -->
+                <div class="tab-content" id="roomTabContent">
+                    <!-- 분석방 정보 탭 -->
+                    <div class="tab-pane fade show active" id="room-info" role="tabpanel">
+                        <form id="editRoomForm">
+                            <input type="hidden" id="edit_room_id" name="room_id">
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="edit_room_name" class="form-label">분석방명 <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="edit_room_name" name="room_name" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="edit_cutoff_date" class="form-label">기준일 <span class="text-danger">*</span></label>
+                                        <input type="date" class="form-control" id="edit_cutoff_date" name="cutoff_date" required>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="edit_year_from" class="form-label">시작년도 <span class="text-danger">*</span></label>
+                                        <input type="number" class="form-control" id="edit_year_from" name="year_from" min="2000" max="2030" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="edit_year_to" class="form-label">종료년도 <span class="text-danger">*</span></label>
+                                        <input type="number" class="form-control" id="edit_year_to" name="year_to" min="2000" max="2030" required>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="text-end">
+                                <button type="button" class="btn btn-primary" onclick="updateRoom()">
+                                    <i class="fas fa-save"></i> 저장
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- 파일 업로드 탭 -->
+                    <div class="tab-pane fade" id="file-upload" role="tabpanel">
+                        <div id="uploadStep1">
+                            <form id="uploadForm" enctype="multipart/form-data">
+                                <input type="hidden" id="upload_room_id" name="room_id">
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="upload_data_category" class="form-label">데이터 카테고리 <span class="text-danger">*</span></label>
+                                            <select class="form-select" id="upload_data_category" name="data_category" required>
+                                                <option value="">선택하세요</option>
+                                                <option value="학술성과">학술성과</option>
+                                                <option value="연구사업성과">연구사업성과</option>
+                                                <option value="기타성과">기타성과</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3" id="upload_data_source_div" style="display: none;">
+                                            <label for="upload_data_source" class="form-label">데이터 소스 <span class="text-danger">*</span></label>
+                                            <select class="form-select" id="upload_data_source" name="data_source">
+                                                <option value="">선택하세요</option>
+                                                <option value="Scopus">Scopus</option>
+                                                <option value="Web of Science">Web of Science</option>
+                                                <option value="KCI">KCI</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-6" id="upload_data_type_div" style="display: none;">
+                                        <div class="mb-3">
+                                            <label for="upload_data_type" class="form-label">데이터 종류 <span class="text-danger">*</span></label>
+                                            <select class="form-select" id="upload_data_type" name="data_type">
+                                                <option value="">선택하세요</option>
+                                                <option value="전체논문데이터">전체논문데이터</option>
+                                                <option value="1%">1%</option>
+                                                <option value="10%">10%</option>
+                                                <option value="25%">25%</option>
+                                                <option value="SDGs">SDGs</option>
+                                                <option value="International">International</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="upload_file" class="form-label">파일 선택 <span class="text-danger">*</span></label>
+                                            <input type="file" class="form-control" id="upload_file" name="file" 
+                                                   accept=".xlsx,.xls,.csv" required>
+                                            <div class="form-text">지원 형식: Excel (.xlsx, .xls), CSV (.csv)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="text-end">
+                                    <button type="button" class="btn btn-primary" id="startUploadBtn">
+                                        <i class="fas fa-upload"></i> 업로드 시작
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                        
+                        <div id="uploadProgress" style="display: none;">
+                            <h6>업로드 진행 중...</h6>
+                            <div class="progress mb-3">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div id="uploadStatus" class="text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">처리 중...</span>
+                                </div>
+                                <p class="mt-2">파일을 처리하고 있습니다...</p>
+                            </div>
+                        </div>
+                        
+                        <div id="uploadResult" style="display: none;">
+                            <h6>업로드 완료</h6>
+                            <div id="resultContent"></div>
+                            <div class="text-end mt-3">
+                                <button type="button" class="btn btn-success" id="newUploadBtn">
+                                    <i class="fas fa-plus"></i> 새 파일 업로드
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 파일 목록 탭 -->
+                    <div class="tab-pane fade" id="file-list" role="tabpanel">
+                        <div id="fileListContent">
+                            <!-- 파일 목록이 여기에 로드됩니다 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentRoomId = null;
+
+// 페이지 로드 시 분석방 목록 로드
+document.addEventListener('DOMContentLoaded', function() {
+    loadRooms();
+    
+    // 데이터 카테고리 변경 시 이벤트
+    document.getElementById('upload_data_category').addEventListener('change', function() {
+        const dataSourceDiv = document.getElementById('upload_data_source_div');
+        const dataTypeDiv = document.getElementById('upload_data_type_div');
+        const dataSource = document.getElementById('upload_data_source');
+        const dataType = document.getElementById('upload_data_type');
+        
+        if (this.value === '학술성과') {
+            dataSourceDiv.style.display = 'block';
+            dataTypeDiv.style.display = 'block';
+            dataSource.required = true;
+            dataType.required = true;
+        } else {
+            dataSourceDiv.style.display = 'none';
+            dataTypeDiv.style.display = 'none';
+            dataSource.required = false;
+            dataType.required = false;
+            dataSource.value = '';
+            dataType.value = '';
+        }
+    });
+
+    // 탭 변경 시 이벤트
+    document.getElementById('file-list-tab').addEventListener('click', function() {
+        if (currentRoomId) {
+            loadRoomFiles(currentRoomId);
+        }
+    });
+    
+    // 분석방 생성 버튼
+    document.getElementById('saveRoomBtn').addEventListener('click', createRoom);
+    
+    // 업로드 시작 버튼
+    document.getElementById('startUploadBtn').addEventListener('click', startUpload);
+    
+    // 새 파일 업로드 버튼
+    document.getElementById('newUploadBtn').addEventListener('click', function() {
+        resetUploadModal();
+    });
+});
+
+function loadRooms() {
+    fetch('/api/rooms')
+        .then(response => response.json())
+        .then(data => {
+            const rooms = data.rooms || [];
+            const roomsList = document.getElementById('roomsList');
+            
+            if (rooms.length === 0) {
+                roomsList.innerHTML = `
+                    <div class="text-center py-4">
+                        <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">분석방이 없습니다</h5>
+                        <p class="text-muted">새로운 분석방을 만들어 시작하세요.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '<div class="row">';
+            rooms.forEach(room => {
+                html += `
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">${room.room_name}</h5>
+                                <p class="card-text">
+                                    <small class="text-muted">
+                                        ${room.year_from}년 ~ ${room.year_to}년<br>
+                                        기준일: ${room.cutoff_date}
+                                    </small>
+                                </p>
+                                <div class="d-flex justify-content-center">
+                                    <a href="/upload_data/${room.room_id}" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-upload"></i> 파일 업로드
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            roomsList.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('분석방 목록 로드 오류:', error);
+            document.getElementById('roomsList').innerHTML = `
+                <div class="alert alert-danger">
+                    분석방 목록을 불러오는 중 오류가 발생했습니다.
+                </div>
+            `;
+        });
+}
+
+function createRoom() {
+    const formData = new FormData(document.getElementById('createRoomForm'));
+    
+    fetch('/save_room', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.redirected) {
+            // 성공적으로 생성되면 모달 닫고 목록 새로고침
+            bootstrap.Modal.getInstance(document.getElementById('createRoomModal')).hide();
+            loadRooms();
+            document.getElementById('createRoomForm').reset();
+        } else {
+            alert('분석방 생성 중 오류가 발생했습니다.');
+        }
+    })
+    .catch(error => {
+        alert('분석방 생성 중 오류가 발생했습니다: ' + error);
+    });
+}
+
+function openRoomEditModal(roomId, roomName, yearFrom, yearTo, cutoffDate) {
+    currentRoomId = roomId;
+    
+    // 분석방 정보 폼에 데이터 채우기
+    document.getElementById('edit_room_id').value = roomId;
+    document.getElementById('edit_room_name').value = roomName;
+    document.getElementById('edit_year_from').value = yearFrom;
+    document.getElementById('edit_year_to').value = yearTo;
+    document.getElementById('edit_cutoff_date').value = cutoffDate;
+    
+    // 업로드 폼에 room_id 설정
+    document.getElementById('upload_room_id').value = roomId;
+    
+    // 모달 제목 설정
+    document.getElementById('uploadModalTitle').textContent = `분석방 관리 - ${roomName}`;
+    
+    // 폼 초기화
+    resetUploadModal();
+    
+    // 파일 목록 초기화
+    document.getElementById('fileListContent').innerHTML = '';
+    
+    // 모달 표시
+    new bootstrap.Modal(document.getElementById('uploadModal')).show();
+}
+
+function resetUploadModal() {
+    document.getElementById('uploadStep1').style.display = 'block';
+    document.getElementById('uploadProgress').style.display = 'none';
+    document.getElementById('uploadResult').style.display = 'none';
+    document.getElementById('startUploadBtn').style.display = 'inline-block';
+    document.getElementById('newUploadBtn').style.display = 'none';
+    document.getElementById('uploadForm').reset();
+    document.getElementById('upload_data_source_div').style.display = 'none';
+    document.getElementById('upload_data_type_div').style.display = 'none';
+}
+
+function updateRoom() {
+    const formData = new FormData(document.getElementById('editRoomForm'));
+    
+    fetch('/update_room', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('분석방 정보가 수정되었습니다.');
+            loadRooms(); // 목록 새로고침
+        } else {
+            alert('수정 중 오류가 발생했습니다: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('분석방 수정 오류:', error);
+        alert('분석방 수정 중 오류가 발생했습니다: ' + error);
+    });
+}
+
+function loadRoomFiles(roomId) {
+    fetch(`/api/room_uploads/${roomId}`)
+        .then(response => response.json())
+        .then(data => {
+            const uploads = data.uploads || [];
+            const fileListContent = document.getElementById('fileListContent');
+            
+            if (uploads.length === 0) {
+                fileListContent.innerHTML = `
+                    <div class="text-center py-4">
+                        <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">업로드된 파일이 없습니다</h5>
+                        <p class="text-muted">파일 업로드 탭에서 파일을 업로드해 주세요.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '<div class="table-responsive"><table class="table table-hover"><thead class="table-dark"><tr>';
+            html += '<th>파일명</th><th>데이터 카테고리</th><th>데이터 소스</th><th>데이터 종류</th><th>레코드 수</th><th>업로드 일시</th><th>작업</th>';
+            html += '</tr></thead><tbody>';
+            
+            uploads.forEach(upload => {
+                html += `
+                    <tr>
+                        <td>${upload.filename}</td>
+                        <td><span class="badge bg-primary">${upload.data_category || '-'}</span></td>
+                        <td><span class="badge bg-info">${upload.data_source || '-'}</span></td>
+                        <td><span class="badge bg-success">${upload.data_type || '-'}</span></td>
+                        <td>${upload.record_count || 0}</td>
+                        <td>${upload.upload_date}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteUpload(${upload.upload_id})">
+                                <i class="fas fa-trash"></i> 삭제
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            fileListContent.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('파일 목록 로드 오류:', error);
+            document.getElementById('fileListContent').innerHTML = `
+                <div class="alert alert-danger">
+                    파일 목록을 불러오는 중 오류가 발생했습니다.
+                </div>
+            `;
+        });
+}
+
+function loadRoomUploads(roomId) {
+    fetch(`/api/room_uploads/${roomId}`)
+        .then(response => response.json())
+        .then(uploads => {
+            if (uploads.length > 0) {
+                let uploadsList = '<div class="mt-3"><h6>업로드된 파일 목록</h6><div class="list-group">';
+                uploads.forEach(upload => {
+                    uploadsList += `
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${upload.filename}</strong><br>
+                                <small class="text-muted">
+                                    ${upload.data_category}${upload.data_source ? ' - ' + upload.data_source : ''} 
+                                    (${upload.record_count}건)
+                                    <br>업로드: ${new Date(upload.upload_date).toLocaleString()}
+                                </small>
+                            </div>
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteUpload(${upload.upload_id})">
+                                <i class="fas fa-trash"></i> 삭제
+                            </button>
+                        </div>
+                    `;
+                });
+                uploadsList += '</div></div>';
+                document.getElementById('uploadStep1').insertAdjacentHTML('beforeend', uploadsList);
+            }
+        });
+}
+
+function startUpload() {
+    const form = document.getElementById('uploadForm');
+    const formData = new FormData(form);
+    
+    // 필수 필드 확인
+    const dataCategory = document.getElementById('upload_data_category').value;
+    const file = document.getElementById('upload_file').files[0];
+    
+    if (!dataCategory) {
+        alert('데이터 카테고리를 선택해주세요.');
+        return;
+    }
+    
+    if (!file) {
+        alert('파일을 선택해주세요.');
+        return;
+    }
+    
+    // 학술성과인데 데이터 소스나 데이터 종류가 선택되지 않은 경우
+    if (dataCategory === '학술성과') {
+        if (!document.getElementById('upload_data_source').value) {
+            alert('학술성과의 경우 데이터 소스를 선택해주세요.');
+            return;
+        }
+        if (!document.getElementById('upload_data_type').value) {
+            alert('학술성과의 경우 데이터 종류를 선택해주세요.');
+            return;
+        }
+    }
+    
+    const progressBar = document.querySelector('.progress-bar');
+    
+    // 단계 전환
+    document.getElementById('uploadStep1').style.display = 'none';
+    document.getElementById('uploadProgress').style.display = 'block';
+    document.getElementById('startUploadBtn').style.display = 'none';
+    
+    progressBar.style.width = '20%';
+    
+    fetch('/upload_file', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        progressBar.style.width = '30%';
+        return response.json();
+    })
+    .then(data => {
+        if (data.success && data.task_id) {
+            // 백그라운드 처리 진행률 폴링 시작
+            progressBar.style.width = '50%';
+            checkUploadProgress(data.task_id);
+        } else {
+            // 즉시 실패한 경우
+            document.getElementById('uploadProgress').style.display = 'none';
+            document.getElementById('uploadResult').style.display = 'block';
+            document.getElementById('resultContent').innerHTML = `
+                <div class="alert alert-danger">
+                    <h6><i class="fas fa-exclamation-circle"></i> 업로드 실패</h6>
+                    <p>${data.error || '알 수 없는 오류가 발생했습니다.'}</p>
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        document.getElementById('uploadProgress').style.display = 'none';
+        document.getElementById('uploadResult').style.display = 'block';
+        document.getElementById('resultContent').innerHTML = `
+            <div class="alert alert-danger">
+                <h6><i class="fas fa-exclamation-circle"></i> 업로드 오류</h6>
+                <p>${error}</p>
+            </div>
+        `;
+    });
+}
+
+function checkUploadProgress(taskId) {
+    fetch(`/api/result/${taskId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.total_records !== undefined) {
+                // 업로드 완료 - 폴링 중단
+                const progressBar = document.querySelector('.progress-bar');
+                progressBar.style.width = '100%';
+                
+                setTimeout(() => {
+                    document.getElementById('uploadProgress').style.display = 'none';
+                    document.getElementById('uploadResult').style.display = 'block';
+                    document.getElementById('newUploadBtn').style.display = 'inline-block';
+                    
+                    document.getElementById('resultContent').innerHTML = `
+                        <div class="alert alert-success">
+                            <h6><i class="fas fa-check-circle"></i> 업로드 완료!</h6>
+                            <div class="row text-center mt-3">
+                                <div class="col-3">
+                                    <div class="card bg-light">
+                                        <div class="card-body p-2">
+                                            <h6 class="card-title text-primary mb-1">${data.total_records || 0}</h6>
+                                            <small>전체</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-3">
+                                    <div class="card bg-light">
+                                        <div class="card-body p-2">
+                                            <h6 class="card-title text-success mb-1">${data.insert_count || 0}</h6>
+                                            <small>신규</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-3">
+                                    <div class="card bg-light">
+                                        <div class="card-body p-2">
+                                            <h6 class="card-title text-info mb-1">${data.update_count || 0}</h6>
+                                            <small>업데이트</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-3">
+                                    <div class="card bg-light">
+                                        <div class="card-body p-2">
+                                            <h6 class="card-title text-danger mb-1">${data.error_count || 0}</h6>
+                                            <small>실패</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // 파일 목록 새로고침
+                    if (currentRoomId) {
+                        setTimeout(() => {
+                            loadRoomFiles(currentRoomId);
+                        }, 1500);
+                    }
+                }, 1000);
+                
+                return; // 폴링 중단
+                
+            } else if (data.error && data.error !== '결과를 찾을 수 없습니다.') {
+                // 실제 처리 오류 발생 (파일을 찾을 수 없는 경우는 제외)
+                document.getElementById('uploadProgress').style.display = 'none';
+                document.getElementById('uploadResult').style.display = 'block';
+                document.getElementById('resultContent').innerHTML = `
+                    <div class="alert alert-danger">
+                        <h6><i class="fas fa-exclamation-circle"></i> 업로드 실패</h6>
+                        <p>${data.error}</p>
+                    </div>
+                `;
+                return; // 폴링 중단
+            } else {
+                // 아직 처리 중이거나 파일이 아직 생성되지 않음 - 3초 후 다시 체크
+                setTimeout(() => {
+                    checkUploadProgress(taskId);
+                }, 3000);
+            }
+        })
+        .catch(error => {
+            console.error('진행률 확인 오류:', error);
+            // 네트워크 오류 등 - 5초 후 다시 시도
+            setTimeout(() => {
+                checkUploadProgress(taskId);
+            }, 5000);
+        });
+}
+
+function deleteUpload(uploadId) {
+    if (!confirm('이 업로드를 삭제하시겠습니까? 해당 데이터의 불리언 플래그가 초기화됩니다.')) {
+        return;
+    }
+    
+    fetch('/delete_upload', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            upload_id: uploadId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('업로드가 삭제되었습니다.');
+            // 파일 목록 새로고침
+            if (currentRoomId) {
+                loadRoomFiles(currentRoomId);
+            }
+        } else {
+            alert('삭제 중 오류가 발생했습니다: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('삭제 오류:', error);
+        alert('삭제 중 오류가 발생했습니다: ' + error);
+    });
+}
+
+function viewRoomFiles(roomId) {
+    // TODO: 파일 목록 보기 구현
+    alert('파일 목록 보기 기능은 구현 중입니다.');
+}
+</script>
+{% endblock %}

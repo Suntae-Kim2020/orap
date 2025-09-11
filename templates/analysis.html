@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}분석 - JBNU Publication Database{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="mb-0">
+                    <i class="fas fa-chart-bar"></i> 분석방 리스트
+                </h3>
+            </div>
+            <div class="card-body">
+                {% if rooms %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>분석방ID</th>
+                                <th>분석방명</th>
+                                <th>데이터 범위</th>
+                                <th>기준일</th>
+                                <th>작업</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for room in rooms %}
+                            <tr>
+                                <td>{{ room.room_id }}</td>
+                                <td>{{ room.room_name }}</td>
+                                <td>{{ room.year_from }}년 ~ {{ room.year_to }}년</td>
+                                <td>{{ room.cutoff_date }}</td>
+                                <td>
+                                    <a href="{{ url_for('analysis_run', room_id=room.room_id) }}" class="btn btn-sm btn-success">
+                                        <i class="fas fa-play"></i> 분석하기
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">생성된 분석방이 없습니다</h5>
+                    <p class="text-muted">새로운 분석방을 만들어 시작하세요.</p>
+                    <a href="{{ url_for('create_room') }}" class="btn btn-primary">
+                        <i class="fas fa-plus-circle"></i> 분석방 만들기
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{% endblock %}

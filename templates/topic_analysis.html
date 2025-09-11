@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}주제 분포 분석 - JBNU Publication Database{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="mb-0">
+                    <i class="fas fa-chart-pie"></i> 주제 분포 분석
+                </h3>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-info-circle"></i> 분석 정보</h5>
+                        <ul class="list-group">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                분석방명
+                                <span class="badge bg-primary rounded-pill">{{ room_name }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                분석방ID
+                                <span class="badge bg-secondary rounded-pill">{{ room_id }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                추출된 후보 수
+                                <span class="badge bg-success rounded-pill">{{ total_candidates }}건</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                최고 점수
+                                <span class="badge bg-warning rounded-pill">{{ "%.1f"|format(max_score) }}점</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-weight-hanging"></i> 사용된 가중치</h5>
+                        <ul class="list-group">
+                            {% for criterion, weight in weights.items() %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                {{ criterion }}
+                                <span class="badge bg-info rounded-pill">{{ weight }}</span>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-tags"></i> 주제 분류 체계 선택</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <button type="button" class="btn btn-outline-primary w-100 mb-2" onclick="analyzeTopics('asjc')">
+                                    <i class="fas fa-microscope"></i><br>
+                                    <strong>ASJC</strong><br>
+                                    <small>Scopus 논문/저널 분류체계</small>
+                                </button>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="button" class="btn btn-outline-success w-100 mb-2" onclick="analyzeTopics('qs')">
+                                    <i class="fas fa-graduation-cap"></i><br>
+                                    <strong>QS Subject Area</strong><br>
+                                    <small>QS의 대분류</small>
+                                </button>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="button" class="btn btn-outline-info w-100 mb-2" onclick="analyzeTopics('the')">
+                                    <i class="fas fa-university"></i><br>
+                                    <strong>THE Field</strong><br>
+                                    <small>THE 학문분야 분류</small>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 분석 결과 표시 영역 -->
+                <div id="analysisResults" style="display: none;">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-chart-bar"></i> <span id="analysisTitle">주제 분포 분석 결과</span></h5>
+                            <div>
+                                <button type="button" class="btn btn-success btn-sm me-2" onclick="downloadTopicAnalysis()" id="downloadBtn">
+                                    <i class="fas fa-download"></i> 주제분야별 추출논문 다운로드
+                                </button>
+                                <button type="button" class="btn btn-info btn-sm" onclick="downloadTable()" id="downloadTableBtn">
+                                    <i class="fas fa-table"></i> 표 다운로드
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover" id="topicTable">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>순위</th>
+                                            <th>주제 분야</th>
+                                            <th>논문 수</th>
+                                            <th>비율</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="topicTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                    <button type="button" class="btn btn-secondary" onclick="window.close()">
+                        <i class="fas fa-times"></i> 닫기
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden form for data passing -->
+<form id="hiddenForm" style="display: none;">
+    <input type="hidden" id="room_id" value="{{ room_id }}">
+    <input type="hidden" id="weight_1" value="{{ weights['상위1%'] }}">
+    <input type="hidden" id="weight_10" value="{{ weights['상위10%'] }}">
+    <input type="hidden" id="weight_25" value="{{ weights['상위25%'] }}">
+    <input type="hidden" id="weight_sdg" value="{{ weights['SDGs'] }}">
+    <input type="hidden" id="weight_international" value="{{ weights['국제협력'] }}">
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentAnalysisType = '';
+let currentAnalysisData = [];
+
+function analyzeTopics(type) {
+    currentAnalysisType = type;
+    
+    // 버튼 상태 업데이트
+    document.querySelectorAll('.btn-outline-primary, .btn-outline-success, .btn-outline-info').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    const typeNames = {
+        'asjc': 'ASJC: Scopus 논문/저널 분류체계',
+        'qs': 'QS Subject Area: QS의 대분류', 
+        'the': 'THE Field: THE 학문분야 분류'
+    };
+    
+    document.getElementById('analysisTitle').textContent = typeNames[type] + ' 분석 결과';
+    
+    // AJAX 요청으로 주제 분포 데이터 가져오기
+    const formData = new FormData();
+    formData.append('room_id', document.getElementById('room_id').value);
+    formData.append('weight_1', document.getElementById('weight_1').value);
+    formData.append('weight_10', document.getElementById('weight_10').value);
+    formData.append('weight_25', document.getElementById('weight_25').value);
+    formData.append('weight_sdg', document.getElementById('weight_sdg').value);
+    formData.append('weight_international', document.getElementById('weight_international').value);
+    formData.append('analysis_type', type);
+    
+    fetch('/api/topic_distribution_data', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            displayTopicResults(data.topics);
+            currentAnalysisData = data.topics;
+            document.getElementById('analysisResults').style.display = 'block';
+        } else {
+            alert('분석 중 오류가 발생했습니다: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('분석 중 오류가 발생했습니다.');
+    });
+}
+
+function displayTopicResults(topics) {
+    const tbody = document.getElementById('topicTableBody');
+    tbody.innerHTML = '';
+    
+    const total = topics.reduce((sum, topic) => sum + topic.count, 0);
+    
+    topics.forEach((topic, index) => {
+        const percentage = ((topic.count / total) * 100).toFixed(1);
+        const row = `
+            <tr>
+                <td>${index + 1}</td>
+                <td>${topic.field || '미분류'}</td>
+                <td><span class="badge bg-primary">${topic.count}</span></td>
+                <td>${percentage}%</td>
+            </tr>
+        `;
+        tbody.innerHTML += row;
+    });
+}
+
+function downloadTopicAnalysis() {
+    if (!currentAnalysisType || currentAnalysisData.length === 0) {
+        alert('먼저 주제 분석을 실행해주세요.');
+        return;
+    }
+    
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/api/download_topic_analysis';
+    form.target = '_blank';
+    
+    const fields = ['room_id', 'weight_1', 'weight_10', 'weight_25', 'weight_sdg', 'weight_international'];
+    fields.forEach(field => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = field;
+        input.value = document.getElementById(field).value;
+        form.appendChild(input);
+    });
+    
+    const typeInput = document.createElement('input');
+    typeInput.type = 'hidden';
+    typeInput.name = 'analysis_type';
+    typeInput.value = currentAnalysisType;
+    form.appendChild(typeInput);
+    
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+}
+
+function downloadTable() {
+    if (!currentAnalysisType || currentAnalysisData.length === 0) {
+        alert('먼저 주제 분석을 실행해주세요.');
+        return;
+    }
+    
+    // Create CSV content from table data
+    const typeNames = {
+        'asjc': 'ASJC',
+        'qs': 'QS Subject Area', 
+        'the': 'THE Field'
+    };
+    
+    let csvContent = '';
+    csvContent += `${typeNames[currentAnalysisType]} 주제 분포 분석 결과\n`;
+    csvContent += `분석일시,${new Date().toLocaleString('ko-KR')}\n\n`;
+    csvContent += '순위,주제 분야,논문 수,비율\n';
+    
+    const total = currentAnalysisData.reduce((sum, topic) => sum + topic.count, 0);
+    
+    currentAnalysisData.forEach((topic, index) => {
+        const percentage = ((topic.count / total) * 100).toFixed(1);
+        csvContent += `${index + 1},"${topic.field || '미분류'}",${topic.count},${percentage}%\n`;
+    });
+    
+    // Create and download file
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `topic_distribution_table_${typeNames[currentAnalysisType]}_${document.getElementById('room_id').value}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// 페이지 로드시 분석방 정보 표시
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('주제 분포 분석 페이지 로드됨');
+    console.log('분석방:', '{{ room_name }}');
+    console.log('후보 수:', {{ total_candidates }});
+});
+</script>
+{% endblock %}

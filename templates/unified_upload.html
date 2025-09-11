@@ -1,0 +1,601 @@
+{% extends "base.html" %}
+
+{% block title %}분석방 관리 - {{ room.room_name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="mb-0">
+                    <i class="fas fa-cogs"></i> 분석방 관리 - {{ room.room_name }}
+                </h3>
+                <small class="text-muted">
+                    데이터 범위: {{ room.year_from }}년 ~ {{ room.year_to }}년 | 
+                    기준일: {{ room.cutoff_date }}
+                </small>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- 왼쪽: 분석방 정보 편집 & 업로드 폼 -->
+                    <div class="col-md-6">
+                        <!-- 분석방 정보 편집 -->
+                        <h5><i class="fas fa-edit"></i> 분석방 정보 수정</h5>
+                        <form id="roomForm" class="mb-4">
+                            <input type="hidden" id="room_id" name="room_id" value="{{ room.room_id }}">
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="room_name" class="form-label">분석방명 <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="room_name" name="room_name" value="{{ room.room_name }}" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="cutoff_date" class="form-label">기준일 <span class="text-danger">*</span></label>
+                                        <input type="date" class="form-control" id="cutoff_date" name="cutoff_date" value="{{ room.cutoff_date }}" required>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="year_from" class="form-label">시작년도 <span class="text-danger">*</span></label>
+                                        <input type="number" class="form-control" id="year_from" name="year_from" value="{{ room.year_from }}" min="2000" max="2030" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="year_to" class="form-label">종료년도 <span class="text-danger">*</span></label>
+                                        <input type="number" class="form-control" id="year_to" name="year_to" value="{{ room.year_to }}" min="2000" max="2030" required>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="text-end mb-3">
+                                <button type="button" class="btn btn-primary" onclick="updateRoomInfo()">
+                                    <i class="fas fa-save"></i> 저장
+                                </button>
+                            </div>
+                        </form>
+                        
+                        <hr>
+                        
+                        <!-- 파일 업로드 -->
+                        <h5><i class="fas fa-upload"></i> 파일 업로드</h5>
+                        
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <input type="hidden" name="room_id" value="{{ room.room_id }}">
+                            
+                            <div class="mb-3">
+                                <label for="data_category" class="form-label">데이터 카테고리 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="data_category" name="data_category" required>
+                                    <option value="">선택하세요</option>
+                                    <option value="학술성과">학술성과</option>
+                                    <option value="연구사업성과">연구사업성과</option>
+                                    <option value="기타성과">기타성과</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3" id="data_source_div" style="display: none;">
+                                <label for="data_source" class="form-label">데이터 소스 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="data_source" name="data_source">
+                                    <option value="">선택하세요</option>
+                                    <option value="Scopus">Scopus</option>
+                                    <option value="Web of Science">Web of Science</option>
+                                    <option value="KCI">KCI</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3" id="data_type_div" style="display: none;">
+                                <label for="data_type" class="form-label">데이터 종류 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="data_type" name="data_type">
+                                    <option value="">선택하세요</option>
+                                    <option value="전체논문데이터">전체논문데이터</option>
+                                    <option value="1%">1%</option>
+                                    <option value="10%">10%</option>
+                                    <option value="25%">25%</option>
+                                    <option value="SDGs">SDGs</option>
+                                    <option value="International">International</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="file" class="form-label">엑셀 파일 선택 <span class="text-danger">*</span></label>
+                                <input type="file" class="form-control" id="file" name="file" 
+                                       accept=".xlsx,.xls,.csv" required>
+                                <div class="form-text">
+                                    지원 형식: Excel (.xlsx, .xls), CSV (.csv)
+                                </div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary" id="uploadBtn">
+                                <i class="fas fa-upload"></i> 업로드 시작
+                            </button>
+                        </form>
+                        
+                        <!-- 업로드 진행 상황 -->
+                        <div id="upload-progress" class="mt-4" style="display: none;">
+                            <h6><i class="fas fa-spinner fa-spin"></i> 업로드 진행 중...</h6>
+                            <div class="progress mb-3">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div id="upload-status">파일을 처리하고 있습니다...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 오른쪽: 결과 및 파일 목록 -->
+                    <div class="col-md-6">
+                        <!-- 최근 업로드 결과 -->
+                        <div id="upload-result" style="display: none;">
+                            <h5><i class="fas fa-check-circle text-success"></i> 업로드 결과</h5>
+                            <div id="result-content" class="alert alert-success">
+                                <!-- 결과가 여기에 표시됩니다 -->
+                            </div>
+                        </div>
+                        
+                        <!-- 업로드된 파일 목록 -->
+                        <h5><i class="fas fa-list"></i> 업로드된 파일 목록</h5>
+                        <div id="file-list">
+                            <div class="d-flex justify-content-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">로딩 중...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 하단 통계 -->
+                <hr class="my-4">
+                <div class="row" id="stats-section" style="display: none;">
+                    <div class="col-md-12">
+                        <h5><i class="fas fa-chart-bar"></i> 데이터 통계</h5>
+                        <div class="row text-center" id="stats-content">
+                            <!-- 통계가 여기에 표시됩니다 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 데이터 카테고리 변경 시 데이터 소스/종류 표시/숨김
+document.getElementById('data_category').addEventListener('change', function() {
+    const dataSourceDiv = document.getElementById('data_source_div');
+    const dataTypeDiv = document.getElementById('data_type_div');
+    const dataSource = document.getElementById('data_source');
+    const dataType = document.getElementById('data_type');
+    
+    if (this.value === '학술성과') {
+        dataSourceDiv.style.display = 'block';
+        dataTypeDiv.style.display = 'block';
+        dataSource.required = true;
+        dataType.required = true;
+    } else {
+        dataSourceDiv.style.display = 'none';
+        dataTypeDiv.style.display = 'none';
+        dataSource.required = false;
+        dataType.required = false;
+        dataSource.value = '';
+        dataType.value = '';
+    }
+});
+
+// 파일 목록 로드
+function loadFileList() {
+    fetch('/api/room_uploads/{{ room.room_id }}?_=' + Date.now())
+    .then(response => response.json())
+    .then(data => {
+        const fileList = document.getElementById('file-list');
+        
+        if (data.uploads && data.uploads.length > 0) {
+            let html = '<div class="table-responsive"><table class="table table-sm table-hover">';
+            html += '<thead><tr><th>파일명</th><th>카테고리</th><th>소스</th><th>종류</th><th>업로드일</th><th>레코드수</th><th>액션</th></tr></thead><tbody>';
+            
+            data.uploads.forEach(upload => {
+                html += `<tr>
+                    <td><i class="fas fa-file-excel text-success"></i> ${upload.filename}</td>
+                    <td><span class="badge bg-primary">${upload.data_category}</span></td>
+                    <td><span class="badge bg-secondary">${upload.data_source || '-'}</span></td>
+                    <td><span class="badge bg-info">${upload.data_type || '-'}</span></td>
+                    <td><small>${new Date(upload.upload_date).toLocaleString()}</small></td>
+                    <td><strong>${upload.record_count}</strong></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteUpload(${upload.upload_id}, '${upload.data_type}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table></div>';
+            fileList.innerHTML = html;
+            
+            // 통계 업데이트
+            updateStats(data.uploads);
+        } else {
+            fileList.innerHTML = '<div class="text-center text-muted"><i class="fas fa-folder-open fa-3x mb-3"></i><br>아직 업로드된 파일이 없습니다.</div>';
+        }
+    })
+    .catch(error => {
+        console.error('Error loading file list:', error);
+        document.getElementById('file-list').innerHTML = '<div class="alert alert-danger">파일 목록을 불러오는 중 오류가 발생했습니다.</div>';
+    });
+}
+
+// 통계 업데이트
+function updateStats(uploads) {
+    const totalFiles = uploads.length;
+    const categories = uploads.length > 0 ? [...new Set(uploads.map(u => u.data_category))] : [];
+    
+    // 실제 publication 테이블의 총 레코드 수 조회 (캐시 방지)
+    fetch('/api/room_stats/{{ room.room_id }}?_=' + Date.now())
+    .then(response => response.json())
+    .then(statsData => {
+        const statsContent = document.getElementById('stats-content');
+        statsContent.innerHTML = `
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5 class="card-title text-primary">${totalFiles}</h5>
+                        <p class="card-text">업로드된 파일</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5 class="card-title text-success">${statsData.total_records.toLocaleString()}</h5>
+                        <p class="card-text">총 레코드 수</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5 class="card-title text-info">${categories.length}</h5>
+                        <p class="card-text">데이터 카테고리</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('stats-section').style.display = 'block';
+    })
+    .catch(error => {
+        console.error('Error loading stats:', error);
+        // 오류 시 기본 통계만 표시
+        const statsContent = document.getElementById('stats-content');
+        statsContent.innerHTML = `
+            <div class="col-md-6">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5 class="card-title text-primary">${totalFiles}</h5>
+                        <p class="card-text">업로드된 파일</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5 class="card-title text-info">${categories.length}</h5>
+                        <p class="card-text">데이터 카테고리</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('stats-section').style.display = 'block';
+    });
+}
+
+// 파일 업로드
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    // 폼 검증
+    const dataCategory = document.getElementById('data_category').value;
+    const dataSource = document.getElementById('data_source').value;
+    const dataType = document.getElementById('data_type').value;
+    const fileInput = document.getElementById('file');
+    
+    if (!dataCategory) {
+        alert('데이터 카테고리를 선택해주세요.');
+        return;
+    }
+    
+    if (dataCategory === '학술성과') {
+        if (!dataSource) {
+            alert('데이터 소스를 선택해주세요.');
+            return;
+        }
+        if (!dataType) {
+            alert('데이터 종류를 선택해주세요.');
+            return;
+        }
+    }
+    
+    if (!fileInput.files[0]) {
+        alert('파일을 선택해주세요.');
+        return;
+    }
+    
+    const formData = new FormData(this);
+    const progressBar = document.querySelector('.progress-bar');
+    const uploadProgress = document.getElementById('upload-progress');
+    const uploadStatus = document.getElementById('upload-status');
+    const uploadResult = document.getElementById('upload-result');
+    
+    // 진행 상황 표시
+    uploadProgress.style.display = 'block';
+    uploadResult.style.display = 'none';
+    progressBar.style.width = '0%';
+    uploadStatus.textContent = '파일을 업로드하고 있습니다...';
+    
+    // 업로드 버튼 비활성화
+    const uploadBtn = document.getElementById('uploadBtn');
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 업로드 중...';
+    
+    fetch('/upload_file', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok && response.status === 413) {
+            throw new Error('파일이 너무 큽니다. 100MB 이하의 파일을 업로드해주세요.');
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success && data.task_id) {
+            // 실시간 진행 상태 모니터링 시작
+            const taskId = data.task_id;
+            monitorProgress(taskId);
+        } else {
+            throw new Error(data.error || '업로드 시작 중 오류가 발생했습니다.');
+        }
+    })
+    .catch(error => {
+        uploadProgress.style.display = 'none';
+        
+        const resultContent = document.getElementById('result-content');
+        resultContent.className = 'alert alert-danger';
+        resultContent.innerHTML = `
+            <h6><i class="fas fa-exclamation-circle"></i> 업로드 중 오류가 발생했습니다</h6>
+            <p>${error.message}</p>
+        `;
+        uploadResult.style.display = 'block';
+        
+        // 업로드 버튼 활성화
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fas fa-upload"></i> 업로드 시작';
+    });
+});
+
+// 실시간 진행 상태 모니터링
+function monitorProgress(taskId) {
+    const progressBar = document.querySelector('.progress-bar');
+    const uploadStatus = document.getElementById('upload-status');
+    
+    const checkProgress = () => {
+        fetch(`/api/progress/${taskId}`)
+        .then(response => response.json())
+        .then(data => {
+            // 진행률 업데이트
+            progressBar.style.width = `${data.percentage}%`;
+            uploadStatus.textContent = data.message || `${data.current}/${data.total} 처리 중...`;
+            
+            // 완료 확인
+            if (data.percentage >= 100) {
+                // 업로드 완료 시 파일 목록 바로 갱신
+                setTimeout(() => loadFileList(), 1500);
+                
+                // 결과 확인
+                setTimeout(() => {
+                    checkResult(taskId);
+                }, 1000);
+            } else {
+                // 계속 모니터링
+                setTimeout(checkProgress, 1000);
+            }
+        })
+        .catch(error => {
+            console.error('Progress check error:', error);
+            // 5회까지만 재시도
+            if (!checkProgress.retryCount) checkProgress.retryCount = 0;
+            if (checkProgress.retryCount < 5) {
+                checkProgress.retryCount++;
+                setTimeout(checkProgress, 2000);
+            } else {
+                // 재시도 횟수 초과 시 결과 직접 확인
+                setTimeout(() => {
+                    checkResult(taskId);
+                }, 1000);
+            }
+        });
+    };
+    
+    checkProgress();
+}
+
+// 업로드 결과 확인
+function checkResult(taskId) {
+    fetch(`/api/result/${taskId}`)
+    .then(response => response.json())
+    .then(data => {
+        const uploadProgress = document.getElementById('upload-progress');
+        const uploadResult = document.getElementById('upload-result');
+        const resultContent = document.getElementById('result-content');
+        const uploadBtn = document.getElementById('uploadBtn');
+        
+        uploadProgress.style.display = 'none';
+        
+        if (data.success) {
+            // 업로드 성공 시 결과 영역 숨김 (성공 메시지 표시하지 않음)
+            uploadResult.style.display = 'none';
+            
+            // 폼 리셋
+            document.getElementById('uploadForm').reset();
+            document.getElementById('data_source_div').style.display = 'none';
+            document.getElementById('data_type_div').style.display = 'none';
+            
+            // 파일 목록 다시 로드 (약간의 지연 후)
+            setTimeout(() => loadFileList(), 1000);
+        } else {
+            // 오류 발생 시에도 결과 영역 숨김 (오류 메시지 표시하지 않음)
+            uploadResult.style.display = 'none';
+        }
+        
+        // 업로드 버튼 활성화
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fas fa-upload"></i> 업로드 시작';
+    })
+    .catch(error => {
+        console.error('Result check error:', error);
+        const uploadProgress = document.getElementById('upload-progress');
+        const uploadResult = document.getElementById('upload-result');
+        const resultContent = document.getElementById('result-content');
+        const uploadBtn = document.getElementById('uploadBtn');
+        
+        uploadProgress.style.display = 'none';
+        
+        // 업로드 결과 영역 숨김 (오류 메시지 표시하지 않음)
+        uploadResult.style.display = 'none';
+        
+        // 업로드 버튼 활성화
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fas fa-upload"></i> 업로드 시작';
+        
+        // 파일 목록 다시 로드 (약간의 지연 후) - 업로드 완료되었을 가능성이 높으므로
+        setTimeout(() => loadFileList(), 2000);
+    });
+}
+
+// 파일 삭제
+function deleteUpload(uploadId, dataType) {
+    let confirmMessage = '';
+    
+    if (dataType === '전체논문데이터') {
+        confirmMessage = `⚠️ 경고: '전체논문데이터' 파일을 삭제하면 이 분석방의 모든 데이터와 파일이 삭제됩니다!\n\n` +
+                        `다음 항목이 모두 삭제됩니다:\n` +
+                        `• 모든 업로드된 파일\n` +
+                        `• 모든 논문 데이터\n` +
+                        `• 모든 분석 결과\n\n` +
+                        `정말로 계속하시겠습니까?`;
+    } else {
+        confirmMessage = `이 파일을 삭제하시겠습니까?\n\n` +
+                        `• 데이터 타입: ${dataType}\n` +
+                        `• 해당 데이터 타입의 플래그만 비활성화됩니다\n` +
+                        `• 다른 파일들은 영향을 받지 않습니다`;
+    }
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    fetch('/delete_upload', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ upload_id: uploadId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 즉시 파일 목록 갱신
+            loadFileList();
+            
+            // 성공 메시지 표시
+            if (dataType === '전체논문데이터') {
+                showToast('분석방의 모든 데이터가 삭제되었습니다.', 'warning');
+            } else {
+                showToast(`${dataType} 데이터 플래그가 비활성화되었습니다.`, 'success');
+            }
+        } else {
+            alert('파일 삭제 중 오류가 발생했습니다: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('파일 삭제 중 오류가 발생했습니다.');
+    });
+}
+
+// 분석방 정보 업데이트
+function updateRoomInfo() {
+    const formData = new FormData(document.getElementById('roomForm'));
+    
+    fetch('/update_room', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('분석방 정보가 저장되었습니다.');
+            // 페이지 헤더 정보 업데이트
+            const roomName = document.getElementById('room_name').value;
+            const yearFrom = document.getElementById('year_from').value;
+            const yearTo = document.getElementById('year_to').value;
+            const cutoffDate = document.getElementById('cutoff_date').value;
+            
+            document.title = `분석방 관리 - ${roomName}`;
+            document.querySelector('h3').innerHTML = `<i class="fas fa-cogs"></i> 분석방 관리 - ${roomName}`;
+            document.querySelector('.text-muted').textContent = `데이터 범위: ${yearFrom}년 ~ ${yearTo}년 | 기준일: ${cutoffDate}`;
+        } else {
+            alert('저장 중 오류가 발생했습니다: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('저장 중 오류가 발생했습니다.');
+    });
+}
+
+// Toast 알림 표시 함수
+function showToast(message, type = 'info') {
+    // 기존 toast 제거
+    const existingToast = document.querySelector('.toast-notification');
+    if (existingToast) {
+        existingToast.remove();
+    }
+    
+    // 새 toast 생성
+    const toast = document.createElement('div');
+    toast.className = `toast-notification alert alert-${type === 'success' ? 'success' : type === 'warning' ? 'warning' : 'info'} alert-dismissible fade show`;
+    toast.style.position = 'fixed';
+    toast.style.top = '20px';
+    toast.style.right = '20px';
+    toast.style.zIndex = '9999';
+    toast.style.minWidth = '300px';
+    toast.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // 5초 후 자동 제거
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 5000);
+}
+
+// 페이지 로드 시 파일 목록 로드
+document.addEventListener('DOMContentLoaded', function() {
+    loadFileList();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}분석방 수정 - JBNU Publication Database{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="mb-0">
+                    <i class="fas fa-edit"></i> 분석방 수정
+                </h3>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('update_room_info') }}">
+                    <input type="hidden" name="room_id" value="{{ room.room_id }}">
+                    
+                    <div class="mb-3">
+                        <label for="room_name" class="form-label">분석방 이름 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="room_name" name="room_name" 
+                               value="{{ room.room_name }}" required 
+                               placeholder="예: 2023년 논문 분석">
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="year_from" class="form-label">데이터 범위 시작년도 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="year_from" name="year_from" required>
+                                <option value="">선택하세요</option>
+                                {% for year in range(2000, 2026) %}
+                                <option value="{{ year }}" {% if room.year_from == year %}selected{% endif %}>{{ year }}년</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="year_to" class="form-label">데이터 범위 끝년도 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="year_to" name="year_to" required>
+                                <option value="">선택하세요</option>
+                                {% for year in range(2000, 2026) %}
+                                <option value="{{ year }}" {% if room.year_to == year %}selected{% endif %}>{{ year }}년</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="cutoff_date" class="form-label">데이터 입력 기준일 <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="cutoff_date" name="cutoff_date" 
+                               value="{{ room.cutoff_date }}" required>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('manage_rooms') }}" class="btn btn-secondary me-md-2">취소</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> 저장
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('year_from').addEventListener('change', function() {
+    const yearFrom = parseInt(this.value);
+    const yearToSelect = document.getElementById('year_to');
+    
+    // 시작년도보다 이전 년도는 선택할 수 없도록 비활성화
+    Array.from(yearToSelect.options).forEach(option => {
+        if (option.value && parseInt(option.value) < yearFrom) {
+            option.disabled = true;
+        } else {
+            option.disabled = false;
+        }
+    });
+    
+    // 현재 선택된 끝년도가 시작년도보다 이전이면 초기화
+    if (yearToSelect.value && parseInt(yearToSelect.value) < yearFrom) {
+        yearToSelect.value = '';
+    }
+});
+
+// 페이지 로드시 초기 검증
+window.addEventListener('load', function() {
+    document.getElementById('year_from').dispatchEvent(new Event('change'));
+});
+</script>
+{% endblock %}

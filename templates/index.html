@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}JBNU Publication Database - Home{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="mb-0">전북대학교 논문 분석 시스템</h3>
+            </div>
+            <div class="card-body text-center">
+                <p class="lead">논문 데이터 업로드 및 분석을 위한 시스템입니다.</p>
+                
+                <div class="row mt-4">
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <i class="fas fa-cogs"></i> 분석방 관리
+                                </h5>
+                                <p class="card-text">통합된 환경에서 분석방 생성, 파일 업로드, 데이터 관리를 수행합니다.</p>
+                                <a href="{{ url_for('manage_rooms') }}" class="btn btn-primary">관리하기</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <i class="fas fa-plus-circle"></i> 분석방 만들기
+                                </h5>
+                                <p class="card-text">새로운 분석방을 생성하고 데이터를 업로드합니다.</p>
+                                <a href="{{ url_for('create_room') }}" class="btn btn-outline-primary">시작하기</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <i class="fas fa-chart-bar"></i> 분석
+                                </h5>
+                                <p class="card-text">기존 분석방을 선택하여 데이터를 분석합니다.</p>
+                                <a href="{{ url_for('analysis') }}" class="btn btn-outline-success">분석하기</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

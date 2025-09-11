@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/Users/suntaekim/Downloads/**)",
+      "Read(/Users/suntaekim/Downloads/**)",
+      "Bash(chmod:*)",
+      "Read(/Users/suntaekim/Downloads/**)",
+      "Read(/Users/suntaekim/Downloads/**)",
+      "Read(/Users/suntaekim/Downloads/**)",
+      "Read(/Users/suntaekim/Downloads/**)",
+      "Read(/Users/suntaekim/Downloads/**)",
+      "Read(/Users/suntaekim/Downloads/**)",
+      "Read(/Users/suntaekim/Downloads/**)",
+      "Read(/Users/suntaekim/Downloads/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
