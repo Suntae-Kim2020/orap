@@ -13,11 +13,12 @@ app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
 
-UPLOAD_FOLDER = 'uploads'
+# Render에서는 /app/data, 로컬에서는 uploads 디렉토리 사용
+UPLOAD_FOLDER = '/app/data/uploads' if os.path.exists('/app/data') else 'uploads'
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 
 if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -37,7 +38,12 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def get_db_connection():
-    conn = sqlite3.connect('jbnu.db')
+    # Render에서 지속적인 데이터 저장을 위해 /app/data 디렉토리 사용
+    db_path = '/app/data/jbnu.db'
+    # 로컬 개발 환경에서는 현재 디렉토리 사용
+    if not os.path.exists('/app/data'):
+        db_path = 'jbnu.db'
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
