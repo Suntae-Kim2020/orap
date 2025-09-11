@@ -1,5 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response
 import sqlite3
+import psycopg2
+import psycopg2.extras
+import os
 import pandas as pd
 import os
 from werkzeug.utils import secure_filename
@@ -37,9 +40,53 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def get_db_connection():
-    conn = sqlite3.connect('jbnu.db')
-    conn.row_factory = sqlite3.Row
+    # Cloud SQL PostgreSQL connection
+    # Check if running on Cloud Run (production)
+    if os.getenv('GAE_ENV', '').startswith('standard') or os.getenv('GOOGLE_CLOUD_PROJECT'):
+        # Production: Cloud SQL via Unix socket
+        host = '/cloudsql/orap-471814:asia-northeast3:jbnu-db'
+        conn = psycopg2.connect(
+            host=host,
+            database='jbnu',
+            user='jbnu-user',
+            password='JBNUorap2025!'
+        )
+    else:
+        # Development: Direct connection to Cloud SQL public IP
+        conn = psycopg2.connect(
+            host='35.216.126.143',
+            database='jbnu',
+            user='jbnu-user',
+            password='JBNUorap2025!',
+            port=5432
+        )
     return conn
+
+# PostgreSQL 호환 헬퍼 함수들
+def execute_query(conn, query, params=None):
+    """Execute query and return cursor for fetching results"""
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    if params:
+        # PostgreSQL uses %s for parameters, convert from SQLite ? style
+        pg_query = query.replace('?', '%s')
+        cursor.execute(pg_query, params)
+    else:
+        cursor.execute(query)
+    return cursor
+
+def execute_and_fetchone(conn, query, params=None):
+    """Execute query and return one result as dict"""
+    cursor = execute_query(conn, query, params)
+    result = cursor.fetchone()
+    cursor.close()
+    return result
+
+def execute_and_fetchall(conn, query, params=None):
+    """Execute query and return all results as list of dicts"""
+    cursor = execute_query(conn, query, params)
+    results = cursor.fetchall()
+    cursor.close()
+    return results
 
 # 업로드 진행 상태 관리
 def update_progress(task_id, current, total, message=""):
@@ -88,7 +135,7 @@ def create_room(room_id=None):
     room = None
     if room_id:
         conn = get_db_connection()
-        room = conn.execute('SELECT * FROM room WHERE room_id = ?', (room_id,)).fetchone()
+        room = execute_and_fetchone(conn, 'SELECT * FROM room WHERE room_id = ?', (room_id,))
         conn.close()
         
         if not room:
@@ -307,7 +354,7 @@ def process_file_upload(room_id, data_category, data_source, data_type, filepath
         
         # DB 연결 및 room 정보 확인
         conn = get_db_connection()
-        room = conn.execute('SELECT * FROM room WHERE room_id = ?', (room_id,)).fetchone()
+        room = execute_and_fetchone(conn, 'SELECT * FROM room WHERE room_id = ?', (room_id,))
         
         if not room:
             cleanup_progress(task_id)
@@ -575,7 +622,7 @@ def get_upload_result(task_id):
 @app.route('/analysis')
 def analysis():
     conn = get_db_connection()
-    rooms = conn.execute('SELECT * FROM room ORDER BY room_id DESC').fetchall()
+    rooms = execute_and_fetchall(conn, 'SELECT * FROM room ORDER BY room_id DESC')
     conn.close()
     return render_template('analysis.html', rooms=rooms)
 
@@ -584,7 +631,7 @@ def analysis():
 @app.route('/analysis_run/<int:room_id>')
 def analysis_run(room_id=None):
     conn = get_db_connection()
-    rooms = conn.execute('SELECT * FROM room ORDER BY room_id DESC').fetchall()
+    rooms = execute_and_fetchall(conn, 'SELECT * FROM room ORDER BY room_id DESC')
     selected_room = None
     if room_id:
         selected_room = conn.execute('SELECT * FROM room WHERE room_id = ?', (room_id,)).fetchone()
@@ -691,7 +738,7 @@ def update_room_info():
 @app.route('/api/rooms')
 def api_rooms():
     conn = get_db_connection()
-    rooms = conn.execute('SELECT * FROM room ORDER BY room_id DESC').fetchall()
+    rooms = execute_and_fetchall(conn, 'SELECT * FROM room ORDER BY room_id DESC')
     conn.close()
     
     data = []
@@ -722,7 +769,8 @@ def api_room_stats(room_id):
     conn = get_db_connection()
     
     # publication 테이블에서 해당 room_id의 총 레코드 수 조회
-    total_records = conn.execute('SELECT COUNT(*) as count FROM publication WHERE room_id = ?', (room_id,)).fetchone()['count']
+    result = execute_and_fetchone(conn, 'SELECT COUNT(*) as count FROM publication WHERE room_id = ?', (room_id,))
+    total_records = result['count']
     
     conn.close()
     
@@ -798,7 +846,8 @@ def extract_candidates():
         conn = get_db_connection()
         
         # 전체 논문 수 조회
-        total_papers = conn.execute('SELECT COUNT(*) as count FROM publication WHERE room_id = ?', (room_id,)).fetchone()['count']
+        result = execute_and_fetchone(conn, 'SELECT COUNT(*) as count FROM publication WHERE room_id = ?', (room_id,))
+        total_papers = result['count']
         
         # 가중치가 적용된 논문들을 점수 계산하여 조회
         query = '''
