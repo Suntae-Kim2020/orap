@@ -54,6 +54,30 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+# 데이터베이스 마이그레이션 함수
+def migrate_database():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # publication 테이블에 점수 컬럼들이 있는지 확인
+    cursor.execute("PRAGMA table_info(publication)")
+    columns = [column[1] for column in cursor.fetchall()]
+    
+    # 필요한 컬럼들 추가
+    score_columns = ['j_point', 'a_point', 's_point', 't_point']
+    for column in score_columns:
+        if column not in columns:
+            try:
+                cursor.execute(f"ALTER TABLE publication ADD COLUMN {column} REAL DEFAULT 0.0")
+                print(f"Added column: {column}")
+            except sqlite3.Error as e:
+                print(f"Error adding column {column}: {e}")
+    
+    conn.commit()
+    conn.close()
+
+# 애플리케이션 시작 시 데이터베이스 마이그레이션 실행
+migrate_database()
 
 # 업로드 진행 상태 관리
 def update_progress(task_id, current, total, message=""):
@@ -1160,11 +1184,33 @@ def extract_second_stage_candidates():
         candidates_with_scores.sort(key=lambda x: x['final_score'], reverse=True)
         top_10_candidates = candidates_with_scores[:10]
         
+        # 모든 분석된 논문의 점수를 데이터베이스에 업데이트
+        cursor = conn.cursor()
+        for candidate in candidates_with_scores:
+            try:
+                cursor.execute("""
+                    UPDATE publication 
+                    SET j_point = ?, a_point = ?, s_point = ?, t_point = ?
+                    WHERE record_id = ?
+                """, (
+                    candidate['journal_score'],
+                    candidate['article_score'], 
+                    candidate['social_score'],
+                    candidate['final_score'],
+                    candidate['record_id']
+                ))
+            except Exception as update_error:
+                print(f"점수 업데이트 오류 (record_id: {candidate['record_id']}): {update_error}")
+        
+        conn.commit()
+        conn.close()
+        
         return jsonify({
             'success': True,
             'candidates': top_10_candidates,
             'total_analyzed': len(candidates_with_scores),
-            'stage2_weights': stage2_weights
+            'stage2_weights': stage2_weights,
+            'scores_updated': len(candidates_with_scores)
         })
         
     except Exception as e:
