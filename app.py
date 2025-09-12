@@ -1911,5 +1911,14 @@ def download_second_stage_candidates():
     except Exception as e:
         return f"2단계 CSV 다운로드 중 오류가 발생했습니다: {str(e)}", 500
 
+# 도움말 라우트
+@app.route('/help/stage1')
+def help_stage1():
+    return render_template('help_stage1.html')
+
+@app.route('/help/stage2')
+def help_stage2():
+    return render_template('help_stage2.html')
+
 if __name__ == '__main__':
     app.run(debug=True, host='127.0.0.1', port=0)
