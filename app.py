@@ -611,27 +611,39 @@ def analysis_run(room_id=None):
 # 분석방 관리 페이지
 @app.route('/manage_rooms')
 def manage_rooms():
-    conn = get_db_connection()
-    # 분석방 정보와 파일/데이터 개수 조회 (정확한 카운트)
-    rooms = conn.execute('''
-        SELECT r.*,
-               COALESCE(fu_count.file_count, 0) as file_count,
-               COALESCE(p_count.data_count, 0) as data_count
-        FROM room r
-        LEFT JOIN (
-            SELECT room_id, COUNT(*) as file_count 
-            FROM file_uploads 
-            GROUP BY room_id
-        ) fu_count ON r.room_id = fu_count.room_id
-        LEFT JOIN (
-            SELECT room_id, COUNT(*) as data_count 
-            FROM publication 
-            GROUP BY room_id
-        ) p_count ON r.room_id = p_count.room_id
-        ORDER BY r.room_id DESC
-    ''').fetchall()
-    conn.close()
-    return render_template('manage_rooms.html', rooms=rooms)
+    try:
+        conn = get_db_connection()
+        # 먼저 간단하게 분석방만 조회
+        rooms = conn.execute('SELECT * FROM room ORDER BY room_id DESC').fetchall()
+        
+        # 각 분석방별로 파일 수와 데이터 수를 별도로 조회
+        rooms_with_counts = []
+        for room in rooms:
+            room_dict = dict(room)
+            
+            # 파일 개수 조회
+            file_count_result = conn.execute(
+                'SELECT COUNT(*) as count FROM file_uploads WHERE room_id = ?', 
+                (room['room_id'],)
+            ).fetchone()
+            room_dict['file_count'] = file_count_result['count'] if file_count_result else 0
+            
+            # 데이터 개수 조회
+            data_count_result = conn.execute(
+                'SELECT COUNT(*) as count FROM publication WHERE room_id = ?', 
+                (room['room_id'],)
+            ).fetchone()
+            room_dict['data_count'] = data_count_result['count'] if data_count_result else 0
+            
+            rooms_with_counts.append(room_dict)
+        
+        conn.close()
+        return render_template('manage_rooms.html', rooms=rooms_with_counts)
+    except Exception as e:
+        print(f"Error in manage_rooms: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"Internal Server Error: {str(e)}", 500
 
 # 분석방 수정 페이지
 @app.route('/edit_room/<int:room_id>')
