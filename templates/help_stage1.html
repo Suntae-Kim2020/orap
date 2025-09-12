@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}우수논문 1단계 후보추출방법 - JBNU ORAP{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-info-circle"></i> 우수논문 1단계 후보추출방법
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h5 class="text-primary mb-3">1단계 후보추출 개요</h5>
+                        <p class="mb-4">
+                            1단계 후보추출은 기존에 설정된 논문 플래그 정보를 바탕으로 가중치를 적용하여 
+                            우수한 논문을 선별하는 과정입니다.
+                        </p>
+
+                        <h5 class="text-primary mb-3">분석 지표 설명</h5>
+                        <div class="table-responsive mb-4">
+                            <table class="table table-bordered">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>지표</th>
+                                        <th>설명</th>
+                                        <th>가중치 범위</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><span class="badge bg-info">1%</span></td>
+                                        <td>전 세계 상위 1% 논문</td>
+                                        <td>0-100%</td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="badge bg-primary">10%</span></td>
+                                        <td>전 세계 상위 10% 논문</td>
+                                        <td>0-100%</td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="badge bg-warning text-dark">25%</span></td>
+                                        <td>전 세계 상위 25% 논문</td>
+                                        <td>0-100%</td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="badge bg-success">SDGs</span></td>
+                                        <td>UN 지속가능발전목표 관련 논문</td>
+                                        <td>0-100%</td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="badge bg-secondary">International</span></td>
+                                        <td>국제 협력 연구 논문</td>
+                                        <td>0-100%</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <h5 class="text-primary mb-3">분석 방법</h5>
+                        <ol class="mb-4">
+                            <li class="mb-2">각 지표에 대해 가중치(%)를 설정합니다</li>
+                            <li class="mb-2">설정된 가중치에 따라 논문별 점수를 계산합니다</li>
+                            <li class="mb-2">계산된 점수를 기준으로 상위 5개 논문을 선별합니다</li>
+                            <li class="mb-2">동점인 경우 해당 점수의 모든 논문을 포함합니다</li>
+                        </ol>
+
+                        <h5 class="text-primary mb-3">점수 계산 공식</h5>
+                        <div class="alert alert-info">
+                            <strong>총점 = (1% × 가중치₁) + (10% × 가중치₁₀) + (25% × 가중치₂₅) + (SDGs × 가중치ₛ) + (International × 가중치ᵢ)</strong>
+                        </div>
+
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>주의사항:</strong>
+                            <ul class="mb-0 mt-2">
+                                <li>최소 하나 이상의 가중치를 0보다 크게 설정해야 합니다</li>
+                                <li>데이터 업로드 시 설정된 플래그 정보를 기반으로 분석합니다</li>
+                                <li>해당 플래그가 설정되지 않은 논문은 결과에 포함되지 않습니다</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-header">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-lightbulb"></i> 활용 팁
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <ul class="list-unstyled">
+                                    <li class="mb-2">
+                                        <i class="fas fa-check text-success"></i>
+                                        상위 1% 논문에 높은 가중치 부여
+                                    </li>
+                                    <li class="mb-2">
+                                        <i class="fas fa-check text-success"></i>
+                                        SDGs 관련 연구 중요도에 따라 조절
+                                    </li>
+                                    <li class="mb-2">
+                                        <i class="fas fa-check text-success"></i>
+                                        국제협력 연구의 전략적 중요성 고려
+                                    </li>
+                                    <li class="mb-0">
+                                        <i class="fas fa-check text-success"></i>
+                                        분야별 특성에 맞는 가중치 설정
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

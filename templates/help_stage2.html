@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+
+{% block title %}우수논문 2단계 후보추출방법 - JBNU ORAP{% endblock %}
+
+{% block scripts %}
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']]
+    }
+  };
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-info-circle"></i> 우수논문 2단계 후보추출방법
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h5 class="text-success mb-3">2단계 후보추출 개요</h5>
+                        <p class="mb-4">
+                            2단계 후보추출은 1단계에서 선별된 논문들을 대상으로 정량적 지표를 종합적으로 분석하여 
+                            최종 우수논문 후보를 선정하는 과정입니다.
+                        </p>
+
+                        <h5 class="text-success mb-3">분석 지표별 설명</h5>
+                        
+                        <div class="mb-4">
+                            <h6 class="text-primary"><i class="fas fa-file-alt"></i> 논문 성과 지표</h6>
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td><strong>FWCI</strong></td>
+                                            <td>Field-Weighted Citation Impact - 분야·출판연도 보정 후 평균 대비 인용 영향력</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Citations</strong></td>
+                                            <td>논문이 다른 논문에 인용된 총 횟수</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Views</strong></td>
+                                            <td>연구 주제·분야 대비 논문 조회수 및 Field-Weighted View Impact</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Top Percentiles</strong></td>
+                                            <td>같은 분야·같은 출판연도·유사한 유형의 전 세계 논문들과 비교한 상위 백분율 지표</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6 class="text-primary"><i class="fas fa-journal-whills"></i> 저널 영향력 지표</h6>
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td><strong>SNIP</strong></td>
+                                            <td>분야 간 인용 편차를 보정한 학술지 영향력 지표</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>CiteScore</strong></td>
+                                            <td>Scopus 기반 저널 영향력 지표 (평균 논문당 인용수)</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>SJR</strong></td>
+                                            <td>SCImago Journal Rank. 인용의 양뿐 아니라 인용 출처의 영향력까지 고려한 저널 지표</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6 class="text-primary"><i class="fas fa-users"></i> 사회적·실용적 영향</h6>
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td><strong>Patent Families</strong></td>
+                                            <td>논문이 인용된 주요 특허 패밀리 수</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Policy Citations</strong></td>
+                                            <td>논문이 정책 문서에 인용된 횟수</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <h5 class="text-success mb-3">분석 방법</h5>
+                        <ol class="mb-4">
+                            <li class="mb-2">1단계에서 `is_1=1`으로 설정된 논문들을 대상으로 분석</li>
+                            <li class="mb-2">3개 분야별로 가중치를 설정 (총합 100%)</li>
+                            <li class="mb-2">각 논문별로 분야별 점수를 계산</li>
+                            <li class="mb-2">최종 점수를 기준으로 상위 10개 논문 선별</li>
+                            <li class="mb-2">분석 완료 후 데이터베이스에 점수 저장</li>
+                        </ol>
+
+                        <h5 class="text-success mb-3">2단계 최종 점수 공식 (권장안)</h5>
+                        
+                        <div class="mb-4">
+                            <h6 class="text-primary">0) 표기</h6>
+                            <ul class="list-unstyled mb-3">
+                                <li>$x_i$ : 논문 i의 원시 지표값</li>
+                                <li>$\tilde{x}_i$ : 논문 i의 정규화된 값 (0~1 사이)</li>
+                                <li><strong>최종 점수</strong> : $\text{Score}_i^{(2)}$</li>
+                            </ul>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6 class="text-primary">1) 지표별 정규화(스케일링) 규칙</h6>
+                            <p class="small text-muted mb-3">서로 단위/분포가 다른 값을 [0,1] 범위로 맞춰줍니다. (퍼센타일 기반 + 로그 스케일 + 윈저라이즈)</p>
+                            
+                            <div class="mb-3">
+                                <strong class="text-info">A. 저널 영향력 (연도 기준)</strong>
+                                <p class="small">SNIP, CiteScore, SJR는 각자 "값"과 "퍼센타일"이 있습니다. 두 정보를 혼합합니다.</p>
+                                <ul class="small">
+                                    <li><strong>값 스케일:</strong> 
+                                        $$\tilde{m}_i^{\text{val}} = \frac{\min(\log(1+m_i), P_{95_{\log(1+m)}}) - P_{5_{\log(1+m)}}}{P_{95_{\log(1+m)}} - P_{5_{\log(1+m)}}}$$
+                                    </li>
+                                    <li><strong>퍼센타일 스케일:</strong> 
+                                        $$\tilde{m}_i^{\text{pct}} = \frac{\text{Percentile}}{100}$$
+                                    </li>
+                                    <li><strong>혼합 (값:퍼센타일 = 0.6:0.4):</strong> 
+                                        $$\tilde{m}_i = 0.6 \cdot \tilde{m}_i^{\text{val}} + 0.4 \cdot \tilde{m}_i^{\text{pct}}$$
+                                    </li>
+                                </ul>
+                                <p class="small text-muted">$m \in \{\text{SNIP}, \text{CiteScore}, \text{SJR}\}$</p>
+                            </div>
+
+                            <div class="mb-3">
+                                <strong class="text-info">B. 논문 성과</strong>
+                                <ul class="small">
+                                    <li><strong>FWCI:</strong> 과도한 영향 방지 위해 3에서 캡
+                                        $$\widetilde{\text{FWCI}}_i = \frac{\min(\text{FWCI}_i, 3)}{3}$$
+                                    </li>
+                                    <li><strong>Citations, Views:</strong> heavy-tail → 로그스케일 + 윈저라이즈
+                                        $$\tilde{c}_i = \frac{\min(\log(1+c_i), P_{95}) - P_5}{P_{95} - P_5}, \quad \tilde{v}_i = \frac{\min(\log(1+v_i), P_{95}) - P_5}{P_{95} - P_5}$$
+                                    </li>
+                                    <li><strong>FWVI:</strong> 3에서 캡
+                                        $$\widetilde{\text{FWVI}}_i = \frac{\min(\text{FWVI}_i, 3)}{3}$$
+                                    </li>
+                                    <li><strong>조회 가중 묶음:</strong> 
+                                        $$\widetilde{\text{ViewsBlock}}_i = 0.5 \cdot \tilde{v}_i + 0.5 \cdot \widetilde{\text{FWVI}}_i$$
+                                    </li>
+                                    <li><strong>Top Percentiles:</strong> 
+                                        $$\widetilde{\text{TopPct}}_i = \frac{\text{값}}{100}$$
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <div class="mb-3">
+                                <strong class="text-info">C. 사회적·실용적 영향</strong>
+                                <p class="small">희소·이산 분포를 고려해 존재 보너스 + 강도로 구성</p>
+                                <ul class="small">
+                                    <li><strong>Patent families:</strong><br>
+                                        $$\widetilde{\text{Patent}}_i = 0.4 \cdot \mathbf{1}(pf_i > 0) + 0.6 \cdot \frac{\min(\log(1+pf_i), P_{95}) - P_5}{P_{95} - P_5}$$</li>
+                                    <li><strong>Policy citations:</strong> 동일 방식<br>
+                                        <code>Policỹ<sub>i</sub> = 0.4 · 1(pol<sub>i</sub> > 0) + 0.6 · (min(log(1+pol<sub>i</sub>), P95) - P5) / (P95 - P5)</code></li>
+                                </ul>
+                                <div class="alert alert-light small">
+                                    <strong>참고:</strong> P5, P95는 해당 지표의 논문군(1단계 후보) 내 5·95퍼센타일입니다. 값 부족 시 P1·P99로 대체 가능.<br>
+                                    결측치는 동년·동분야 중앙값으로 대체(없으면 전체 중앙값), 그리고 10% 패널티(×0.9) 적용 권장.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6 class="text-primary">2) 가중합 (사용자 제안 비중 반영)</h6>
+                            <p class="small text-muted">사용자 제안(합계 100%)을 그대로 매핑합니다.</p>
+                            
+                            <div class="mb-4">
+                                <strong class="text-info">A. 저널 영향력 (45%)</strong>
+                                <div class="small bg-light p-2 rounded">
+                                    $$J_i = 0.15 \cdot \widetilde{\text{SNIP}}_i + 0.15 \cdot \widetilde{\text{CiteScore}}_i + 0.15 \cdot \widetilde{\text{SJR}}_i$$
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <strong class="text-info">B. 논문 성과 (45%)</strong>
+                                <div class="small bg-light p-3 rounded" style="min-height: 100px;">
+                                    $$\begin{align}
+                                    P_i &= 0.20 \cdot \widetilde{\text{FWCI}}_i \\
+                                    &\quad + 0.10 \cdot \tilde{c}_i \\
+                                    &\quad + 0.10 \cdot \widetilde{\text{ViewsBlock}}_i \\
+                                    &\quad + 0.05 \cdot \widetilde{\text{TopPct}}_i
+                                    \end{align}$$
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <strong class="text-info">C. 사회적 영향 (10%)</strong>
+                                <div class="small bg-light p-3 rounded" style="min-height: 80px;">
+                                    $$\begin{align}
+                                    S_i &= 0.05 \cdot \widetilde{\text{Patent}}_i \\
+                                    &\quad + 0.05 \cdot \widetilde{\text{Policy}}_i
+                                    \end{align}$$
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-success">
+                            <h6 class="text-success mb-2">D. 2단계 최종 점수</h6>
+                            $$\text{Score}_i^{(2)} = J_i + P_i + S_i \in [0, 1]$$
+                            <small>(모든 정규화된 값이 0~1이므로 이론상 최대 1)</small>
+                        </div>
+
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>주의사항:</strong>
+                            <ul class="mb-0 mt-2">
+                                <li>모든 지표의 퍼센트 합은 반드시 100%여야 합니다</li>
+                                <li>분석 시작 시 기존 점수 컬럼이 초기화됩니다</li>
+                                <li>분석 완료 후 j_point, a_point, s_point, t_point 컬럼에 결과 저장</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card bg-light mb-3">
+                            <div class="card-header">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-calculator"></i> 가중치 설정 예시
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <small>
+                                    <strong>논문 성과:</strong> 45%<br>
+                                    - FWCI: 20%<br>
+                                    - Citations: 10%<br>
+                                    - Views: 10%<br>
+                                    - Percentiles: 5%<br><br>
+                                    
+                                    <strong>저널 영향력:</strong> 45%<br>
+                                    - SNIP: 15%<br>
+                                    - CiteScore: 15%<br>
+                                    - SJR: 15%<br><br>
+                                    
+                                    <strong>사회적 영향:</strong> 10%<br>
+                                    - Patents: 5%<br>
+                                    - Policy: 5%<br>
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="card bg-light">
+                            <div class="card-header">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-lightbulb"></i> 활용 팁
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <ul class="list-unstyled">
+                                    <li class="mb-2">
+                                        <i class="fas fa-check text-success"></i>
+                                        분야 특성에 맞는 가중치 조정
+                                    </li>
+                                    <li class="mb-2">
+                                        <i class="fas fa-check text-success"></i>
+                                        사회적 영향 중요도 고려
+                                    </li>
+                                    <li class="mb-2">
+                                        <i class="fas fa-check text-success"></i>
+                                        저널 영향력과 논문 성과 균형
+                                    </li>
+                                    <li class="mb-0">
+                                        <i class="fas fa-check text-success"></i>
+                                        정기적인 가중치 검토 및 조정
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

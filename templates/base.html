@@ -23,6 +23,19 @@
                 <a class="nav-link" href="{{ url_for('analysis') }}">
                     <i class="fas fa-chart-bar"></i> 분석
                 </a>
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="helpDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-question-circle"></i> 도움말
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="helpDropdown">
+                        <li><a class="dropdown-item" href="{{ url_for('help_stage1') }}">
+                            <i class="fas fa-info-circle"></i> 우수논문 1단계 후보추출방법
+                        </a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('help_stage2') }}">
+                            <i class="fas fa-info-circle"></i> 우수논문 2단계 후보추출방법
+                        </a></li>
+                    </ul>
+                </div>
             </div>
         </div>
     </nav>
