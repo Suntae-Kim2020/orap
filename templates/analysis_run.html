@@ -223,7 +223,8 @@
 
 {% block scripts %}
 <script>
-document.getElementById('analysisForm').addEventListener('submit', function(e) {
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('analysisForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
     const formData = new FormData(this);
@@ -252,6 +253,10 @@ document.getElementById('analysisForm').addEventListener('submit', function(e) {
     
     // 버튼 비활성화 및 로딩 표시
     const extractBtn = document.getElementById('extractBtn');
+    if (!extractBtn) {
+        alert('1단계 추출 버튼을 찾을 수 없습니다.');
+        return;
+    }
     const originalText = extractBtn.innerHTML;
     extractBtn.disabled = true;
     extractBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 추출 중...';
@@ -362,14 +367,20 @@ document.getElementById('analysisForm').addEventListener('submit', function(e) {
             document.getElementById('secondStageSection').style.display = 'block';
             
             // 1단계 다운로드 버튼 이벤트 리스너 추가
-            document.getElementById('downloadFirstStageBtn').addEventListener('click', function() {
-                downloadFirstStageCandidates();
-            });
+            const downloadFirstStageBtn = document.getElementById('downloadFirstStageBtn');
+            if (downloadFirstStageBtn) {
+                downloadFirstStageBtn.addEventListener('click', function() {
+                    downloadFirstStageCandidates();
+                });
+            }
             
             // 주제분포 분석 버튼 이벤트 리스너 추가
-            document.getElementById('analyzeDistributionBtn').addEventListener('click', function() {
-                analyzeTopicDistribution();
-            });
+            const analyzeDistributionBtn = document.getElementById('analyzeDistributionBtn');
+            if (analyzeDistributionBtn) {
+                analyzeDistributionBtn.addEventListener('click', function() {
+                    analyzeTopicDistribution();
+                });
+            }
         } else {
             resultsContent.innerHTML = `
                 <div class="alert alert-danger">
@@ -379,8 +390,10 @@ document.getElementById('analysisForm').addEventListener('submit', function(e) {
         }
         
         // 버튼 복원
-        extractBtn.disabled = false;
-        extractBtn.innerHTML = originalText;
+        if (extractBtn) {
+            extractBtn.disabled = false;
+            extractBtn.innerHTML = originalText;
+        }
     })
     .catch(error => {
         console.error('Error:', error);
@@ -391,49 +404,59 @@ document.getElementById('analysisForm').addEventListener('submit', function(e) {
         `;
         
         // 버튼 복원
-        extractBtn.disabled = false;
-        extractBtn.innerHTML = originalText;
+        if (extractBtn) {
+            extractBtn.disabled = false;
+            extractBtn.innerHTML = originalText;
+        }
     });
-});
-
-// 2단계 후보추출 버튼 이벤트
-document.getElementById('extractSecondBtn').addEventListener('click', function() {
-    const secondResultsDiv = document.getElementById('secondResults');
-    const secondResultsContent = document.getElementById('secondResultsContent');
-    const roomId = document.getElementById('room_select').value;
     
-    if (!roomId) {
-        alert('분석방을 선택해주세요.');
-        return;
-    }
-    
-    // 1단계에서 사용된 가중치 수집
-    const stage1Weights = {
-        '1%': parseFloat(document.getElementById('weight_1').value) || 0,
-        '10%': parseFloat(document.getElementById('weight_10').value) || 0,
-        '25%': parseFloat(document.getElementById('weight_25').value) || 0,
-        'SDGs': parseFloat(document.getElementById('weight_sdg').value) || 0,
-        'International': parseFloat(document.getElementById('weight_international').value) || 0
-    };
-    
-    // 2단계 각 섹션별 가중치 수집
-    const paperWeights = {
-        'fwci': parseFloat(document.getElementById('weight_fwci').value) || 0,
-        'citations': parseFloat(document.getElementById('weight_citations').value) || 0,
-        'views': parseFloat(document.getElementById('weight_views').value) || 0,
-        'top_percentiles': parseFloat(document.getElementById('weight_percentiles').value) || 0
-    };
-    
-    const journalWeights = {
-        'snip': parseFloat(document.getElementById('weight_snip').value) || 0,
-        'citescore': parseFloat(document.getElementById('weight_citescore').value) || 0,
-        'sjr': parseFloat(document.getElementById('weight_sjr').value) || 0
-    };
-    
-    const socialWeights = {
-        'patents': parseFloat(document.getElementById('weight_patents').value) || 0,
-        'policy': parseFloat(document.getElementById('weight_policy').value) || 0
-    };
+    // 2단계 후보추출 버튼 이벤트
+    const extractSecondBtn = document.getElementById('extractSecondBtn');
+    if (extractSecondBtn) {
+        extractSecondBtn.addEventListener('click', function() {
+            const secondResultsDiv = document.getElementById('secondResults');
+            const secondResultsContent = document.getElementById('secondResultsContent');
+            const roomIdElement = document.getElementById('room_select');
+            
+            if (!roomIdElement) {
+                alert('분석방 선택 요소를 찾을 수 없습니다.');
+                return;
+            }
+            
+            const roomId = roomIdElement.value;
+            
+            if (!roomId) {
+                alert('분석방을 선택해주세요.');
+                return;
+            }
+            
+            // 1단계에서 사용된 가중치 수집
+            const stage1Weights = {
+                '1%': parseFloat(document.getElementById('weight_1')?.value || '0') || 0,
+                '10%': parseFloat(document.getElementById('weight_10')?.value || '0') || 0,
+                '25%': parseFloat(document.getElementById('weight_25')?.value || '0') || 0,
+                'SDGs': parseFloat(document.getElementById('weight_sdg')?.value || '0') || 0,
+                'International': parseFloat(document.getElementById('weight_international')?.value || '0') || 0
+            };
+            
+            // 2단계 각 섹션별 가중치 수집
+            const paperWeights = {
+                'fwci': parseFloat(document.getElementById('weight_fwci')?.value || '0') || 0,
+                'citations': parseFloat(document.getElementById('weight_citations')?.value || '0') || 0,
+                'views': parseFloat(document.getElementById('weight_views')?.value || '0') || 0,
+                'top_percentiles': parseFloat(document.getElementById('weight_percentiles')?.value || '0') || 0
+            };
+            
+            const journalWeights = {
+                'snip': parseFloat(document.getElementById('weight_snip')?.value || '0') || 0,
+                'citescore': parseFloat(document.getElementById('weight_citescore')?.value || '0') || 0,
+                'sjr': parseFloat(document.getElementById('weight_sjr')?.value || '0') || 0
+            };
+            
+            const socialWeights = {
+                'patents': parseFloat(document.getElementById('weight_patents')?.value || '0') || 0,
+                'policy': parseFloat(document.getElementById('weight_policy')?.value || '0') || 0
+            };
     
     // 전체 지표 퍼센트 합 검증
     const totalSum = Object.values(paperWeights).reduce((sum, val) => sum + val, 0) +
@@ -454,6 +477,10 @@ document.getElementById('extractSecondBtn').addEventListener('click', function()
     
     // 버튼 비활성화 및 로딩 표시
     const extractSecondBtn = document.getElementById('extractSecondBtn');
+    if (!extractSecondBtn) {
+        alert('2단계 추출 버튼을 찾을 수 없습니다.');
+        return;
+    }
     const originalSecondText = extractSecondBtn.innerHTML;
     extractSecondBtn.disabled = true;
     extractSecondBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 분석 중...';
@@ -571,9 +598,12 @@ document.getElementById('extractSecondBtn').addEventListener('click', function()
             
             // 2단계 다운로드 버튼 이벤트 리스너 추가
             if (data.candidates && data.candidates.length > 0) {
-                document.getElementById('downloadSecondStageBtn').addEventListener('click', function() {
-                    downloadSecondStageCandidates();
-                });
+                const downloadSecondStageBtn = document.getElementById('downloadSecondStageBtn');
+                if (downloadSecondStageBtn) {
+                    downloadSecondStageBtn.addEventListener('click', function() {
+                        downloadSecondStageCandidates();
+                    });
+                }
             }
         } else {
             secondResultsContent.innerHTML = `
@@ -599,6 +629,8 @@ document.getElementById('extractSecondBtn').addEventListener('click', function()
         extractSecondBtn.disabled = false;
         extractSecondBtn.innerHTML = originalSecondText;
     });
+        });
+    }
 });
 
 // 1단계 후보 다운로드 함수
@@ -709,5 +741,6 @@ function downloadSecondStageCandidates() {
     form.submit();
     document.body.removeChild(form);
 }
+});
 </script>
 {% endblock %}

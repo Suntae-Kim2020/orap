@@ -850,6 +850,7 @@ def extract_candidates():
         
         conn = get_db_connection()
         
+        
         # 전체 논문 수 조회
         total_papers = conn.execute('SELECT COUNT(*) as count FROM publication WHERE room_id = ?', (room_id,)).fetchone()['count']
         
@@ -916,6 +917,7 @@ def extract_candidates():
         )).fetchone()['count']
         
         candidates = []
+        candidate_eids = []
         for row in results:
             candidates.append({
                 'eid': row['eid'] or '',
@@ -926,6 +928,8 @@ def extract_candidates():
                 'is_international': bool(row['is_international']),
                 'total_score': round(row['total_score'], 2)
             })
+            candidate_eids.append(row['eid'])
+        
         
         conn.close()
         
@@ -956,6 +960,17 @@ def extract_second_stage_candidates():
             return jsonify({'success': False, 'error': '분석방 ID, 1단계 가중치, 2단계 가중치가 필요합니다.'})
         
         conn = get_db_connection()
+        
+        # 2단계 분석 시작 시 해당 분석방의 모든 논문 점수를 0으로 초기화
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE publication 
+            SET j_point = 0.0, a_point = 0.0, s_point = 0.0, t_point = 0.0
+            WHERE room_id = ?
+        """, (room_id,))
+        reset_count = cursor.rowcount
+        print(f"분석방 {room_id}의 {reset_count}개 논문 점수를 초기화했습니다.")
+        conn.commit()
         
         # 1단계 가중치 추출
         weight_1 = float(stage1_weights.get('1%', 0))
@@ -1012,7 +1027,6 @@ def extract_second_stage_candidates():
             weight_1, weight_10, weight_25, weight_sdg, weight_international,
             weight_1, weight_10, weight_25, weight_sdg, weight_international, max_score
         )).fetchall()
-        conn.close()
         
         if not papers:
             return jsonify({'success': False, 'error': '1단계에서 추출된 논문이 없습니다.'})
@@ -1186,6 +1200,7 @@ def extract_second_stage_candidates():
         
         # 모든 분석된 논문의 점수를 데이터베이스에 업데이트
         cursor = conn.cursor()
+        updated_count = 0
         for candidate in candidates_with_scores:
             try:
                 cursor.execute("""
@@ -1194,11 +1209,12 @@ def extract_second_stage_candidates():
                     WHERE record_id = ?
                 """, (
                     candidate['journal_score'],
-                    candidate['article_score'], 
+                    candidate['paper_score'], 
                     candidate['social_score'],
                     candidate['final_score'],
                     candidate['record_id']
                 ))
+                updated_count += 1
             except Exception as update_error:
                 print(f"점수 업데이트 오류 (record_id: {candidate['record_id']}): {update_error}")
         
@@ -1210,10 +1226,16 @@ def extract_second_stage_candidates():
             'candidates': top_10_candidates,
             'total_analyzed': len(candidates_with_scores),
             'stage2_weights': stage2_weights,
-            'scores_updated': len(candidates_with_scores)
+            'scores_updated': updated_count
         })
         
     except Exception as e:
+        # 예외 발생 시에도 연결 닫기
+        try:
+            if 'conn' in locals():
+                conn.close()
+        except:
+            pass
         return jsonify({'success': False, 'error': f'2단계 후보 추출 중 오류가 발생했습니다: {str(e)}'})
 
 @app.route('/api/download_first_stage_candidates', methods=['POST'])
