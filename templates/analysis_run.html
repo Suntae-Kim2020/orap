@@ -118,55 +118,59 @@
                         <!-- 논문 성과 지표 -->
                         <h6 class="mb-3"><i class="fas fa-file-alt"></i> 📑 논문 성과 지표</h6>
                         <div class="mb-3">
-                            <label class="form-label">FWCI (Field-Weighted Citation Impact) → 1.0 이상이면 가산점</label>
+                            <label class="form-label">Field-Weighted Citation Impact (FWCI) <small class="text-muted">- 분야·출판년도 보정 후 평균 대비 인용 영향력</small></label>
                             <div class="input-group">
-                                <input type="number" class="form-control form-control-sm" value="20" min="0" max="100" step="1">
+                                <input type="number" class="form-control form-control-sm" id="weight_fwci" value="20" min="0" max="100" step="1">
                                 <span class="input-group-text">%</span>
                             </div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Citations (총 인용수)</label>
                             <div class="input-group">
-                                <input type="number" class="form-control form-control-sm" value="10" min="0" max="100" step="1">
+                                <input type="number" class="form-control form-control-sm" id="weight_citations" value="10" min="0" max="100" step="1">
                                 <span class="input-group-text">%</span>
                             </div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Views (조회수) & Field-Weighted View Impact</label>
+                            <label class="form-label">Views (조회수) & Field-Weighted View Impact <small class="text-muted">- 연구 주제·분야 대비 논문 조회수</small></label>
                             <div class="input-group">
-                                <input type="number" class="form-control form-control-sm" value="10" min="0" max="100" step="1">
+                                <input type="number" class="form-control form-control-sm" id="weight_views" value="10" min="0" max="100" step="1">
                                 <span class="input-group-text">%</span>
                             </div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Outputs in Top Citation Percentiles</label>
+                            <label class="form-label">Outputs in Top Citation Percentiles <small class="text-muted">- 같은 분야·같은 출판연도·유사한 유형(예: 기사, 리뷰)의 전 세계 논문들과 비교했을 때, 상위 몇 %에 해당하는 인용 실적을 기록했는지를 보여주는 지표</small></label>
                             <div class="input-group">
-                                <input type="number" class="form-control form-control-sm" value="5" min="0" max="100" step="1">
+                                <input type="number" class="form-control form-control-sm" id="weight_percentiles" value="5" min="0" max="100" step="1">
                                 <span class="input-group-text">%</span>
                             </div>
                         </div>
 
                         <!-- 저널 영향력 지표 -->
                         <h6 class="mb-3 mt-4"><i class="fas fa-chart-bar"></i> 📊 저널 영향력 지표</h6>
+                        <div class="row mb-2">
+                            <div class="col-12">
+                                <label class="form-label">SNIP (연도별) <small class="text-muted">- 단순한 영향력 지수(Impact Factor)와 달리 분야 간 인용 편차를 보정한 학술지 영향력 지표</small></label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control" id="weight_snip" value="15" min="0" max="100" step="1" style="max-width: 80px;">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-12">
+                                <label class="form-label">CiteScore (연도별) <small class="text-muted">- Scopus 기반 저널 영향력 지표 (평균 논문당 인용수)</small></label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control" id="weight_citescore" value="15" min="0" max="100" step="1" style="max-width: 80px;">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                            </div>
+                        </div>
                         <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label">SNIP (연도별)</label>
+                            <div class="col-12">
+                                <label class="form-label">SJR (연도별) <small class="text-muted">- SCImago Journal Rank. 인용의 양뿐 아니라 인용 출처의 영향력까지 고려한 저널 지표</small></label>
                                 <div class="input-group input-group-sm">
-                                    <input type="number" class="form-control" value="15" min="0" max="100" step="1" style="max-width: 80px;">
-                                    <span class="input-group-text">%</span>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">CiteScore (연도별)</label>
-                                <div class="input-group input-group-sm">
-                                    <input type="number" class="form-control" value="15" min="0" max="100" step="1" style="max-width: 80px;">
-                                    <span class="input-group-text">%</span>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">SJR (연도별)</label>
-                                <div class="input-group input-group-sm">
-                                    <input type="number" class="form-control" value="15" min="0" max="100" step="1" style="max-width: 80px;">
+                                    <input type="number" class="form-control" id="weight_sjr" value="15" min="0" max="100" step="1" style="max-width: 80px;">
                                     <span class="input-group-text">%</span>
                                 </div>
                             </div>
@@ -174,18 +178,20 @@
 
                         <!-- 사회적·실용적 영향 -->
                         <h6 class="mb-3 mt-4"><i class="fas fa-globe"></i> 🌍 사회적·실용적 영향</h6>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Main patent families</label>
+                        <div class="row mb-2">
+                            <div class="col-12">
+                                <label class="form-label">Main patent families <small class="text-muted">- 논문이 인용된 주요 특허 패밀리 수</small></label>
                                 <div class="input-group input-group-sm">
-                                    <input type="number" class="form-control" value="5" min="0" max="100" step="1" style="max-width: 80px;">
+                                    <input type="number" class="form-control" id="weight_patents" value="5" min="0" max="100" step="1" style="max-width: 80px;">
                                     <span class="input-group-text">%</span>
                                 </div>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Policy citations</label>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <label class="form-label">Policy citations <small class="text-muted">- 논문이 정책 문서에 인용된 횟수</small></label>
                                 <div class="input-group input-group-sm">
-                                    <input type="number" class="form-control" value="5" min="0" max="100" step="1" style="max-width: 80px;">
+                                    <input type="number" class="form-control" id="weight_policy" value="5" min="0" max="100" step="1" style="max-width: 80px;">
                                     <span class="input-group-text">%</span>
                                 </div>
                             </div>
@@ -410,17 +416,40 @@ document.getElementById('extractSecondBtn').addEventListener('click', function()
         'International': parseFloat(document.getElementById('weight_international').value) || 0
     };
     
-    // 2단계 가중치 수집
+    // 2단계 각 섹션별 가중치 수집
+    const paperWeights = {
+        'fwci': parseFloat(document.getElementById('weight_fwci').value) || 0,
+        'citations': parseFloat(document.getElementById('weight_citations').value) || 0,
+        'views': parseFloat(document.getElementById('weight_views').value) || 0,
+        'top_percentiles': parseFloat(document.getElementById('weight_percentiles').value) || 0
+    };
+    
+    const journalWeights = {
+        'snip': parseFloat(document.getElementById('weight_snip').value) || 0,
+        'citescore': parseFloat(document.getElementById('weight_citescore').value) || 0,
+        'sjr': parseFloat(document.getElementById('weight_sjr').value) || 0
+    };
+    
+    const socialWeights = {
+        'patents': parseFloat(document.getElementById('weight_patents').value) || 0,
+        'policy': parseFloat(document.getElementById('weight_policy').value) || 0
+    };
+    
+    // 전체 지표 퍼센트 합 검증
+    const totalSum = Object.values(paperWeights).reduce((sum, val) => sum + val, 0) +
+                     Object.values(journalWeights).reduce((sum, val) => sum + val, 0) +
+                     Object.values(socialWeights).reduce((sum, val) => sum + val, 0);
+    
+    if (totalSum !== 100) {
+        alert(`모든 지표의 퍼센트 합이 100%가 아닙니다. (현재: ${totalSum}%)\n각 지표의 퍼센트 합은 100% 이어야 합니다.`);
+        return;
+    }
+    
+    // 2단계 가중치 통합
     const stage2Weights = {
-        'fwci': 20,
-        'citations': 10,
-        'views': 10,
-        'top_percentiles': 5,
-        'snip': 15,
-        'citescore': 15,
-        'sjr': 15,
-        'patents': 5,
-        'policy': 5
+        ...paperWeights,
+        ...journalWeights,
+        ...socialWeights
     };
     
     // 버튼 비활성화 및 로딩 표시
