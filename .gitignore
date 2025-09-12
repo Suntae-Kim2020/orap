@@ -51,6 +51,7 @@ instance/
 
 # Database
 *.db
+!jbnu.db
 *.sqlite
 *.sqlite3
 *.db-journal
