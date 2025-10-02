@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libffi8 \
     curl \
+    sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
@@ -59,12 +60,38 @@ USER appuser
 # Copy application code
 COPY --chown=appuser:appgroup . ./
 
-# Create uploads directory
-RUN mkdir -p uploads/temp
+# Create uploads directory and set permissions
+RUN mkdir -p uploads/temp && \
+    mkdir -p /tmp && \
+    chmod 755 uploads/temp
+
+# Ensure jbnu.db exists and has proper permissions
+RUN if [ ! -f jbnu.db ]; then \
+        sqlite3 jbnu.db "CREATE TABLE IF NOT EXISTS test (id INTEGER);" && \
+        rm -f jbnu.db; \
+        sqlite3 jbnu.db ".schema"; \
+    fi && \
+    chmod 644 jbnu.db
 
 # Expose port
 EXPOSE 8080
 
-# Run the web service on container startup
-# Use JSON format for CMD to handle signals properly
-CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 0 --access-logfile - --error-logfile - app:app"]
+# Run the web service on container startup with proper error handling
+CMD ["sh", "-c", "\
+    echo 'Starting JBNU ORAP application...' && \
+    echo 'Environment:' && \
+    echo \"PORT=$PORT\" && \
+    echo 'Database check:' && \
+    ls -la jbnu.db || echo 'No jbnu.db found' && \
+    echo 'Starting gunicorn...' && \
+    exec gunicorn \
+        --bind 0.0.0.0:$PORT \
+        --workers 1 \
+        --threads 8 \
+        --timeout 120 \
+        --access-logfile - \
+        --error-logfile - \
+        --log-level info \
+        --preload \
+        app:app \
+    "]

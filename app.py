@@ -77,7 +77,13 @@ def migrate_database():
     conn.close()
 
 # 애플리케이션 시작 시 데이터베이스 마이그레이션 실행
-migrate_database()
+try:
+    print("Starting database migration...")
+    migrate_database()
+    print("Database migration completed successfully")
+except Exception as e:
+    print(f"Database migration failed: {e}")
+    print("Continuing with application startup...")
 
 # 업로드 진행 상태 관리
 def update_progress(task_id, current, total, message=""):
@@ -1921,4 +1927,6 @@ def help_stage2():
     return render_template('help_stage2.html')
 
 if __name__ == '__main__':
-    app.run(debug=True, host='127.0.0.1', port=0)
+    port = int(os.getenv('PORT', 57769))
+    print(f"Starting Flask app on port {port}")
+    app.run(debug=True, host='0.0.0.0', port=port)
