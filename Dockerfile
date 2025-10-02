@@ -1,14 +1,18 @@
 # Multi-stage build for optimized image size
 # Build stage
-FROM python:3.9-alpine AS builder
+FROM python:3.9-slim AS builder
+
+# Set environment variable to prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Install build dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    musl-dev \
-    linux-headers \
-    postgresql-dev \
-    libffi-dev
+    g++ \
+    libc6-dev \
+    libpq-dev \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set work directory
 WORKDIR /app
@@ -20,16 +24,21 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Production stage
-FROM python:3.9-alpine AS production
+FROM python:3.9-slim AS production
+
+# Set environment variable to prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies only
-RUN apk add --no-cache \
-    postgresql-libs \
-    libffi
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    libffi8 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -S appuser -u 1001 -G appgroup
+RUN groupadd -g 1001 appgroup && \
+    useradd -r -u 1001 -g appgroup appuser
 
 # Copy Python packages from builder stage
 COPY --from=builder /root/.local /home/appuser/.local
@@ -38,6 +47,7 @@ COPY --from=builder /root/.local /home/appuser/.local
 ENV PYTHONUNBUFFERED=True
 ENV PATH=/home/appuser/.local/bin:$PATH
 ENV APP_HOME=/app
+ENV PORT=8080
 
 # Set work directory and change ownership
 WORKDIR $APP_HOME
@@ -56,5 +66,5 @@ RUN mkdir -p uploads/temp
 EXPOSE 8080
 
 # Run the web service on container startup
-# Cloud Run provides PORT environment variable
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
+# Use JSON format for CMD to handle signals properly
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 0 --access-logfile - --error-logfile - app:app"]
