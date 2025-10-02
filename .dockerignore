@@ -1,15 +1,18 @@
+# Version control and documentation
 .git
 .gitignore
 README.md
+ARCHITECTURE.md
+ARCHITECTURE_DIAGRAMS.md
+
+# Environment and virtual environments
 .env
 .venv/
 venv/
+
+# Development files
 .DS_Store
 *.log
-uploads/temp/
-*.db-journal
-*.db-wal
-*.db-shm
 .pytest_cache/
 .coverage
 htmlcov/
@@ -19,5 +22,36 @@ htmlcov/
 *.swp
 *.swo
 *~
+
+# Python cache and compiled files
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Database files (except main db)
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Temporary and cache directories
+uploads/temp/
+.npm-cache/
+node_modules/
+
+# Analysis result files
+result_*.json
+progress_*.json
+
+# Utility scripts (not needed in production)
+analyze_csv.py
+find_empty_rows.py
+sqlite_to_postgresql.py
+migrate_to_cloudsql.py
+app_backup.py
+
+# GitHub Actions (deployment handles this)
+.github/
+
+# Local development files
+auth_code.txt
