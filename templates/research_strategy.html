@@ -1,0 +1,884 @@
+{% extends "base.html" %}
+{% block title %}연구 전략{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2 class="mb-4"><i class="fas fa-chess-knight"></i> 연구 전략</h2>
+
+    <p class="text-muted mb-4">
+        SciVal 기본 지표를 넘어서는 전략적 의사결정 지원 분석입니다. 연구 궤적, 사회적 영향력, 전략 포트폴리오를 분석합니다.<br>
+        <small><i class="fas fa-database"></i> 본 분석은 <strong>Scopus 등재 논문</strong> 및 <strong>전북대학교 소속 연구자</strong>만을 대상으로 합니다. KCI 전용 국내 등재지 논문은 포함되지 않습니다.</small>
+    </p>
+
+    <!-- 분석기간 필터 -->
+    <div class="card mb-4">
+        <div class="card-body py-2">
+            <div class="d-flex align-items-center flex-wrap gap-3">
+                <span class="fw-bold"><i class="fas fa-calendar-alt"></i> 분석기간</span>
+                <div class="btn-group" id="stratYearPresetGroup">
+                    <button type="button" class="btn btn-sm btn-outline-secondary active" onclick="setStratYearPreset('all', this)">전체</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setStratYearPreset('3y', this)">최근 3년</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setStratYearPreset('5y', this)">최근 5년</button>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <input type="number" class="form-control form-control-sm" id="stratYearFrom" placeholder="시작연도" style="width: 100px;" min="1990" max="2030">
+                    <span class="text-muted">~</span>
+                    <input type="number" class="form-control form-control-sm" id="stratYearTo" placeholder="종료연도" style="width: 100px;" min="1990" max="2030">
+                    <button class="btn btn-sm btn-outline-primary" onclick="applyStratCustomYear()">
+                        <i class="fas fa-check"></i> 적용
+                    </button>
+                </div>
+                <span id="stratYearDisplay" class="badge bg-info" style="display: none;"></span>
+                <small id="stratYearNote" class="text-info" style="display: none;">
+                    <i class="fas fa-info-circle"></i> 기간 지정 시 실시간 계산 (다소 시간 소요)
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <!-- 탭 네비게이션 -->
+    <ul class="nav nav-tabs mb-4" id="strategyTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="trajectory-tab" data-bs-toggle="tab" data-bs-target="#trajectory" type="button">
+                <i class="fas fa-route"></i> 연구 궤적 분석
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="societal-tab" data-bs-toggle="tab" data-bs-target="#societal" type="button">
+                <i class="fas fa-globe-americas"></i> 사회적 영향력
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="portfolio-tab" data-bs-toggle="tab" data-bs-target="#portfolio" type="button">
+                <i class="fas fa-chess"></i> 전략 포트폴리오
+            </button>
+        </li>
+    </ul>
+
+    <!-- 탭 콘텐츠 -->
+    <div class="tab-content" id="strategyTabContent">
+
+        <!-- 연구 궤적 분석 탭 -->
+        <div class="tab-pane fade show active" id="trajectory" role="tabpanel">
+            <div class="row mb-3">
+                <div class="col-md-8">
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-primary active" onclick="loadTrajectory('growth_trajectory', this)" style="border-color: #6610f2; color: #6610f2;">
+                            <i class="fas fa-chart-line"></i> 연속 성장
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" onclick="loadTrajectory('early_warning', this)" style="border-color: #6610f2; color: #6610f2;">
+                            <i class="fas fa-exclamation-triangle"></i> 감소 경보
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" onclick="loadTrajectory('rising_star', this)" style="border-color: #6610f2; color: #6610f2;">
+                            <i class="fas fa-star"></i> 라이징 스타
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-4 text-end">
+                    <span id="trajectoryCount" class="badge fs-6" style="background-color: #6610f2;"></span>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="downloadTrajectoryCSV()" title="CSV 다운로드">
+                        <i class="fas fa-download"></i> CSV
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header text-white" style="background-color: #6610f2;">
+                    <i class="fas fa-route"></i> <span id="trajectoryTitle">3년 연속 성장 연구자</span>
+                </div>
+                <div class="card-body">
+                    <div class="card border-0 mb-3" style="background-color: #f8f6ff;">
+                        <div class="card-body py-3" style="font-size: 0.875rem;">
+                            <div class="mb-2">
+                                <strong><i class="fas fa-gavel" style="color: #6610f2;"></i> 의사결정 활용</strong><br>
+                                <span id="trajectoryDecision" class="text-muted"></span>
+                            </div>
+                            <hr class="my-2">
+                            <div class="mb-2">
+                                <strong><i class="fas fa-search" style="color: #6610f2;"></i> 파악 가능 사항</strong><br>
+                                <span id="trajectoryInsights" class="text-muted"></span>
+                            </div>
+                            <hr class="my-2">
+                            <div>
+                                <strong><i class="fas fa-calculator" style="color: #6610f2;"></i> 컬럼 산출 공식</strong><br>
+                                <span id="trajectoryFormulas" class="text-muted"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="trajectoryTable">
+                            <thead class="table-light">
+                                <tr id="trajectoryHeader"></tr>
+                            </thead>
+                            <tbody id="trajectoryBody">
+                                <tr><td colspan="12" class="text-center"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 사회적 영향력 탭 -->
+        <div class="tab-pane fade" id="societal" role="tabpanel">
+            <div class="row mb-3">
+                <div class="col-md-8">
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-success active" onclick="loadSocietal('patent_cited', this)" style="border-color: #20c997; color: #20c997;">
+                            <i class="fas fa-lightbulb"></i> 특허 인용
+                        </button>
+                        <button type="button" class="btn btn-outline-success" onclick="loadSocietal('policy_cited', this)" style="border-color: #20c997; color: #20c997;">
+                            <i class="fas fa-landmark"></i> 정책 인용
+                        </button>
+                        <button type="button" class="btn btn-outline-success" onclick="loadSocietal('sdg_contribution', this)" style="border-color: #20c997; color: #20c997;">
+                            <i class="fas fa-leaf"></i> SDG 기여
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-4 text-end">
+                    <span id="societalCount" class="badge fs-6" style="background-color: #20c997;"></span>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="downloadSocietalCSV()" title="CSV 다운로드">
+                        <i class="fas fa-download"></i> CSV
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header text-white" style="background-color: #20c997;">
+                    <i class="fas fa-globe-americas"></i> <span id="societalTitle">특허 인용 연구자</span>
+                </div>
+                <div class="card-body">
+                    <div class="card border-0 mb-3" style="background-color: #f0faf6;">
+                        <div class="card-body py-3" style="font-size: 0.875rem;">
+                            <div class="mb-2">
+                                <strong><i class="fas fa-gavel" style="color: #20c997;"></i> 의사결정 활용</strong><br>
+                                <span id="societalDecision" class="text-muted"></span>
+                            </div>
+                            <hr class="my-2">
+                            <div class="mb-2">
+                                <strong><i class="fas fa-search" style="color: #20c997;"></i> 파악 가능 사항</strong><br>
+                                <span id="societalInsights" class="text-muted"></span>
+                            </div>
+                            <hr class="my-2">
+                            <div>
+                                <strong><i class="fas fa-calculator" style="color: #20c997;"></i> 컬럼 산출 공식</strong><br>
+                                <span id="societalFormulas" class="text-muted"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="societalTable">
+                            <thead class="table-light">
+                                <tr id="societalHeader"></tr>
+                            </thead>
+                            <tbody id="societalBody">
+                                <tr><td colspan="12" class="text-center"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 전략 포트폴리오 탭 -->
+        <div class="tab-pane fade" id="portfolio" role="tabpanel">
+            <div class="row mb-3">
+                <div class="col-md-8">
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-warning active" onclick="loadPortfolio('field_strategy_map', this)" style="border-color: #fd7e14; color: #fd7e14;">
+                            <i class="fas fa-map"></i> 분야 전략 맵
+                        </button>
+                        <button type="button" class="btn btn-outline-warning" onclick="loadPortfolio('collab_effect', this)" style="border-color: #fd7e14; color: #fd7e14;">
+                            <i class="fas fa-project-diagram"></i> 협력 효과
+                        </button>
+                        <button type="button" class="btn btn-outline-warning" onclick="loadPortfolio('academic_corporate', this)" style="border-color: #fd7e14; color: #fd7e14;">
+                            <i class="fas fa-industry"></i> 산학협력
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-4 text-end">
+                    <span id="portfolioCount" class="badge fs-6" style="background-color: #fd7e14;"></span>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="downloadPortfolioCSV()" title="CSV 다운로드">
+                        <i class="fas fa-download"></i> CSV
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header text-white" style="background-color: #fd7e14;">
+                    <i class="fas fa-chess"></i> <span id="portfolioTitle">분야별 전략 맵</span>
+                </div>
+                <div class="card-body">
+                    <div class="card border-0 mb-3" style="background-color: #fff8f0;">
+                        <div class="card-body py-3" style="font-size: 0.875rem;">
+                            <div class="mb-2">
+                                <strong><i class="fas fa-gavel" style="color: #fd7e14;"></i> 의사결정 활용</strong><br>
+                                <span id="portfolioDecision" class="text-muted"></span>
+                            </div>
+                            <hr class="my-2">
+                            <div class="mb-2">
+                                <strong><i class="fas fa-search" style="color: #fd7e14;"></i> 파악 가능 사항</strong><br>
+                                <span id="portfolioInsights" class="text-muted"></span>
+                            </div>
+                            <hr class="my-2">
+                            <div>
+                                <strong><i class="fas fa-calculator" style="color: #fd7e14;"></i> 컬럼 산출 공식</strong><br>
+                                <span id="portfolioFormulas" class="text-muted"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="portfolioTable">
+                            <thead class="table-light">
+                                <tr id="portfolioHeader"></tr>
+                            </thead>
+                            <tbody id="portfolioBody">
+                                <tr><td colspan="12" class="text-center"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentTrajectoryType = 'growth_trajectory';
+let currentSocietalType = 'patent_cited';
+let currentPortfolioType = 'field_strategy_map';
+
+let stratYearFrom = null;
+let stratYearTo = null;
+let trajectoryCheckEnd = null; // API에서 받은 실제 최신 데이터 연도
+
+// 정렬 상태
+let sortStates = {
+    trajectory: { key: null, asc: true },
+    societal: { key: null, asc: true },
+    portfolio: { key: null, asc: true }
+};
+let trajectoryData = [];
+let societalData = [];
+let portfolioData = [];
+
+function sortByKey(data, key, asc) {
+    return [...data].sort((a, b) => {
+        let va = a[key], vb = b[key];
+        if (va == null && vb == null) return 0;
+        if (va == null) return asc ? -1 : 1;
+        if (vb == null) return asc ? 1 : -1;
+        if (typeof va === 'number' && typeof vb === 'number') return asc ? va - vb : vb - va;
+        return asc ? String(va).localeCompare(String(vb), 'ko') : String(vb).localeCompare(String(va), 'ko');
+    });
+}
+
+function sortIcon(tbl, key) {
+    const s = sortStates[tbl];
+    if (s.key === key) return s.asc ? ' ▲' : ' ▼';
+    return '';
+}
+
+function thS(tbl, label, key) {
+    return `<th style="cursor:pointer;user-select:none;white-space:nowrap;" onclick="handleSort('${tbl}','${key}')">${label}<span class="text-muted">${sortIcon(tbl, key)}</span></th>`;
+}
+
+function thP(label) {
+    return `<th>${label}</th>`;
+}
+
+function handleSort(tbl, key) {
+    const s = sortStates[tbl];
+    if (s.key === key) { s.asc = !s.asc; } else { s.key = key; s.asc = true; }
+    if (tbl === 'trajectory') renderTrajectoryTable(trajectoryData, currentTrajectoryType);
+    else if (tbl === 'societal') renderSocietalTable(societalData, currentSocietalType);
+    else if (tbl === 'portfolio') renderPortfolioTable(portfolioData, currentPortfolioType);
+}
+
+// 연도 필터
+function setStratYearPreset(preset, btn) {
+    document.querySelectorAll('#stratYearPresetGroup .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const latestYear = trajectoryCheckEnd || (new Date().getFullYear() - 1);
+    if (preset === 'all') {
+        stratYearFrom = null; stratYearTo = null;
+        document.getElementById('stratYearFrom').value = '';
+        document.getElementById('stratYearTo').value = '';
+        document.getElementById('stratYearDisplay').style.display = 'none';
+        document.getElementById('stratYearNote').style.display = 'none';
+    } else if (preset === '3y') {
+        stratYearFrom = latestYear - 2; stratYearTo = latestYear;
+        document.getElementById('stratYearFrom').value = stratYearFrom;
+        document.getElementById('stratYearTo').value = stratYearTo;
+        document.getElementById('stratYearDisplay').textContent = `${stratYearFrom} ~ ${stratYearTo}`;
+        document.getElementById('stratYearDisplay').style.display = 'inline';
+        document.getElementById('stratYearNote').style.display = 'inline';
+    } else if (preset === '5y') {
+        stratYearFrom = latestYear - 4; stratYearTo = latestYear;
+        document.getElementById('stratYearFrom').value = stratYearFrom;
+        document.getElementById('stratYearTo').value = stratYearTo;
+        document.getElementById('stratYearDisplay').textContent = `${stratYearFrom} ~ ${stratYearTo}`;
+        document.getElementById('stratYearDisplay').style.display = 'inline';
+        document.getElementById('stratYearNote').style.display = 'inline';
+    }
+    reloadCurrentTab();
+}
+
+function applyStratCustomYear() {
+    const yf = parseInt(document.getElementById('stratYearFrom').value);
+    const yt = parseInt(document.getElementById('stratYearTo').value);
+    if (!yf || !yt) { alert('시작연도와 종료연도를 모두 입력해주세요.'); return; }
+    if (yf > yt) { alert('시작연도가 종료연도보다 클 수 없습니다.'); return; }
+    stratYearFrom = yf; stratYearTo = yt;
+    document.querySelectorAll('#stratYearPresetGroup .btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('stratYearDisplay').textContent = `${yf} ~ ${yt}`;
+    document.getElementById('stratYearDisplay').style.display = 'inline';
+    document.getElementById('stratYearNote').style.display = 'inline';
+    reloadCurrentTab();
+}
+
+function getYearParams() {
+    if (stratYearFrom && stratYearTo) return `&year_from=${stratYearFrom}&year_to=${stratYearTo}`;
+    return '';
+}
+
+function reloadCurrentTab() {
+    const activeTab = document.querySelector('#strategyTabs .nav-link.active');
+    if (activeTab) {
+        const id = activeTab.id;
+        if (id === 'trajectory-tab') loadTrajectory(currentTrajectoryType);
+        else if (id === 'societal-tab') loadSocietal(currentSocietalType);
+        else if (id === 'portfolio-tab') loadPortfolio(currentPortfolioType);
+    }
+}
+
+// 페이지 초기화
+document.addEventListener('DOMContentLoaded', function() {
+    loadTrajectory('growth_trajectory');
+    document.getElementById('societal-tab').addEventListener('shown.bs.tab', function() {
+        loadSocietal(currentSocietalType);
+    });
+    document.getElementById('portfolio-tab').addEventListener('shown.bs.tab', function() {
+        loadPortfolio(currentPortfolioType);
+    });
+});
+
+// ========== 연구 궤적 분석 ==========
+function loadTrajectory(type, clickedBtn) {
+    currentTrajectoryType = type;
+    sortStates.trajectory = { key: null, asc: true };
+
+    document.querySelectorAll('#trajectory .btn-group .btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (!clickedBtn && btn.getAttribute('onclick')?.includes(`'${type}'`)) clickedBtn = btn;
+    });
+    if (clickedBtn) clickedBtn.classList.add('active');
+
+    document.getElementById('trajectoryBody').innerHTML = '<tr><td colspan="12" class="text-center"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>';
+
+    fetch(`/api/research_trajectory?type=${type}&limit=50${getYearParams()}`)
+        .then(r => r.json())
+        .then(data => {
+            // API에서 실제 최신 데이터 연도를 받아서 사용
+            trajectoryCheckEnd = data.max_data_year || new Date().getFullYear();
+            const ce = trajectoryCheckEnd;
+
+            const titles = {
+                'growth_trajectory': '3년 연속 성장 연구자',
+                'early_warning': '연구 활동 감소 조기 경보',
+                'rising_star': '신진 라이징 스타'
+            };
+            const decisions = {
+                'growth_trajectory': '연구비 우선 배분 대상자 선정, 지속 성장 지원 프로그램 후보 파악, 우수 연구자 인센티브 제공 근거 자료로 활용',
+                'early_warning': '연구 환경 개선 지원 대상자 선정, 안식년·해외연수 지원 후보 파악, 연구 활동 감소 원인 조사 우선순위 결정',
+                'rising_star': '신진 연구자 육성 프로그램 대상 선정, 석학-신진 멘토링 매칭, 우수 신진 연구자 인센티브 대상 파악'
+            };
+            const insights = {
+                'growth_trajectory': `최근 3년간(${ce-2}~${ce}) 매년 논문수가 꾸준히 증가하는 연구자를 파악합니다. 성장 추세의 강도(성장률)를 정량적으로 비교하여 지속적 성장세를 보이는 핵심 연구 인력을 확인할 수 있습니다.`,
+                'early_warning': `과거 3년(${ce-4}~${ce-2}) 대비 최근 2년(${ce-1}~${ce})간 논문수가 50% 이상 급감한 연구자를 파악합니다. 감소율 크기로 지원 시급성을 판단하고, 연구 환경 개선이 필요한 대상을 조기에 발견합니다.`,
+                'rising_star': '최초 발표 5년 이내 신진 연구자 중 FWCI &gt; 1.5 또는 h-index ≥ 5를 달성한 우수 연구자를 파악합니다. 짧은 경력 대비 높은 연구 역량을 보이는 미래 핵심 연구자 후보군을 확인할 수 있습니다.'
+            };
+            const formulas = {
+                'growth_trajectory': `<ul class="mb-0 ps-3">
+                    <li><b>논문수</b>: Scopus author 프로필의 scholarly_output (전체 경력 논문수)</li>
+                    <li><b>인용수</b>: Scopus 총 피인용 횟수</li>
+                    <li><b>FWCI</b>: Field-Weighted Citation Impact (1.0 = 세계평균)</li>
+                    <li><b>${ce-2}/${ce-1}/${ce}</b>: 해당 연도의 논문수 (publication 테이블에서 연구자별 집계)</li>
+                    <li><b>성장률(%)</b>: (${ce}년 논문수 − ${ce-2}년 논문수) ÷ ${ce-2}년 논문수 × 100</li>
+                    <li><b>기간합계</b>: ${ce-2}~${ce}년 3년간 총 논문수</li>
+                    <li><b>선정조건</b>: ${ce-2}년 ≥ 1편이면서 매년 순차 증가 (${ce-2} &lt; ${ce-1} &lt; ${ce})</li></ul>`,
+                'early_warning': `<ul class="mb-0 ps-3">
+                    <li><b>과거평균</b>: 과거 3년(${ce-4}~${ce-2}) 총 논문수 ÷ 3 (연평균)</li>
+                    <li><b>최근평균</b>: 최근 2년(${ce-1}~${ce}) 총 논문수 ÷ 2 (연평균)</li>
+                    <li><b>감소율(%)</b>: (1 − 최근평균 ÷ 과거평균) × 100</li>
+                    <li><b>기간</b>: "과거 3년 vs 최근 2년" 구간 표시</li>
+                    <li><b>선정조건</b>: 과거 3년 총 논문수 ≥ 5편 AND 최근평균 &lt; 과거평균 × 0.5 (50% 이상 감소)</li></ul>`,
+                'rising_star': `<ul class="mb-0 ps-3">
+                    <li><b>경력(년)</b>: 현재연도 − 첫 발표 연도 + 1</li>
+                    <li><b>첫발표연도</b>: author 테이블의 oldest_publication</li>
+                    <li><b>스타점수</b>: FWCI × 40 + h-index × 3 + 논문수 × 2 (가중합산 복합점수)</li>
+                    <li style="margin-left:1em; list-style:none;">· FWCI 가중치 40: 질적 영향력 최우선 반영</li>
+                    <li style="margin-left:1em; list-style:none;">· h-index 가중치 3: 지속적 영향력 보조</li>
+                    <li style="margin-left:1em; list-style:none;">· 논문수 가중치 2: 양적 활동 보조</li>
+                    <li><b>선정조건</b>: 경력 ≤ 5년 AND 총 논문수 ≥ 3편 AND (FWCI &gt; 1.5 OR h-index ≥ 5)</li></ul>`
+            };
+
+            document.getElementById('trajectoryTitle').textContent = titles[type];
+            document.getElementById('trajectoryDecision').innerHTML = decisions[type];
+            document.getElementById('trajectoryInsights').innerHTML = insights[type];
+            document.getElementById('trajectoryFormulas').innerHTML = formulas[type];
+            document.getElementById('trajectoryCount').textContent = `${data.count}명`;
+            renderTrajectoryTable(data.researchers, type);
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('trajectoryBody').innerHTML = '<tr><td colspan="12" class="text-center text-danger">데이터 로드 실패</td></tr>';
+        });
+}
+
+function renderTrajectoryTable(researchers, type) {
+    trajectoryData = researchers;
+    const ss = sortStates.trajectory;
+    const sorted = ss.key ? sortByKey(researchers, ss.key, ss.asc) : researchers;
+    const header = document.getElementById('trajectoryHeader');
+    const body = document.getElementById('trajectoryBody');
+
+    const ce = trajectoryCheckEnd || new Date().getFullYear();
+
+    let headerHTML = thP('#') + thS('trajectory','연구자명','name') + thS('trajectory','논문수','scholarly_output') + thS('trajectory','인용수','citations') + thS('trajectory','FWCI','fwci') + thS('trajectory','h-index','h_index');
+
+    if (type === 'growth_trajectory') {
+        headerHTML += thS('trajectory',`${ce-2}`,'y1') + thS('trajectory',`${ce-1}`,'y2') + thS('trajectory',`${ce}`,'y3') + thS('trajectory','성장률','growth_pct') + thS('trajectory','기간합계','total_period') + thP('프로필');
+    } else if (type === 'early_warning') {
+        headerHTML += thS('trajectory','과거평균','past_avg') + thS('trajectory','최근평균','recent_avg') + thS('trajectory','감소율','decline_pct') + thP('기간') + thP('프로필');
+    } else if (type === 'rising_star') {
+        headerHTML += thS('trajectory','경력','career_years') + thS('trajectory','첫발표','first_pub_year') + thS('trajectory','스타점수','star_score') + thP('프로필');
+    }
+    header.innerHTML = headerHTML;
+
+    if (sorted.length === 0) {
+        body.innerHTML = '<tr><td colspan="12" class="text-center">데이터가 없습니다.</td></tr>';
+        return;
+    }
+
+    let bodyHTML = '';
+    sorted.forEach((r, idx) => {
+        bodyHTML += `<tr>
+            <td>${idx + 1}</td>
+            <td><strong>${r.name}</strong></td>
+            <td>${r.scholarly_output}</td>
+            <td>${r.citations?.toLocaleString() || 0}</td>
+            <td>${r.fwci}</td>
+            <td>${r.h_index || '-'}</td>`;
+
+        if (type === 'growth_trajectory') {
+            bodyHTML += `
+                <td>${r.y1}편</td>
+                <td>${r.y2}편</td>
+                <td><span class="badge bg-success">${r.y3}편</span></td>
+                <td><span class="badge" style="background-color: #6610f2;">+${r.growth_pct}%</span></td>
+                <td>${r.total_period}편</td>`;
+        } else if (type === 'early_warning') {
+            bodyHTML += `
+                <td>${r.past_avg}편/년</td>
+                <td><span class="badge bg-danger">${r.recent_avg}편/년</span></td>
+                <td><span class="badge bg-danger">-${r.decline_pct}%</span></td>
+                <td><small class="text-muted">${r.past_period} vs ${r.recent_period}</small></td>`;
+        } else if (type === 'rising_star') {
+            bodyHTML += `
+                <td>${r.career_years}년</td>
+                <td>${r.first_pub_year}</td>
+                <td><span class="badge" style="background-color: #6610f2;">${r.star_score}</span></td>`;
+        }
+
+        bodyHTML += `<td><a href="${r.profile_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td></tr>`;
+    });
+    body.innerHTML = bodyHTML;
+}
+
+// ========== 사회적 영향력 ==========
+function loadSocietal(type, clickedBtn) {
+    currentSocietalType = type;
+    sortStates.societal = { key: null, asc: true };
+
+    document.querySelectorAll('#societal .btn-group .btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (!clickedBtn && btn.getAttribute('onclick')?.includes(`'${type}'`)) clickedBtn = btn;
+    });
+    if (clickedBtn) clickedBtn.classList.add('active');
+
+    const titles = {
+        'patent_cited': '특허 인용 연구자',
+        'policy_cited': '정책 인용 연구자',
+        'sdg_contribution': 'SDG 기여 연구자'
+    };
+    const decisions = {
+        'patent_cited': '기술이전·산업화 지원 대상 선정, 특허 연계 연구 활성화 지원, 산학협력 우수 연구자 표창 대상 파악',
+        'policy_cited': '사회적 영향력 높은 연구자 표창·지원, 정책 자문위원 추천 대상 파악, 사회기여 연구 활성화 지원 근거',
+        'sdg_contribution': 'SDG 관련 연구 활성화 지원, UN SDG 기여 연구자 표창, SDG 관련 국제 협력·대외 사업 참여 후보 파악'
+    };
+    const insights = {
+        'patent_cited': '연구 성과가 특허에 인용된 연구자를 파악합니다. 기술 이전 및 산업화 잠재력이 높은 연구자와 특허 인용 규모를 확인할 수 있습니다.',
+        'policy_cited': '연구 성과가 정책 문서에 인용된 연구자를 파악합니다. 사회 정책 수립에 실질적으로 기여하는 연구자와 정책 영향력의 크기를 비교할 수 있습니다.',
+        'sdg_contribution': 'UN 지속가능발전목표(SDG)에 기여하는 연구를 수행하는 연구자를 파악합니다. SDG 목표별 연구자 분포와 다분야 SDG 기여 연구자를 확인할 수 있습니다.'
+    };
+    const formulas = {
+        'patent_cited': `<ul class="mb-0 ps-3">
+            <li><b>논문수</b>: Scopus author 프로필의 scholarly_output (전체 경력 논문수)</li>
+            <li><b>인용수</b>: Scopus 총 피인용 횟수</li>
+            <li><b>FWCI</b>: Field-Weighted Citation Impact (1.0 = 세계평균)</li>
+            <li><b>특허논문</b>: is_patent_cited = 1인 논문 수 (Scopus/SciVal에서 특허에 인용된 것으로 분류된 논문)</li>
+            <li><b>특허수</b>: main_patent_families 합계 (해당 논문들을 인용한 특허 패밀리 수의 합)</li>
+            <li><b>데이터 출처</b>: SciVal의 is_patent_cited 플래그 및 main_patent_families 컬럼</li></ul>`,
+        'policy_cited': `<ul class="mb-0 ps-3">
+            <li><b>정책논문</b>: is_policy_cited = 1인 논문 수 (정책 문서에 인용된 논문)</li>
+            <li><b>정책인용수</b>: policy_citations 합계 (해당 논문들을 인용한 정책 문서 수의 합)</li>
+            <li><b>데이터 출처</b>: SciVal의 is_policy_cited 플래그 및 policy_citations 컬럼</li></ul>`,
+        'sdg_contribution': `<ul class="mb-0 ps-3">
+            <li><b>SDG논문</b>: is_SDG = 1인 논문 수 (SDG 관련 논문)</li>
+            <li><b>SDG분야수</b>: sustainable_development_goals_2025 컬럼에서 파싱한 고유 SDG 목표 수</li>
+            <li><b>SDG목표</b>: 기여한 SDG 목표명 목록 (최대 5개 표시)</li>
+            <li><b>데이터 출처</b>: SciVal의 is_SDG 플래그 및 sustainable_development_goals_2025 컬럼</li></ul>`
+    };
+
+    document.getElementById('societalTitle').textContent = titles[type];
+    document.getElementById('societalDecision').innerHTML = decisions[type];
+    document.getElementById('societalInsights').innerHTML = insights[type];
+    document.getElementById('societalFormulas').innerHTML = formulas[type];
+    document.getElementById('societalBody').innerHTML = '<tr><td colspan="12" class="text-center"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>';
+
+    fetch(`/api/societal_impact?type=${type}&limit=50${getYearParams()}`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('societalCount').textContent = `${data.count}명`;
+            renderSocietalTable(data.researchers, type);
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('societalBody').innerHTML = '<tr><td colspan="12" class="text-center text-danger">데이터 로드 실패</td></tr>';
+        });
+}
+
+function renderSocietalTable(researchers, type) {
+    societalData = researchers;
+    const ss = sortStates.societal;
+    const sorted = ss.key ? sortByKey(researchers, ss.key, ss.asc) : researchers;
+    const header = document.getElementById('societalHeader');
+    const body = document.getElementById('societalBody');
+
+    let headerHTML = thP('#') + thS('societal','연구자명','name') + thS('societal','논문수','scholarly_output') + thS('societal','인용수','citations') + thS('societal','FWCI','fwci') + thS('societal','h-index','h_index');
+
+    if (type === 'patent_cited') {
+        headerHTML += thS('societal','특허논문','patent_pubs') + thS('societal','특허수','total_patents') + thP('프로필');
+    } else if (type === 'policy_cited') {
+        headerHTML += thS('societal','정책논문','policy_pubs') + thS('societal','정책인용수','total_policies') + thP('프로필');
+    } else if (type === 'sdg_contribution') {
+        headerHTML += thS('societal','SDG논문','sdg_pubs') + thS('societal','SDG분야수','sdg_count') + thP('SDG목표') + thP('프로필');
+    }
+    header.innerHTML = headerHTML;
+
+    if (sorted.length === 0) {
+        body.innerHTML = '<tr><td colspan="12" class="text-center">데이터가 없습니다.</td></tr>';
+        return;
+    }
+
+    let bodyHTML = '';
+    sorted.forEach((r, idx) => {
+        bodyHTML += `<tr>
+            <td>${idx + 1}</td>
+            <td><strong>${r.name}</strong></td>
+            <td>${r.scholarly_output}</td>
+            <td>${r.citations?.toLocaleString() || 0}</td>
+            <td>${r.fwci}</td>
+            <td>${r.h_index || '-'}</td>`;
+
+        if (type === 'patent_cited') {
+            bodyHTML += `
+                <td><span class="badge" style="background-color: #20c997;">${r.patent_pubs}편</span></td>
+                <td><span class="badge bg-dark">${r.total_patents}</span></td>`;
+        } else if (type === 'policy_cited') {
+            bodyHTML += `
+                <td><span class="badge" style="background-color: #20c997;">${r.policy_pubs}편</span></td>
+                <td><span class="badge bg-dark">${r.total_policies}</span></td>`;
+        } else if (type === 'sdg_contribution') {
+            bodyHTML += `
+                <td><span class="badge" style="background-color: #20c997;">${r.sdg_pubs}편</span></td>
+                <td><span class="badge bg-dark">${r.sdg_count}개</span></td>
+                <td><small>${r.sdg_categories || '-'}</small></td>`;
+        }
+
+        bodyHTML += `<td><a href="${r.profile_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td></tr>`;
+    });
+    body.innerHTML = bodyHTML;
+}
+
+// ========== 전략 포트폴리오 ==========
+function loadPortfolio(type, clickedBtn) {
+    currentPortfolioType = type;
+    sortStates.portfolio = { key: null, asc: true };
+
+    document.querySelectorAll('#portfolio .btn-group .btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (!clickedBtn && btn.getAttribute('onclick')?.includes(`'${type}'`)) clickedBtn = btn;
+    });
+    if (clickedBtn) clickedBtn.classList.add('active');
+
+    const titles = {
+        'field_strategy_map': '분야별 전략 맵',
+        'collab_effect': '협력 효과 분석',
+        'academic_corporate': '산학협력 분석'
+    };
+    const decisions = {
+        'field_strategy_map': '분야별 투자 우선순위 결정, 핵심 강점·육성 필요 분야 전략 수립, 분야별 국제화 전략 방향 설정',
+        'collab_effect': '국제협력 프로그램 투자 근거 확보, 연구자별 최적 협력 유형 파악, 국제협력 지원 대상 선정 근거',
+        'academic_corporate': '산학협력 우수 연구자 표창·지원, 산학연 프로그램 참여 후보 파악, 기업 공동연구 확대 대상 선정'
+    };
+    const insights = {
+        'field_strategy_map': 'ASJC 분야별 논문수·평균FWCI·국제협력 비율을 기반으로 전북대의 분야별 연구 경쟁력 현황을 파악합니다. 분야 포지셔닝(핵심 강점/성장/규모 우위/육성 필요)과 질적·양적 균형을 확인할 수 있습니다.',
+        'collab_effect': '연구자별 협력 유형(단독/기관내/국내/국제)에 따른 FWCI 차이를 분석합니다. 국제협력이 인용 성과에 미치는 효과를 정량적으로 확인하고, 협력 유형별 FWCI를 비교할 수 있습니다.',
+        'academic_corporate': '산학협력(학술+기업 공동소속) 논문이 있는 연구자를 분석합니다. 산학 논문의 질적 성과(FWCI)와 연구자별 산학협력 집중도를 파악할 수 있습니다.'
+    };
+    const formulas = {
+        'field_strategy_map': `<ul class="mb-0 ps-3">
+            <li><b>분야</b>: ASJC (All Science Journal Classification) 분야명</li>
+            <li><b>논문수</b>: 해당 분야의 총 논문수 (ASJC 분야명으로 집계, 최소 10편 이상)</li>
+            <li><b>평균FWCI</b>: 해당 분야 전체 논문의 FWCI 합계 ÷ 논문수 (전북대 해당 분야 평균)</li>
+            <li><b>국제비율(%)</b>: is_international=1 논문수 ÷ 총 논문수 × 100</li>
+            <li><b>Top피인용비율(%)</b>: is_top_cited=1 논문수 ÷ 총 논문수 × 100</li>
+            <li><b>Top저널비율(%)</b>: is_1=1 (Top 10% 저널) 논문수 ÷ 총 논문수 × 100</li>
+            <li><b>총인용수</b>: 해당 분야 논문의 citations 합계</li>
+            <li><b>전략등급</b>: 평균FWCI ≥ 1.5 AND 국제비율 ≥ 40% → "핵심 강점" | 평균FWCI ≥ 1.0 → "성장 분야" | 논문수 ≥ 50 → "규모 우위" | 나머지 → "육성 필요"</li></ul>`,
+        'collab_effect': `<ul class="mb-0 ps-3">
+            <li><b>단독FWCI</b>: is_single_author=1 논문의 평균 FWCI</li>
+            <li><b>기관내FWCI</b>: is_institutional_collab=1 논문의 평균 FWCI</li>
+            <li><b>국내FWCI</b>: is_national_collab=1 논문의 평균 FWCI</li>
+            <li><b>국제FWCI</b>: is_international=1 논문의 평균 FWCI</li>
+            <li><b>국제건수</b>: is_international=1 논문 수</li>
+            <li><b>협력부스트(%)</b>: 단독FWCI 있는 경우 (국제FWCI − 단독FWCI) ÷ 단독FWCI × 100, 없으면 (국제FWCI − 국내FWCI) ÷ 국내FWCI × 100</li>
+            <li><b>선정조건</b>: 총 논문수 ≥ 5편</li></ul>`,
+        'academic_corporate': `<ul class="mb-0 ps-3">
+            <li><b>산학논문</b>: is_academic_corporate=1 논문 수 (학술기관+기업 공동소속 논문)</li>
+            <li><b>산학비율(%)</b>: 산학논문수 ÷ 총 논문수 × 100</li>
+            <li><b>산학FWCI</b>: 산학협력 논문의 FWCI 합계 ÷ 산학논문수 (평균 FWCI)</li>
+            <li><b>산학인용수</b>: 산학협력 논문의 citations 합계</li>
+            <li><b>선정조건</b>: 산학논문 ≥ 2편, 전북대 소속 연구자</li></ul>`
+    };
+
+    document.getElementById('portfolioTitle').textContent = titles[type];
+    document.getElementById('portfolioDecision').innerHTML = decisions[type];
+    document.getElementById('portfolioInsights').innerHTML = insights[type];
+    document.getElementById('portfolioFormulas').innerHTML = formulas[type];
+    document.getElementById('portfolioBody').innerHTML = '<tr><td colspan="12" class="text-center"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>';
+
+    fetch(`/api/strategic_portfolio?type=${type}&limit=50${getYearParams()}`)
+        .then(r => r.json())
+        .then(data => {
+            const countLabel = type === 'field_strategy_map' ? `${data.count}개 분야` : `${data.count}명`;
+            document.getElementById('portfolioCount').textContent = countLabel;
+            renderPortfolioTable(data.researchers, type);
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('portfolioBody').innerHTML = '<tr><td colspan="12" class="text-center text-danger">데이터 로드 실패</td></tr>';
+        });
+}
+
+function renderPortfolioTable(researchers, type) {
+    portfolioData = researchers;
+    const ss = sortStates.portfolio;
+    const sorted = ss.key ? sortByKey(researchers, ss.key, ss.asc) : researchers;
+    const header = document.getElementById('portfolioHeader');
+    const body = document.getElementById('portfolioBody');
+
+    let headerHTML = thP('#');
+
+    if (type === 'field_strategy_map') {
+        headerHTML += thS('portfolio','분야','field') + thS('portfolio','논문수','pub_count') + thS('portfolio','평균FWCI','avg_fwci') + thS('portfolio','국제비율','intl_ratio') + thS('portfolio','Top피인용','top_cited_ratio') + thS('portfolio','Top저널','top_journal_ratio') + thS('portfolio','총인용수','total_citations') + thP('전략등급');
+    } else if (type === 'collab_effect') {
+        headerHTML += thS('portfolio','연구자명','name') + thS('portfolio','논문수','scholarly_output') + thS('portfolio','인용수','citations') + thS('portfolio','FWCI','fwci') + thS('portfolio','h-index','h_index') + thS('portfolio','단독','single_fwci') + thS('portfolio','기관내','inst_fwci') + thS('portfolio','국내','natl_fwci') + thS('portfolio','국제','intl_fwci') + thS('portfolio','국제건수','intl_count') + thS('portfolio','부스트','collab_boost') + thP('프로필');
+    } else if (type === 'academic_corporate') {
+        headerHTML += thS('portfolio','연구자명','name') + thS('portfolio','논문수','scholarly_output') + thS('portfolio','인용수','citations') + thS('portfolio','FWCI','fwci') + thS('portfolio','h-index','h_index') + thS('portfolio','산학논문','corp_pubs') + thS('portfolio','산학비율','corp_ratio') + thS('portfolio','산학FWCI','corp_avg_fwci') + thS('portfolio','산학인용','corp_citations') + thP('프로필');
+    }
+    header.innerHTML = headerHTML;
+
+    if (sorted.length === 0) {
+        body.innerHTML = '<tr><td colspan="12" class="text-center">데이터가 없습니다.</td></tr>';
+        return;
+    }
+
+    let bodyHTML = '';
+    sorted.forEach((r, idx) => {
+        bodyHTML += `<tr><td>${idx + 1}</td>`;
+
+        if (type === 'field_strategy_map') {
+            bodyHTML += `
+                <td><strong>${r.field}</strong></td>
+                <td>${r.pub_count}</td>
+                <td><span class="badge ${r.avg_fwci >= 1.5 ? 'bg-success' : r.avg_fwci >= 1.0 ? 'bg-primary' : 'bg-secondary'}">${r.avg_fwci}</span></td>
+                <td>${r.intl_ratio}%</td>
+                <td>${r.top_cited_ratio}%</td>
+                <td>${r.top_journal_ratio}%</td>
+                <td>${r.total_citations?.toLocaleString() || 0}</td>
+                <td><span class="badge bg-${r.strategy_class}">${r.strategy}</span></td>`;
+        } else if (type === 'collab_effect') {
+            bodyHTML += `
+                <td><strong>${r.name}</strong></td>
+                <td>${r.scholarly_output}</td>
+                <td>${r.citations?.toLocaleString() || 0}</td>
+                <td>${r.fwci}</td>
+                <td>${r.h_index || '-'}</td>
+                <td>${r.single_fwci ?? '-'}</td>
+                <td>${r.inst_fwci ?? '-'}</td>
+                <td>${r.natl_fwci ?? '-'}</td>
+                <td><span class="badge" style="background-color: #fd7e14;">${r.intl_fwci ?? '-'}</span></td>
+                <td>${r.intl_count}편</td>
+                <td><span class="badge ${r.collab_boost > 0 ? 'bg-success' : 'bg-secondary'}">${r.collab_boost > 0 ? '+' : ''}${r.collab_boost}%</span></td>
+                <td><a href="${r.profile_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>`;
+        } else if (type === 'academic_corporate') {
+            bodyHTML += `
+                <td><strong>${r.name}</strong></td>
+                <td>${r.scholarly_output}</td>
+                <td>${r.citations?.toLocaleString() || 0}</td>
+                <td>${r.fwci}</td>
+                <td>${r.h_index || '-'}</td>
+                <td><span class="badge" style="background-color: #fd7e14;">${r.corp_pubs}편</span></td>
+                <td>${r.corp_ratio}%</td>
+                <td>${r.corp_avg_fwci}</td>
+                <td>${r.corp_citations?.toLocaleString() || 0}</td>
+                <td><a href="${r.profile_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>`;
+        }
+
+        bodyHTML += '</tr>';
+    });
+    body.innerHTML = bodyHTML;
+}
+
+// ========== CSV 다운로드 ==========
+function generateCSV(data, columns) {
+    let csv = '\uFEFF'; // BOM for Excel Korean support
+    csv += columns.map(c => '"' + c.header.replace(/"/g, '""') + '"').join(',') + '\n';
+    data.forEach(row => {
+        csv += columns.map(c => {
+            let val = row[c.key];
+            if (val == null || val === undefined) val = '';
+            if (Array.isArray(val)) val = val.join('; ');
+            val = String(val);
+            if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+                val = '"' + val.replace(/"/g, '""') + '"';
+            }
+            return val;
+        }).join(',') + '\n';
+    });
+    return csv;
+}
+
+function triggerCSVDownload(csvContent, filename) {
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+function getPeriodLabel() {
+    if (stratYearFrom && stratYearTo) return `${stratYearFrom}-${stratYearTo}`;
+    return '전체기간';
+}
+
+function downloadTrajectoryCSV() {
+    if (!trajectoryData || trajectoryData.length === 0) { alert('다운로드할 데이터가 없습니다.'); return; }
+    const ce = trajectoryCheckEnd || new Date().getFullYear();
+    const typeNames = { 'growth_trajectory': '연속성장', 'early_warning': '감소경보', 'rising_star': '라이징스타' };
+    const colDefs = {
+        'growth_trajectory': [
+            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
+            {key:'y1',header:`${ce-2}년`},{key:'y2',header:`${ce-1}년`},{key:'y3',header:`${ce}년`},
+            {key:'growth_pct',header:'성장률(%)'},{key:'total_period',header:'기간합계'}
+        ],
+        'early_warning': [
+            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
+            {key:'past_avg',header:'과거평균(편/년)'},{key:'recent_avg',header:'최근평균(편/년)'},
+            {key:'decline_pct',header:'감소율(%)'},{key:'past_period',header:'과거기간'},{key:'recent_period',header:'최근기간'}
+        ],
+        'rising_star': [
+            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
+            {key:'career_years',header:'경력(년)'},{key:'first_pub_year',header:'첫발표연도'},
+            {key:'star_score',header:'스타점수'}
+        ]
+    };
+    const filename = `연구전략_${typeNames[currentTrajectoryType]}_${getPeriodLabel()}.csv`;
+    triggerCSVDownload(generateCSV(trajectoryData, colDefs[currentTrajectoryType]), filename);
+}
+
+function downloadSocietalCSV() {
+    if (!societalData || societalData.length === 0) { alert('다운로드할 데이터가 없습니다.'); return; }
+    const typeNames = { 'patent_cited': '특허인용', 'policy_cited': '정책인용', 'sdg_contribution': 'SDG기여' };
+    const colDefs = {
+        'patent_cited': [
+            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
+            {key:'patent_pubs',header:'특허논문수'},{key:'total_patents',header:'특허패밀리수'}
+        ],
+        'policy_cited': [
+            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
+            {key:'policy_pubs',header:'정책논문수'},{key:'total_policies',header:'정책인용수'}
+        ],
+        'sdg_contribution': [
+            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
+            {key:'sdg_pubs',header:'SDG논문수'},{key:'sdg_count',header:'SDG분야수'},
+            {key:'sdg_categories',header:'SDG목표'}
+        ]
+    };
+    const filename = `연구전략_${typeNames[currentSocietalType]}_${getPeriodLabel()}.csv`;
+    triggerCSVDownload(generateCSV(societalData, colDefs[currentSocietalType]), filename);
+}
+
+function downloadPortfolioCSV() {
+    if (!portfolioData || portfolioData.length === 0) { alert('다운로드할 데이터가 없습니다.'); return; }
+    const typeNames = { 'field_strategy_map': '분야전략맵', 'collab_effect': '협력효과', 'academic_corporate': '산학협력' };
+    const colDefs = {
+        'field_strategy_map': [
+            {key:'field',header:'분야명'},{key:'pub_count',header:'논문수'},
+            {key:'avg_fwci',header:'평균FWCI'},{key:'intl_ratio',header:'국제비율(%)'},
+            {key:'top_cited_ratio',header:'Top피인용비율(%)'},{key:'top_journal_ratio',header:'Top저널비율(%)'},
+            {key:'total_citations',header:'총인용수'},{key:'strategy',header:'전략등급'}
+        ],
+        'collab_effect': [
+            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
+            {key:'single_fwci',header:'단독FWCI'},{key:'inst_fwci',header:'기관내FWCI'},
+            {key:'natl_fwci',header:'국내FWCI'},{key:'intl_fwci',header:'국제FWCI'},
+            {key:'intl_count',header:'국제건수'},{key:'collab_boost',header:'협력부스트(%)'}
+        ],
+        'academic_corporate': [
+            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
+            {key:'corp_pubs',header:'산학논문수'},{key:'corp_ratio',header:'산학비율(%)'},
+            {key:'corp_avg_fwci',header:'산학FWCI'},{key:'corp_citations',header:'산학인용수'}
+        ]
+    };
+    const filename = `연구전략_${typeNames[currentPortfolioType]}_${getPeriodLabel()}.csv`;
+    triggerCSVDownload(generateCSV(portfolioData, colDefs[currentPortfolioType]), filename);
+}
+</script>
+{% endblock %}

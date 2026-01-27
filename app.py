@@ -72,7 +72,141 @@ def migrate_database():
                 print(f"Added column: {column}")
             except sqlite3.Error as e:
                 print(f"Error adding column {column}: {e}")
-    
+
+    # 새 데이터 컬럼 추가 (70컬럼 CSV 형식 대응)
+    new_text_columns = ['publisher', 'institution_ids', 'sector']
+    for column in new_text_columns:
+        if column not in columns:
+            try:
+                cursor.execute(f"ALTER TABLE publication ADD COLUMN {column} TEXT")
+                print(f"Added column: {column}")
+            except sqlite3.Error as e:
+                print(f"Error adding column {column}: {e}")
+
+    # 새 불리언 플래그 컬럼 추가
+    new_flag_columns = ['is_patent_cited', 'is_policy_cited', 'is_coauthored']
+    for column in new_flag_columns:
+        if column not in columns:
+            try:
+                cursor.execute(f"ALTER TABLE publication ADD COLUMN {column} INTEGER DEFAULT 0")
+                print(f"Added column: {column}")
+            except sqlite3.Error as e:
+                print(f"Error adding column {column}: {e}")
+
+    # author 테이블 생성 (기존 스키마와 호환)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS author (
+            author_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scopus_author_id TEXT UNIQUE,
+            name TEXT,
+            scholarly_output INTEGER,
+            most_recent_publication INTEGER,
+            citations INTEGER,
+            citations_per_publication REAL,
+            field_weighted_citation_impact REAL,
+            h_index INTEGER,
+            output_in_top_10_percentile INTEGER,
+            oldest_publication INTEGER,
+            scopus_author_profile TEXT,
+            primary_affiliation TEXT,
+            orcid TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        )
+    """)
+
+    # publication 테이블 중복 제거 (EID 기반)
+    cursor.execute("""
+        SELECT eid, COUNT(*) as cnt FROM publication
+        WHERE eid IS NOT NULL AND eid != ''
+        GROUP BY eid HAVING cnt > 1
+    """)
+    dup_eids = cursor.fetchall()
+
+    if dup_eids:
+        print(f"Deduplicating {len(dup_eids)} duplicate EID groups...")
+        boolean_flags = ['is_paper', 'is_1', 'is_10', 'is_25', 'is_SDG', 'is_international']
+        total_deleted = 0
+
+        for row in dup_eids:
+            eid = row[0]
+            # 해당 EID의 모든 레코드 조회
+            cursor.execute("""
+                SELECT record_id, room_id, {} FROM publication
+                WHERE eid = ? ORDER BY record_id DESC
+            """.format(', '.join(boolean_flags)), (eid,))
+            records = cursor.fetchall()
+
+            # 가장 높은 record_id를 유지할 레코드로 선택
+            keep_id = records[0][0]
+            max_room_id = max(r[1] for r in records)
+
+            # boolean 플래그 OR 병합
+            merged_flags = {}
+            for flag_idx, flag in enumerate(boolean_flags):
+                merged_flags[flag] = max(r[2 + flag_idx] or 0 for r in records)
+
+            # 유지할 레코드 업데이트
+            update_parts = [f"room_id = {max_room_id}"]
+            for flag, value in merged_flags.items():
+                update_parts.append(f"{flag} = {value}")
+            cursor.execute(f"""
+                UPDATE publication SET {', '.join(update_parts)}
+                WHERE record_id = ?
+            """, (keep_id,))
+
+            # 나머지 레코드 삭제
+            delete_ids = [r[0] for r in records[1:]]
+            if delete_ids:
+                placeholders = ', '.join(['?' for _ in delete_ids])
+                cursor.execute(f"DELETE FROM publication WHERE record_id IN ({placeholders})", delete_ids)
+                total_deleted += len(delete_ids)
+
+        print(f"Deleted {total_deleted} duplicate records")
+
+    # DOI 기반 중복 제거 (EID 없는 레코드)
+    cursor.execute("""
+        SELECT doi, COUNT(*) as cnt FROM publication
+        WHERE (eid IS NULL OR eid = '') AND doi IS NOT NULL AND doi != ''
+        GROUP BY doi HAVING cnt > 1
+    """)
+    dup_dois = cursor.fetchall()
+
+    if dup_dois:
+        print(f"Deduplicating {len(dup_dois)} duplicate DOI groups (no EID)...")
+        total_deleted_doi = 0
+
+        for row in dup_dois:
+            doi = row[0]
+            cursor.execute("""
+                SELECT record_id, room_id, {} FROM publication
+                WHERE (eid IS NULL OR eid = '') AND doi = ? ORDER BY record_id DESC
+            """.format(', '.join(boolean_flags)), (doi,))
+            records = cursor.fetchall()
+
+            keep_id = records[0][0]
+            max_room_id = max(r[1] for r in records)
+
+            merged_flags = {}
+            for flag_idx, flag in enumerate(boolean_flags):
+                merged_flags[flag] = max(r[2 + flag_idx] or 0 for r in records)
+
+            update_parts = [f"room_id = {max_room_id}"]
+            for flag, value in merged_flags.items():
+                update_parts.append(f"{flag} = {value}")
+            cursor.execute(f"""
+                UPDATE publication SET {', '.join(update_parts)}
+                WHERE record_id = ?
+            """, (keep_id,))
+
+            delete_ids = [r[0] for r in records[1:]]
+            if delete_ids:
+                placeholders = ', '.join(['?' for _ in delete_ids])
+                cursor.execute(f"DELETE FROM publication WHERE record_id IN ({placeholders})", delete_ids)
+                total_deleted_doi += len(delete_ids)
+
+        print(f"Deleted {total_deleted_doi} duplicate DOI records")
+
     conn.commit()
     conn.close()
 
@@ -362,12 +496,13 @@ def process_file_upload(room_id, data_category, data_source, data_type, filepath
         
         cursor = conn.cursor()
         
-        # 불리언 플래그 설정 (이전 코드와 동일)
+        # 불리언 플래그 설정
         boolean_flags = {
-            'is_paper': 0, 'is_1': 0, 'is_10': 0, 
-            'is_25': 0, 'is_SDG': 0, 'is_international': 0
+            'is_paper': 0, 'is_1': 0, 'is_10': 0,
+            'is_25': 0, 'is_SDG': 0, 'is_international': 0,
+            'is_patent_cited': 0, 'is_policy_cited': 0, 'is_coauthored': 0
         }
-        
+
         # 데이터 타입에 따른 플래그 설정
         if data_type == '전체논문데이터':
             boolean_flags['is_paper'] = 1
@@ -381,30 +516,38 @@ def process_file_upload(room_id, data_category, data_source, data_type, filepath
             boolean_flags['is_SDG'] = 1
         elif data_type == 'International':
             boolean_flags['is_international'] = 1
-        
+        elif data_type == 'PatentCited':
+            boolean_flags['is_patent_cited'] = 1
+        elif data_type == 'PolicyCited':
+            boolean_flags['is_policy_cited'] = 1
+        elif data_type == 'CoAuthored':
+            boolean_flags['is_coauthored'] = 1
+
         total_records = len(df)
         insert_count = 0
         update_count = 0
         error_count = 0
-        
-        # 컬럼 순서 (이전과 동일)
-        column_order = [
-            'title', 'authors', 'number_of_authors', 'scopus_author_ids', 
+
+        # 70컬럼 형식 (Publisher, Institution IDs, Sector 포함)
+        column_order_70 = [
+            'title', 'authors', 'number_of_authors', 'scopus_author_ids',
             'year', 'full_date', 'scopus_source_title', 'volume', 'issue', 'pages',
-            'article_number', 'issn', 'source_id', 'source_type', 'language',
-            'snip_publication_year', 'snip_percentile_publication_year', 
+            'article_number', 'issn', 'source_id', 'source_type',
+            'publisher', 'language',
+            'snip_publication_year', 'snip_percentile_publication_year',
             'citescore_publication_year', 'citescore_percentile_publication_year',
             'sjr_publication_year', 'sjr_percentile_publication_year',
-            'field_weighted_view_impact', 'views', 'citations', 
+            'field_weighted_view_impact', 'views', 'citations',
             'field_weighted_citation_impact', 'field_citation_average',
             'outputs_in_top_citation_percentiles_per_percentile',
             'field_weighted_outputs_in_top_citation_percentiles_per_percentile',
             'main_patent_families', 'policy_citations', 'reference', 'abstract',
             'doi', 'publication_type', 'open_access', 'eid', 'pubmed_id',
-            'institutions', 'number_of_institutions', 'scopus_affiliation_ids',
+            'institutions', 'institution_ids', 'sector',
+            'number_of_institutions', 'scopus_affiliation_ids',
             'scopus_affiliation_names', 'scopus_author_id_first_author',
             'scopus_author_id_last_author', 'scopus_author_id_corresponding_author',
-            'scopus_author_id_single_author', 'country_region', 
+            'scopus_author_id_single_author', 'country_region',
             'number_of_countries_regions', 'all_science_journal_classification_asjc_code',
             'all_science_journal_classification_asjc_field_name',
             'quacquarelli_symonds_qs_subject_area_code',
@@ -419,6 +562,46 @@ def process_file_upload(room_id, data_category, data_source, data_type, filepath
             'topic_name', 'topic_number', 'topic_prominence_percentile',
             'publication_link_to_topic_strength'
         ]
+
+        # 67컬럼 형식 (기존 호환)
+        column_order_67 = [
+            'title', 'authors', 'number_of_authors', 'scopus_author_ids',
+            'year', 'full_date', 'scopus_source_title', 'volume', 'issue', 'pages',
+            'article_number', 'issn', 'source_id', 'source_type', 'language',
+            'snip_publication_year', 'snip_percentile_publication_year',
+            'citescore_publication_year', 'citescore_percentile_publication_year',
+            'sjr_publication_year', 'sjr_percentile_publication_year',
+            'field_weighted_view_impact', 'views', 'citations',
+            'field_weighted_citation_impact', 'field_citation_average',
+            'outputs_in_top_citation_percentiles_per_percentile',
+            'field_weighted_outputs_in_top_citation_percentiles_per_percentile',
+            'main_patent_families', 'policy_citations', 'reference', 'abstract',
+            'doi', 'publication_type', 'open_access', 'eid', 'pubmed_id',
+            'institutions', 'number_of_institutions', 'scopus_affiliation_ids',
+            'scopus_affiliation_names', 'scopus_author_id_first_author',
+            'scopus_author_id_last_author', 'scopus_author_id_corresponding_author',
+            'scopus_author_id_single_author', 'country_region',
+            'number_of_countries_regions', 'all_science_journal_classification_asjc_code',
+            'all_science_journal_classification_asjc_field_name',
+            'quacquarelli_symonds_qs_subject_area_code',
+            'quacquarelli_symonds_qs_subject_area_field_name',
+            'quacquarelli_symonds_qs_subject_code',
+            'quacquarelli_symonds_qs_subject_field_name',
+            'times_higher_education_the_code', 'times_higher_education_the_field_name',
+            'anzsrc_for_2020_parent_code', 'anzsrc_for_2020_parent_name',
+            'anzsrc_for_2020_code', 'anzsrc_for_2020_name',
+            'sustainable_development_goals_2025', 'topic_cluster_name',
+            'topic_cluster_number', 'topic_cluster_prominence_percentile',
+            'topic_name', 'topic_number', 'topic_prominence_percentile',
+            'publication_link_to_topic_strength'
+        ]
+
+        # CSV 컬럼 수에 따라 적절한 매핑 선택
+        num_cols = len(df.columns)
+        if num_cols >= 70:
+            column_order = column_order_70
+        else:
+            column_order = column_order_67
         
         # 각 행 처리
         for idx, (_, row) in enumerate(df.iterrows()):
@@ -444,47 +627,45 @@ def process_file_upload(room_id, data_category, data_source, data_type, filepath
                     mapped_data[flag] = value
                 
                 # 빈 매핑 데이터 건너뛰기
-                if not any(v for k, v in mapped_data.items() if k not in ['room_id', 'is_paper', 'is_1', 'is_10', 'is_25', 'is_SDG', 'is_international']):
+                skip_keys = {'room_id', 'is_paper', 'is_1', 'is_10', 'is_25', 'is_SDG', 'is_international', 'is_patent_cited', 'is_policy_cited', 'is_coauthored'}
+                if not any(v for k, v in mapped_data.items() if k not in skip_keys):
                     continue
                 
                 # 기존 레코드 확인 (EID 기반 매핑)
                 eid = mapped_data.get('eid', '')
                 
-                # EID로 중복 확인 (EID가 가장 정확한 식별자)
+                # EID로 전역 중복 확인 (EID가 가장 정확한 식별자)
                 if eid and eid.strip():
                     existing = cursor.execute('''
-                        SELECT record_id FROM publication 
-                        WHERE room_id = ? AND eid = ?
-                    ''', (room_id, eid)).fetchone()
+                        SELECT record_id FROM publication
+                        WHERE eid = ?
+                    ''', (eid,)).fetchone()
                 else:
-                    # EID가 없으면 DOI로 확인
+                    # EID가 없으면 DOI로 전역 확인
                     doi = mapped_data.get('doi', '')
                     if doi and doi.strip():
                         existing = cursor.execute('''
-                            SELECT record_id FROM publication 
-                            WHERE room_id = ? AND doi = ?
-                        ''', (room_id, doi)).fetchone()
+                            SELECT record_id FROM publication
+                            WHERE doi = ?
+                        ''', (doi,)).fetchone()
                     else:
                         existing = None
                 
                 if existing:
-                    # 업데이트: 기존 불리언 플래그를 OR 연산으로 업데이트
+                    # 업데이트: room_id + 불리언 플래그를 OR 연산으로 업데이트
                     record_id = existing[0]
-                    update_parts = []
-                    
+                    update_parts = [f"room_id = {room_id}"]
+
                     # 새로운 불리언 플래그가 1인 경우만 업데이트
-                    needs_update = False
                     for flag, new_value in boolean_flags.items():
                         if new_value == 1:
                             update_parts.append(f"{flag} = 1")
-                            needs_update = True
-                    
-                    if needs_update and update_parts:
-                        cursor.execute(f'''
-                            UPDATE publication SET {', '.join(update_parts)}
-                            WHERE record_id = ?
-                        ''', (record_id,))
-                        update_count += 1
+
+                    cursor.execute(f'''
+                        UPDATE publication SET {', '.join(update_parts)}
+                        WHERE record_id = ?
+                    ''', (record_id,))
+                    update_count += 1
                 else:
                     # 삽입: 새 레코드 생성
                     columns = list(mapped_data.keys())
@@ -1925,6 +2106,2583 @@ def help_stage1():
 @app.route('/help/stage2')
 def help_stage2():
     return render_template('help_stage2.html')
+
+# ============================================================
+# 우수 연구자 점수 산출 시스템 (Excellent Researcher Scoring)
+# ============================================================
+
+def calculate_researcher_score(author_data, pub_stats):
+    """
+    연구자 점수 계산 함수
+
+    핵심지표 (80점 만점):
+    - FWCI: 35점
+    - Top 10% 피인용 논문: 20점
+    - 상위저널 비율: 15점
+    - 국제협력 FWCI: 10점
+
+    보조지표 (10점 만점):
+    - SDG 관련: 3점
+    - Open Access: 2점
+    - Topic Prominence: 5점
+
+    총점: 90점 만점
+    """
+    scores = {}
+
+    # 1. FWCI 점수 (35점 만점)
+    fwci = author_data.get('field_weighted_citation_impact', 0) or 0
+    if fwci >= 10:
+        scores['fwci'] = 35
+    elif fwci >= 8:
+        scores['fwci'] = 30
+    elif fwci >= 6:
+        scores['fwci'] = 25
+    elif fwci >= 4:
+        scores['fwci'] = 20
+    elif fwci >= 2:
+        scores['fwci'] = 15
+    else:
+        scores['fwci'] = 10
+
+    # 2. Top 10% 피인용 논문 점수 (20점 만점)
+    top_10_count = author_data.get('output_in_top_10_percentile', 0) or 0
+    if top_10_count >= 3:
+        scores['top_cited'] = 20
+    elif top_10_count >= 1:
+        scores['top_cited'] = 15
+    else:
+        scores['top_cited'] = 10
+
+    # 3. 상위 저널 비율 점수 (15점 만점)
+    # SNIP, CiteScore, SJR 중 하나라도 상위 10% (percentile <= 10) 인 논문 비율
+    top_journal_pct = pub_stats.get('top_journal_percentage', 0)
+    if top_journal_pct >= 10:  # 상위저널 비율 10% 이상이면 상위 10%로 판정
+        scores['top_journal'] = 15
+    else:
+        scores['top_journal'] = 5
+
+    # 4. 국제협력 FWCI 점수 (10점 만점)
+    intl_fwci = pub_stats.get('international_collab_fwci', None)
+    if intl_fwci is None or intl_fwci == 0:
+        scores['intl_collab'] = 0
+    elif intl_fwci >= 2.0:
+        scores['intl_collab'] = 10
+    elif intl_fwci >= 1.5:
+        scores['intl_collab'] = 7
+    elif intl_fwci >= 1.0:
+        scores['intl_collab'] = 4
+    else:
+        scores['intl_collab'] = 1
+
+    # 핵심지표 소계
+    scores['core_total'] = scores['fwci'] + scores['top_cited'] + scores['top_journal'] + scores['intl_collab']
+
+    # 5. SDG 관련 점수 (3점 만점)
+    has_sdg = pub_stats.get('has_sdg_publications', False)
+    scores['sdg'] = 3 if has_sdg else 0
+
+    # 6. Open Access 점수 (2점 만점)
+    has_oa = pub_stats.get('has_open_access', False)
+    scores['open_access'] = 2 if has_oa else 0
+
+    # 7. Topic Prominence 점수 (5점 만점)
+    avg_prominence = pub_stats.get('avg_topic_prominence', 0)
+    scores['topic_prominence'] = 5 if avg_prominence >= 90 else 0
+
+    # 보조지표 소계
+    scores['secondary_total'] = scores['sdg'] + scores['open_access'] + scores['topic_prominence']
+
+    # 총점
+    scores['total'] = scores['core_total'] + scores['secondary_total']
+
+    return scores
+
+
+def get_author_publication_stats(conn, scopus_author_id):
+    """
+    저자의 논문 통계 조회 (저자 ID 기반)
+    """
+    cursor = conn.cursor()
+
+    # 해당 저자가 참여한 논문들 조회
+    # scopus_author_ids 컬럼에서 저자 ID가 포함된 논문들 검색
+    cursor.execute("""
+        SELECT
+            field_weighted_citation_impact,
+            is_international,
+            snip_percentile_publication_year,
+            citescore_percentile_publication_year,
+            sjr_percentile_publication_year,
+            sustainable_development_goals_2025,
+            open_access,
+            topic_prominence_percentile
+        FROM publication
+        WHERE scopus_author_ids LIKE ?
+    """, (f'%{scopus_author_id}%',))
+
+    publications = cursor.fetchall()
+
+    stats = {
+        'total_publications': len(publications),
+        'international_collab_count': 0,
+        'international_collab_fwci_sum': 0,
+        'international_collab_fwci': None,
+        'top_journal_count': 0,
+        'top_journal_percentage': 0,
+        'has_sdg_publications': False,
+        'has_open_access': False,
+        'topic_prominence_sum': 0,
+        'topic_prominence_count': 0,
+        'avg_topic_prominence': 0
+    }
+
+    for pub in publications:
+        fwci = pub['field_weighted_citation_impact']
+        is_intl = pub['is_international']
+        snip_pct = pub['snip_percentile_publication_year']
+        citescore_pct = pub['citescore_percentile_publication_year']
+        sjr_pct = pub['sjr_percentile_publication_year']
+        sdg = pub['sustainable_development_goals_2025']
+        oa = pub['open_access']
+        topic_prom = pub['topic_prominence_percentile']
+
+        # 국제협력 논문 통계
+        if is_intl == 1 and fwci:
+            try:
+                fwci_val = float(fwci)
+                stats['international_collab_count'] += 1
+                stats['international_collab_fwci_sum'] += fwci_val
+            except (ValueError, TypeError):
+                pass
+
+        # 상위 저널 판단 (SNIP, CiteScore, SJR 중 하나라도 percentile <= 10)
+        is_top_journal = False
+        for pct in [snip_pct, citescore_pct, sjr_pct]:
+            if pct:
+                try:
+                    if int(pct) <= 10:
+                        is_top_journal = True
+                        break
+                except (ValueError, TypeError):
+                    pass
+        if is_top_journal:
+            stats['top_journal_count'] += 1
+
+        # SDG 관련 여부
+        if sdg and str(sdg).strip():
+            stats['has_sdg_publications'] = True
+
+        # Open Access 여부
+        if oa and str(oa).strip():
+            stats['has_open_access'] = True
+
+        # Topic Prominence
+        if topic_prom:
+            try:
+                prom_val = float(topic_prom)
+                stats['topic_prominence_sum'] += prom_val
+                stats['topic_prominence_count'] += 1
+            except (ValueError, TypeError):
+                pass
+
+    # 평균 계산
+    if stats['international_collab_count'] > 0:
+        stats['international_collab_fwci'] = stats['international_collab_fwci_sum'] / stats['international_collab_count']
+
+    if stats['total_publications'] > 0:
+        stats['top_journal_percentage'] = (stats['top_journal_count'] / stats['total_publications']) * 100
+
+    if stats['topic_prominence_count'] > 0:
+        stats['avg_topic_prominence'] = stats['topic_prominence_sum'] / stats['topic_prominence_count']
+
+    return stats
+
+
+def batch_calculate_researcher_scores():
+    """
+    모든 전북대 연구자의 점수를 일괄 계산하여 researcher_score 테이블에 저장
+    개별 논문별 점수를 계산한 후 평균/중위값으로 집계
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 개별 논문 점수 계산 함수들
+    def calc_fwci_score(fwci):
+        """FWCI → 점수 변환 (35점 만점)"""
+        if fwci is None:
+            return 10  # 기본값
+        if fwci >= 10:
+            return 35
+        elif fwci >= 8:
+            return 30
+        elif fwci >= 6:
+            return 25
+        elif fwci >= 4:
+            return 20
+        elif fwci >= 2:
+            return 15
+        else:
+            return 10
+
+    def calc_top_cited_score(is_top_10):
+        """Top 10% 피인용 여부 → 점수 (20점 만점)"""
+        return 20 if is_top_10 else 10
+
+    def calc_top_journal_score(snip_pct, citescore_pct, sjr_pct):
+        """상위 저널 여부 → 점수 (15점 만점)"""
+        for pct in [snip_pct, citescore_pct, sjr_pct]:
+            if pct:
+                try:
+                    if int(pct) <= 10:
+                        return 15  # 상위 10% 저널
+                except:
+                    pass
+        return 5  # 기타 저널
+
+    def calc_intl_fwci_score(fwci):
+        """국제협력 논문 FWCI → 점수 (10점 만점)"""
+        if fwci is None:
+            return 0
+        if fwci >= 2.0:
+            return 10
+        elif fwci >= 1.5:
+            return 7
+        elif fwci >= 1.0:
+            return 4
+        else:
+            return 1
+
+    def calc_sdg_score(has_sdg):
+        """SDG 관련 여부 → 점수 (3점 만점)"""
+        return 3 if has_sdg else 0
+
+    def calc_oa_score(has_oa):
+        """Open Access 여부 → 점수 (2점 만점)"""
+        return 2 if has_oa else 0
+
+    def calc_prominence_score(prominence):
+        """Topic Prominence → 점수 (5점 만점)"""
+        if prominence is None:
+            return 0
+        return 5 if prominence >= 90 else 0
+
+    # 1. 전북대 저자 목록 가져오기
+    cursor.execute("""
+        SELECT author_id, scopus_author_id, name, scholarly_output, citations,
+               field_weighted_citation_impact, h_index, output_in_top_10_percentile,
+               primary_affiliation, scopus_author_profile
+        FROM author
+        WHERE primary_affiliation = 'Jeonbuk National University'
+    """)
+    authors = cursor.fetchall()
+
+    # 2. 논문 데이터를 한 번에 가져와서 메모리에 캐싱
+    cursor.execute("""
+        SELECT scopus_author_ids, field_weighted_citation_impact, is_international, is_10,
+               snip_percentile_publication_year, citescore_percentile_publication_year,
+               sjr_percentile_publication_year, sustainable_development_goals_2025,
+               open_access, topic_prominence_percentile
+        FROM publication
+    """)
+    all_publications = cursor.fetchall()
+
+    # 저자별 개별 논문 점수 수집
+    author_pub_scores = {}
+
+    for pub in all_publications:
+        scopus_ids_str = pub['scopus_author_ids'] or ''
+        scopus_ids = [sid.strip() for sid in scopus_ids_str.replace('|', ' ').split() if sid.strip()]
+
+        # 논문별 점수 계산
+        fwci_val = None
+        if pub['field_weighted_citation_impact']:
+            try:
+                fwci_val = float(pub['field_weighted_citation_impact'])
+            except:
+                pass
+
+        prominence_val = None
+        if pub['topic_prominence_percentile']:
+            try:
+                prominence_val = float(pub['topic_prominence_percentile'])
+            except:
+                pass
+
+        pub_scores = {
+            'fwci_val': fwci_val,
+            'fwci_score': calc_fwci_score(fwci_val),
+            'top_cited_score': calc_top_cited_score(pub['is_10'] == 1),
+            'top_journal_score': calc_top_journal_score(
+                pub['snip_percentile_publication_year'],
+                pub['citescore_percentile_publication_year'],
+                pub['sjr_percentile_publication_year']
+            ),
+            'is_international': pub['is_international'] == 1,
+            'intl_fwci_score': calc_intl_fwci_score(fwci_val) if pub['is_international'] == 1 else None,
+            'sdg_score': calc_sdg_score(bool(pub['sustainable_development_goals_2025'])),
+            'oa_score': calc_oa_score(bool(pub['open_access'])),
+            'prominence_score': calc_prominence_score(prominence_val)
+        }
+
+        for scopus_id in scopus_ids:
+            if scopus_id not in author_pub_scores:
+                author_pub_scores[scopus_id] = []
+            author_pub_scores[scopus_id].append(pub_scores)
+
+    # 3. 기존 데이터 삭제
+    cursor.execute("DELETE FROM researcher_score")
+
+    # 통계 계산 함수들
+    def calc_median(values):
+        if not values:
+            return 0
+        sorted_vals = sorted(values)
+        n = len(sorted_vals)
+        mid = n // 2
+        if n % 2 == 0:
+            return (sorted_vals[mid - 1] + sorted_vals[mid]) / 2
+        return sorted_vals[mid]
+
+    def calc_mean(values):
+        if not values:
+            return 0
+        return sum(values) / len(values)
+
+    # 4. 각 저자별 점수 계산 및 저장
+    inserted = 0
+    for author in authors:
+        author_dict = dict(author)
+        scopus_id = author_dict['scopus_author_id']
+
+        # 저자의 논문별 점수 가져오기
+        pub_scores_list = author_pub_scores.get(scopus_id, [])
+
+        if not pub_scores_list:
+            continue  # 논문이 없으면 건너뜀
+
+        # 각 지표별 점수 리스트 추출
+        fwci_values = [p['fwci_val'] for p in pub_scores_list if p['fwci_val'] is not None]
+        fwci_scores = [p['fwci_score'] for p in pub_scores_list]
+        top_cited_scores = [p['top_cited_score'] for p in pub_scores_list]
+        top_journal_scores = [p['top_journal_score'] for p in pub_scores_list]
+        intl_fwci_scores = [p['intl_fwci_score'] for p in pub_scores_list if p['intl_fwci_score'] is not None]
+        sdg_scores = [p['sdg_score'] for p in pub_scores_list]
+        oa_scores = [p['oa_score'] for p in pub_scores_list]
+        prominence_scores = [p['prominence_score'] for p in pub_scores_list]
+
+        # FWCI 값 (중위값/평균)
+        fwci_mean_val = calc_mean(fwci_values) if fwci_values else 0
+        fwci_median_val = calc_median(fwci_values) if fwci_values else 0
+
+        # 각 지표별 평균 점수 계산 (개별 논문 점수의 평균)
+        score_fwci_mean = calc_mean(fwci_scores)
+        score_fwci_median = calc_median(fwci_scores)
+        score_top_cited = calc_mean(top_cited_scores)
+        score_top_journal = calc_mean(top_journal_scores)
+        score_intl_collab = calc_mean(intl_fwci_scores) if intl_fwci_scores else 0
+        score_sdg = calc_mean(sdg_scores)
+        score_oa = calc_mean(oa_scores)
+        score_prominence = calc_mean(prominence_scores)
+
+        # 핵심지표 소계 (mean/median)
+        score_core_mean = score_fwci_mean + score_top_cited + score_top_journal + score_intl_collab
+        score_core_median = score_fwci_median + score_top_cited + score_top_journal + score_intl_collab
+
+        # 보조지표 소계
+        score_secondary = score_sdg + score_oa + score_prominence
+
+        # 총점
+        score_total_mean = score_core_mean + score_secondary
+        score_total_median = score_core_median + score_secondary
+
+        # 통계 정보
+        intl_count = sum(1 for p in pub_scores_list if p['is_international'])
+        intl_fwci_vals = [p['fwci_val'] for p in pub_scores_list if p['is_international'] and p['fwci_val'] is not None]
+        intl_fwci_avg = calc_mean(intl_fwci_vals) if intl_fwci_vals else None
+
+        top_journal_count = sum(1 for p in pub_scores_list if p['top_journal_score'] == 15)
+        top_journal_pct = (top_journal_count / len(pub_scores_list)) * 100 if pub_scores_list else 0
+
+        has_sdg = any(p['sdg_score'] > 0 for p in pub_scores_list)
+        has_oa = any(p['oa_score'] > 0 for p in pub_scores_list)
+
+        prom_values = [p['prominence_score'] for p in pub_scores_list if p['prominence_score'] is not None]
+        avg_prominence = calc_mean(prom_values) if prom_values else 0
+
+        # DB 저장 (개별 논문 점수 평균 기반)
+        cursor.execute("""
+            INSERT INTO researcher_score (
+                author_id, scopus_author_id, name, scholarly_output, citations,
+                fwci, fwci_mean, fwci_median,
+                h_index, top_10_pct_count, intl_collab_count, intl_collab_fwci,
+                top_journal_pct, has_sdg, has_oa, avg_topic_prominence,
+                score_fwci, score_fwci_mean, score_fwci_median,
+                score_top_cited, score_top_journal, score_intl_collab,
+                score_core, score_core_mean, score_core_median,
+                score_sdg, score_oa, score_prominence, score_secondary,
+                score_total, score_total_mean, score_total_median,
+                profile_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            author_dict['author_id'], scopus_id, author_dict['name'],
+            author_dict['scholarly_output'], author_dict['citations'],
+            fwci_median_val,  # 기본 fwci는 중위값
+            fwci_mean_val,
+            fwci_median_val,
+            author_dict['h_index'],
+            author_dict['output_in_top_10_percentile'],
+            intl_count,
+            intl_fwci_avg,
+            top_journal_pct,
+            1 if has_sdg else 0,
+            1 if has_oa else 0,
+            avg_prominence,
+            score_fwci_median,  # 기본 score_fwci는 중위값 기준
+            score_fwci_mean,
+            score_fwci_median,
+            score_top_cited,
+            score_top_journal,
+            score_intl_collab,
+            score_core_median,  # 기본 score_core는 중위값 기준
+            score_core_mean,
+            score_core_median,
+            score_sdg,
+            score_oa,
+            score_prominence,
+            score_secondary,
+            score_total_median,  # 기본 score_total은 중위값 기준
+            score_total_mean,
+            score_total_median,
+            author_dict['scopus_author_profile']
+        ))
+        inserted += 1
+
+    conn.commit()
+    conn.close()
+
+    return inserted
+
+
+def calculate_researcher_scores_by_year(year_from, year_to):
+    """
+    특정 연도 범위의 논문만으로 연구자 점수를 실시간 계산 (DB 저장 안 함)
+    batch_calculate_researcher_scores()와 동일한 점수 계산 로직 사용
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 점수 계산 함수들 (batch 함수와 동일)
+    def calc_fwci_score(fwci):
+        if fwci is None: return 10
+        if fwci >= 10: return 35
+        elif fwci >= 8: return 30
+        elif fwci >= 6: return 25
+        elif fwci >= 4: return 20
+        elif fwci >= 2: return 15
+        else: return 10
+
+    def calc_top_cited_score(is_top_10):
+        return 20 if is_top_10 else 10
+
+    def calc_top_journal_score(snip_pct, citescore_pct, sjr_pct):
+        for pct in [snip_pct, citescore_pct, sjr_pct]:
+            if pct:
+                try:
+                    if int(pct) <= 10:
+                        return 15
+                except:
+                    pass
+        return 5
+
+    def calc_intl_fwci_score(fwci):
+        if fwci is None: return 0
+        if fwci >= 2.0: return 10
+        elif fwci >= 1.5: return 7
+        elif fwci >= 1.0: return 4
+        else: return 1
+
+    def calc_sdg_score(has_sdg):
+        return 3 if has_sdg else 0
+
+    def calc_oa_score(has_oa):
+        return 2 if has_oa else 0
+
+    def calc_prominence_score(prominence):
+        if prominence is None: return 0
+        return 5 if prominence >= 90 else 0
+
+    def calc_median(values):
+        if not values: return 0
+        sorted_vals = sorted(values)
+        n = len(sorted_vals)
+        mid = n // 2
+        if n % 2 == 0:
+            return (sorted_vals[mid - 1] + sorted_vals[mid]) / 2
+        return sorted_vals[mid]
+
+    def calc_mean(values):
+        if not values: return 0
+        return sum(values) / len(values)
+
+    # 1. 전북대 저자 목록
+    cursor.execute("""
+        SELECT author_id, scopus_author_id, name, scholarly_output, citations,
+               field_weighted_citation_impact, h_index, output_in_top_10_percentile,
+               scopus_author_profile
+        FROM author
+        WHERE primary_affiliation = 'Jeonbuk National University'
+    """)
+    authors = cursor.fetchall()
+
+    # 2. 연도 범위 필터된 논문 데이터 가져오기
+    cursor.execute("""
+        SELECT scopus_author_ids, field_weighted_citation_impact, is_international, is_10,
+               snip_percentile_publication_year, citescore_percentile_publication_year,
+               sjr_percentile_publication_year, sustainable_development_goals_2025,
+               open_access, topic_prominence_percentile, year,
+               field_citation_average, citations
+        FROM publication
+        WHERE CAST(year AS INTEGER) BETWEEN ? AND ?
+    """, (year_from, year_to))
+    filtered_pubs = cursor.fetchall()
+
+    # 3. 저자별 논문 점수 집계
+    author_pub_scores = {}
+    for pub in filtered_pubs:
+        scopus_ids_str = pub['scopus_author_ids'] or ''
+        scopus_ids = [sid.strip() for sid in scopus_ids_str.replace('|', ' ').split() if sid.strip()]
+
+        fwci_val = None
+        if pub['field_weighted_citation_impact']:
+            try: fwci_val = float(pub['field_weighted_citation_impact'])
+            except: pass
+
+        prominence_val = None
+        if pub['topic_prominence_percentile']:
+            try: prominence_val = float(pub['topic_prominence_percentile'])
+            except: pass
+
+        fca_val = None
+        if pub['field_citation_average']:
+            try: fca_val = float(pub['field_citation_average'])
+            except: pass
+
+        pub_citations = 0
+        if pub['citations']:
+            try: pub_citations = int(float(str(pub['citations'])))
+            except: pass
+
+        pub_scores = {
+            'fwci_val': fwci_val,
+            'fwci_score': calc_fwci_score(fwci_val),
+            'top_cited_score': calc_top_cited_score(pub['is_10'] == 1),
+            'top_journal_score': calc_top_journal_score(
+                pub['snip_percentile_publication_year'],
+                pub['citescore_percentile_publication_year'],
+                pub['sjr_percentile_publication_year']
+            ),
+            'is_international': pub['is_international'] == 1,
+            'intl_fwci_score': calc_intl_fwci_score(fwci_val) if pub['is_international'] == 1 else None,
+            'sdg_score': calc_sdg_score(bool(pub['sustainable_development_goals_2025'])),
+            'oa_score': calc_oa_score(bool(pub['open_access'])),
+            'prominence_score': calc_prominence_score(prominence_val),
+            'field_citation_average': fca_val,
+            'pub_citations': pub_citations
+        }
+
+        for scopus_id in scopus_ids:
+            if scopus_id not in author_pub_scores:
+                author_pub_scores[scopus_id] = []
+            author_pub_scores[scopus_id].append(pub_scores)
+
+    conn.close()
+
+    # 4. 각 저자별 점수 계산
+    results = []
+    for author in authors:
+        author_dict = dict(author)
+        scopus_id = author_dict['scopus_author_id']
+        pub_scores_list = author_pub_scores.get(scopus_id, [])
+
+        if not pub_scores_list:
+            continue
+
+        fwci_values = [p['fwci_val'] for p in pub_scores_list if p['fwci_val'] is not None]
+        fwci_scores = [p['fwci_score'] for p in pub_scores_list]
+        top_cited_scores = [p['top_cited_score'] for p in pub_scores_list]
+        top_journal_scores = [p['top_journal_score'] for p in pub_scores_list]
+        intl_fwci_scores = [p['intl_fwci_score'] for p in pub_scores_list if p['intl_fwci_score'] is not None]
+        sdg_scores = [p['sdg_score'] for p in pub_scores_list]
+        oa_scores = [p['oa_score'] for p in pub_scores_list]
+        prominence_scores = [p['prominence_score'] for p in pub_scores_list]
+
+        fwci_mean_val = calc_mean(fwci_values) if fwci_values else 0
+        fwci_median_val = calc_median(fwci_values) if fwci_values else 0
+
+        score_fwci_mean = calc_mean(fwci_scores)
+        score_fwci_median = calc_median(fwci_scores)
+        score_top_cited = calc_mean(top_cited_scores)
+        score_top_journal = calc_mean(top_journal_scores)
+        score_intl_collab = calc_mean(intl_fwci_scores) if intl_fwci_scores else 0
+        score_sdg = calc_mean(sdg_scores)
+        score_oa = calc_mean(oa_scores)
+        score_prominence = calc_mean(prominence_scores)
+
+        score_core_mean = score_fwci_mean + score_top_cited + score_top_journal + score_intl_collab
+        score_core_median = score_fwci_median + score_top_cited + score_top_journal + score_intl_collab
+        score_secondary = score_sdg + score_oa + score_prominence
+        score_total_mean = score_core_mean + score_secondary
+        score_total_median = score_core_median + score_secondary
+
+        intl_count = sum(1 for p in pub_scores_list if p['is_international'])
+        intl_fwci_vals = [p['fwci_val'] for p in pub_scores_list if p['is_international'] and p['fwci_val'] is not None]
+        intl_fwci_avg = calc_mean(intl_fwci_vals) if intl_fwci_vals else None
+        top_journal_count = sum(1 for p in pub_scores_list if p['top_journal_score'] == 15)
+        top_journal_pct = (top_journal_count / len(pub_scores_list)) * 100 if pub_scores_list else 0
+
+        # field_citation_average 기반 기대인용수 및 실제인용수
+        expected_citations = sum(p['field_citation_average'] for p in pub_scores_list if p['field_citation_average'] is not None)
+        actual_citations_in_period = sum(p['pub_citations'] for p in pub_scores_list)
+
+        results.append({
+            'author_id': author_dict['author_id'],
+            'scopus_author_id': scopus_id,
+            'name': author_dict['name'],
+            'scholarly_output': len(pub_scores_list),  # 해당 기간 논문 수
+            'scholarly_output_total': author_dict['scholarly_output'],  # 전체 논문 수
+            'citations': author_dict['citations'],
+            'expected_citations': round(expected_citations, 1),
+            'actual_citations_in_period': actual_citations_in_period,
+            'fwci': round(fwci_median_val, 2),
+            'fwci_mean': round(fwci_mean_val, 2),
+            'fwci_median': round(fwci_median_val, 2),
+            'h_index': author_dict['h_index'],
+            'top_10_pct_count': author_dict['output_in_top_10_percentile'],
+            'primary_affiliation': 'Jeonbuk National University',
+            'profile_url': author_dict['scopus_author_profile'],
+            'intl_collab_count': intl_count,
+            'intl_collab_fwci': round(intl_fwci_avg, 2) if intl_fwci_avg else None,
+            'top_journal_pct': round(top_journal_pct, 1),
+            'has_sdg': any(p['sdg_score'] > 0 for p in pub_scores_list),
+            'has_oa': any(p['oa_score'] > 0 for p in pub_scores_list),
+            'avg_topic_prominence': 0,
+            'score_fwci': score_fwci_median,
+            'score_fwci_mean': score_fwci_mean,
+            'score_fwci_median': score_fwci_median,
+            'score_top_cited': score_top_cited,
+            'score_top_journal': score_top_journal,
+            'score_intl_collab': score_intl_collab,
+            'score_core': score_core_median,
+            'score_core_mean': score_core_mean,
+            'score_core_median': score_core_median,
+            'score_sdg': score_sdg,
+            'score_oa': score_oa,
+            'score_prominence': score_prominence,
+            'score_secondary': score_secondary,
+            'score_total': score_total_median,
+            'score_total_mean': score_total_mean,
+            'score_total_median': score_total_median
+        })
+
+    return results
+
+
+@app.route('/api/recalculate_scores')
+def api_recalculate_scores():
+    """점수 재계산 API"""
+    try:
+        count = batch_calculate_researcher_scores()
+        return jsonify({'success': True, 'message': f'{count}명의 연구자 점수가 계산되었습니다.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/researcher_ranking')
+def researcher_ranking():
+    """우수 연구자 랭킹 페이지"""
+    return render_template('researcher_ranking.html')
+
+
+@app.route('/api/researcher_scores')
+def api_researcher_scores():
+    """연구자 점수 API (사전 계산 테이블 또는 연도 범위 실시간 계산)"""
+    # 검색 조건
+    min_output = request.args.get('min_output', 10, type=int)
+    limit = request.args.get('limit', 100, type=int)
+    fwci_method = request.args.get('fwci_method', 'median')
+    year_from = request.args.get('year_from', type=int)
+    year_to = request.args.get('year_to', type=int)
+
+    # 연도 범위 지정 시: 실시간 계산
+    if year_from and year_to:
+        all_results = calculate_researcher_scores_by_year(year_from, year_to)
+
+        # FWCI 방식에 따라 정렬
+        if fwci_method == 'mean':
+            sort_key = 'score_total_mean'
+        else:
+            sort_key = 'score_total_median'
+
+        # 최소 논문 수 필터 및 정렬
+        filtered = [r for r in all_results if r['scholarly_output'] >= min_output]
+        filtered.sort(key=lambda x: x[sort_key], reverse=True)
+
+        total_count = len(filtered)
+        if limit > 0:
+            filtered = filtered[:limit]
+
+        # FWCI 방식에 따라 표시값 선택
+        results = []
+        for r in filtered:
+            if fwci_method == 'mean':
+                r['fwci'] = r['fwci_mean']
+                r['score_fwci'] = r['score_fwci_mean']
+                r['score_core'] = r['score_core_mean']
+                r['score_total'] = r['score_total_mean']
+            else:
+                r['fwci'] = r['fwci_median']
+                r['score_fwci'] = r['score_fwci_median']
+                r['score_core'] = r['score_core_median']
+                r['score_total'] = r['score_total_median']
+            results.append(r)
+
+        return jsonify({
+            'total_count': total_count,
+            'returned_count': len(results),
+            'fwci_method': fwci_method,
+            'year_from': year_from,
+            'year_to': year_to,
+            'researchers': results
+        })
+
+    # 연도 미지정: 기존 사전 계산 테이블 조회 (빠름)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    if fwci_method == 'mean':
+        order_col = 'score_total_mean'
+        fwci_col = 'fwci_mean'
+    else:
+        order_col = 'score_total_median'
+        fwci_col = 'fwci_median'
+
+    cursor.execute(f"""
+        SELECT * FROM researcher_score
+        WHERE scholarly_output >= ?
+        ORDER BY {order_col} DESC, {fwci_col} DESC
+        LIMIT ?
+    """, (min_output, limit))
+
+    rows = cursor.fetchall()
+
+    if not rows:
+        conn.close()
+        batch_calculate_researcher_scores()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT * FROM researcher_score
+            WHERE scholarly_output >= ?
+            ORDER BY {order_col} DESC, {fwci_col} DESC
+            LIMIT ?
+        """, (min_output, limit))
+        rows = cursor.fetchall()
+
+    cursor.execute("SELECT COUNT(*) FROM researcher_score WHERE scholarly_output >= ?", (min_output,))
+    total_count = cursor.fetchone()[0]
+
+    results = []
+    for row in rows:
+        if fwci_method == 'mean':
+            fwci_val = row['fwci_mean']
+            score_fwci = row['score_fwci_mean']
+            score_core = row['score_core_mean']
+            score_total = row['score_total_mean']
+        else:
+            fwci_val = row['fwci_median']
+            score_fwci = row['score_fwci_median']
+            score_core = row['score_core_median']
+            score_total = row['score_total_median']
+
+        results.append({
+            'author_id': row['author_id'],
+            'scopus_author_id': row['scopus_author_id'],
+            'name': row['name'],
+            'scholarly_output': row['scholarly_output'],
+            'citations': row['citations'],
+            'fwci': round(fwci_val, 2) if fwci_val else 0,
+            'fwci_mean': round(row['fwci_mean'], 2) if row['fwci_mean'] else 0,
+            'fwci_median': round(row['fwci_median'], 2) if row['fwci_median'] else 0,
+            'h_index': row['h_index'],
+            'top_10_pct_count': row['top_10_pct_count'],
+            'primary_affiliation': 'Jeonbuk National University',
+            'profile_url': row['profile_url'],
+            'intl_collab_count': row['intl_collab_count'],
+            'intl_collab_fwci': round(row['intl_collab_fwci'], 2) if row['intl_collab_fwci'] else None,
+            'top_journal_pct': round(row['top_journal_pct'], 1) if row['top_journal_pct'] else 0,
+            'has_sdg': row['has_sdg'] == 1,
+            'has_oa': row['has_oa'] == 1,
+            'avg_topic_prominence': round(row['avg_topic_prominence'], 1) if row['avg_topic_prominence'] else 0,
+            'score_fwci': score_fwci,
+            'score_top_cited': row['score_top_cited'],
+            'score_top_journal': row['score_top_journal'],
+            'score_intl_collab': row['score_intl_collab'],
+            'score_core': score_core,
+            'score_sdg': row['score_sdg'],
+            'score_oa': row['score_oa'],
+            'score_prominence': row['score_prominence'],
+            'score_secondary': row['score_secondary'],
+            'score_total': score_total
+        })
+
+    conn.close()
+
+    return jsonify({
+        'total_count': total_count,
+        'returned_count': len(results),
+        'fwci_method': fwci_method,
+        'researchers': results
+    })
+
+
+@app.route('/api/researcher_score/<scopus_id>')
+def api_researcher_score_detail(scopus_id):
+    """개별 연구자 점수 상세 API"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            author_id,
+            scopus_author_id,
+            name,
+            scholarly_output,
+            citations,
+            citations_per_publication,
+            field_weighted_citation_impact,
+            h_index,
+            output_in_top_10_percentile,
+            most_recent_publication,
+            oldest_publication,
+            primary_affiliation,
+            scopus_author_profile,
+            orcid
+        FROM author
+        WHERE scopus_author_id = ?
+    """, (scopus_id,))
+
+    author = cursor.fetchone()
+
+    if not author:
+        conn.close()
+        return jsonify({'error': 'Author not found'}), 404
+
+    author_dict = dict(author)
+
+    # 논문 통계 조회
+    pub_stats = get_author_publication_stats(conn, scopus_id)
+
+    # 점수 계산
+    scores = calculate_researcher_score(author_dict, pub_stats)
+
+    conn.close()
+
+    return jsonify({
+        'author': author_dict,
+        'publication_stats': pub_stats,
+        'scores': scores,
+        'score_breakdown': {
+            'core_indicators': {
+                'fwci': {'score': scores['fwci'], 'max': 35, 'value': author_dict['field_weighted_citation_impact']},
+                'top_cited': {'score': scores['top_cited'], 'max': 20, 'value': author_dict['output_in_top_10_percentile']},
+                'top_journal': {'score': scores['top_journal'], 'max': 15, 'value': f"{pub_stats['top_journal_percentage']:.1f}%"},
+                'intl_collab': {'score': scores['intl_collab'], 'max': 10, 'value': pub_stats['international_collab_fwci']}
+            },
+            'secondary_indicators': {
+                'sdg': {'score': scores['sdg'], 'max': 3, 'value': pub_stats['has_sdg_publications']},
+                'open_access': {'score': scores['open_access'], 'max': 2, 'value': pub_stats['has_open_access']},
+                'topic_prominence': {'score': scores['topic_prominence'], 'max': 5, 'value': pub_stats['avg_topic_prominence']}
+            },
+            'totals': {
+                'core': {'score': scores['core_total'], 'max': 80},
+                'secondary': {'score': scores['secondary_total'], 'max': 10},
+                'total': {'score': scores['total'], 'max': 90}
+            }
+        }
+    })
+
+
+@app.route('/api/download_researcher_ranking')
+def download_researcher_ranking():
+    """연구자 랭킹 CSV 다운로드 (사전 계산 테이블 사용)"""
+    import io
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    min_output = request.args.get('min_output', 10, type=int)
+    fwci_method = request.args.get('fwci_method', 'median')
+
+    # FWCI 방식에 따른 정렬 및 컬럼 선택
+    if fwci_method == 'mean':
+        order_col = 'score_total_mean'
+        fwci_col = 'fwci_mean'
+        score_fwci_col = 'score_fwci_mean'
+        score_core_col = 'score_core_mean'
+        score_total_col = 'score_total_mean'
+        method_label = '산술평균'
+    else:
+        order_col = 'score_total_median'
+        fwci_col = 'fwci_median'
+        score_fwci_col = 'score_fwci_median'
+        score_core_col = 'score_core_median'
+        score_total_col = 'score_total_median'
+        method_label = '중위값'
+
+    # 사전 계산된 테이블에서 조회
+    cursor.execute(f"""
+        SELECT * FROM researcher_score
+        WHERE scholarly_output >= ?
+        ORDER BY {order_col} DESC, {fwci_col} DESC
+    """, (min_output,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header
+    headers = ['순위', '연구자명', 'Scopus ID', '총논문수', '총인용수', f'FWCI({method_label})', 'h-index',
+               'Top10%논문수', '국제협력FWCI', '상위저널비율(%)', 'SDG해당', 'OA해당',
+               '평균Topic Prominence', 'FWCI점수', 'Top10%점수', '상위저널점수',
+               '국제협력점수', '핵심지표소계', 'SDG점수', 'OA점수', 'Prominence점수',
+               '보조지표소계', '총점', 'Scopus Profile']
+    writer.writerow(headers)
+
+    for i, r in enumerate(rows):
+        writer.writerow([
+            i + 1,
+            r['name'],
+            r['scopus_author_id'],
+            r['scholarly_output'],
+            r['citations'],
+            round(r[fwci_col], 2) if r[fwci_col] else 0,
+            r['h_index'],
+            r['top_10_pct_count'],
+            round(r['intl_collab_fwci'], 2) if r['intl_collab_fwci'] else '',
+            round(r['top_journal_pct'], 1) if r['top_journal_pct'] else 0,
+            'Y' if r['has_sdg'] else 'N',
+            'Y' if r['has_oa'] else 'N',
+            round(r['avg_topic_prominence'], 1) if r['avg_topic_prominence'] else 0,
+            r[score_fwci_col],
+            r['score_top_cited'],
+            r['score_top_journal'],
+            r['score_intl_collab'],
+            r[score_core_col],
+            r['score_sdg'],
+            r['score_oa'],
+            r['score_prominence'],
+            r['score_secondary'],
+            r[score_total_col],
+            r['profile_url']
+        ])
+
+    csv_content = output.getvalue()
+    output.close()
+
+    response = make_response(csv_content)
+    response.headers['Content-Type'] = 'text/csv; charset=utf-8-sig'
+    response.headers['Content-Disposition'] = f'attachment; filename=researcher_ranking_{datetime.now().strftime("%Y%m%d")}.csv'
+
+    return response
+
+
+# ========================================
+# 잠재 연구자 발굴 모듈 API
+# ========================================
+
+@app.route('/analysis_modules')
+def analysis_modules():
+    """연구자 분석 모듈 메인 페이지"""
+    return render_template('analysis_modules.html')
+
+
+@app.route('/api/potential_researchers')
+def api_potential_researchers():
+    """
+    잠재 연구자 발굴 API
+    1. 최근 3년 성장률 높은 연구자
+    2. FWCI 높지만 논문 수 적은 연구자
+    3. Topic Prominence 90+ 분야 연구자
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    analysis_type = request.args.get('type', 'growth')  # growth, high_fwci_low_output, high_prominence
+    limit = request.args.get('limit', 50, type=int)
+    year_from = request.args.get('year_from', type=int)
+    year_to = request.args.get('year_to', type=int)
+
+    # 연도 필터 SQL 조건
+    year_condition = ""
+    year_params = []
+    if year_from and year_to:
+        year_condition = " AND CAST(year AS INTEGER) BETWEEN ? AND ?"
+        year_params = [year_from, year_to]
+
+    results = []
+
+    if analysis_type == 'growth':
+        # 1. 최근 성장률 높은 연구자
+        # 성장률 = 경력 대비 최근 논문 비율. 항상 전체 논문 이력 기반으로 계산.
+        # 연도 필터는 "최근" 기간만 조정하고, 과거 이력은 항상 포함.
+        from datetime import datetime
+        current_year = datetime.now().year
+
+        # 항상 전체 논문을 가져옴 (성장률은 전체 경력 대비 지표)
+        cursor.execute("""
+            SELECT scopus_author_ids, year
+            FROM publication
+            WHERE scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+        """)
+        all_pubs = cursor.fetchall()
+
+        # 최근 기준 연도: 연도 필터 지정 시 year_from, 아니면 현재연도 - 2
+        recent_cutoff = year_from if (year_from and year_to) else (current_year - 2)
+        recent_end = year_to if (year_from and year_to) else current_year
+        recent_span = recent_end - recent_cutoff + 1
+
+        # 저자별 최근/이전 논문 수 집계
+        author_pub_counts = {}
+        for pub in all_pubs:
+            scopus_ids_str = pub['scopus_author_ids'] or ''
+            scopus_ids = [sid.strip() for sid in scopus_ids_str.replace('|', ' ').split() if sid.strip()]
+            try:
+                year = int(pub['year']) if pub['year'] else 0
+            except:
+                year = 0
+
+            for sid in scopus_ids:
+                if sid not in author_pub_counts:
+                    author_pub_counts[sid] = {'recent': 0, 'old': 0, 'total': 0}
+                if recent_cutoff <= year <= recent_end:
+                    author_pub_counts[sid]['recent'] += 1
+                elif year > 0:
+                    author_pub_counts[sid]['old'] += 1
+                if year > 0:
+                    author_pub_counts[sid]['total'] += 1
+
+        # 전북대 저자 정보 조회
+        cursor.execute(f"""
+            SELECT a.scopus_author_id, a.name, a.scholarly_output, a.citations,
+                   a.field_weighted_citation_impact as fwci, a.h_index,
+                   a.most_recent_publication, a.oldest_publication,
+                   a.scopus_author_profile as profile_url,
+                   rs.score_total_median as score_total
+            FROM author a
+            LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
+            WHERE a.primary_affiliation = 'Jeonbuk National University'
+            AND a.scholarly_output >= 5
+            AND a.most_recent_publication >= {recent_cutoff}
+        """)
+        authors = cursor.fetchall()
+
+        for author in authors:
+            author_dict = dict(author)
+            scopus_id = author_dict['scopus_author_id']
+
+            counts = author_pub_counts.get(scopus_id, {'recent': 0, 'old': 0, 'total': 0})
+            recent_count = counts['recent']
+            old_count = counts['old']
+            total_count = counts['total']
+
+            # 성장률 계산: 전체 경력 대비 최근 논문 비율
+            career_years = (author_dict['most_recent_publication'] or current_year) - (author_dict['oldest_publication'] or current_year - 4) + 1
+
+            if total_count > 0 and old_count > 0 and career_years > recent_span:
+                expected_ratio = recent_span / career_years
+                actual_ratio = recent_count / total_count
+                growth_rate = (actual_ratio / expected_ratio - 1) * 100 if expected_ratio > 0 else 0
+            else:
+                growth_rate = 0
+
+            if recent_count >= 3:  # 최근 기간 논문이 3편 이상인 경우만
+                period_output = total_count if (year_from and year_to) else author_dict['scholarly_output']
+                results.append({
+                    'scopus_author_id': scopus_id,
+                    'name': author_dict['name'],
+                    'scholarly_output': period_output,
+                    'citations': author_dict['citations'],
+                    'fwci': round(author_dict['fwci'], 2) if author_dict['fwci'] else 0,
+                    'h_index': author_dict['h_index'],
+                    'recent_3yr_count': recent_count,
+                    'growth_rate': round(growth_rate, 1),
+                    'career_years': career_years,
+                    'profile_url': author_dict['profile_url'],
+                    'score_total': author_dict['score_total'] or 0
+                })
+
+        results.sort(key=lambda x: x['growth_rate'], reverse=True)
+        results = results[:limit]
+
+    elif analysis_type == 'high_fwci_low_output':
+        # 2. FWCI 높지만 논문 수 적은 연구자 (잠재력 높음)
+        import math
+
+        if year_from and year_to:
+            # 연도 필터: 해당 기간 논문에서 직접 집계
+            cursor.execute("""
+                SELECT scopus_author_ids, field_weighted_citation_impact
+                FROM publication
+                WHERE CAST(year AS INTEGER) BETWEEN ? AND ?
+                AND scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+            """, (year_from, year_to))
+            period_pubs = cursor.fetchall()
+
+            # 저자별 논문수, FWCI 집계
+            author_stats = {}
+            for pub in period_pubs:
+                scopus_ids_str = pub['scopus_author_ids'] or ''
+                scopus_ids = [sid.strip() for sid in scopus_ids_str.replace('|', ' ').split() if sid.strip()]
+                fwci_val = None
+                try:
+                    fwci_val = float(pub['field_weighted_citation_impact']) if pub['field_weighted_citation_impact'] else None
+                except:
+                    pass
+                for sid in scopus_ids:
+                    if sid not in author_stats:
+                        author_stats[sid] = {'count': 0, 'fwci_values': []}
+                    author_stats[sid]['count'] += 1
+                    if fwci_val is not None:
+                        author_stats[sid]['fwci_values'].append(fwci_val)
+
+            # 전북대 저자 정보
+            cursor.execute("""
+                SELECT a.scopus_author_id, a.name, a.citations, a.h_index,
+                       a.scopus_author_profile as profile_url,
+                       rs.score_total_median as score_total
+                FROM author a
+                LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
+                WHERE a.primary_affiliation = 'Jeonbuk National University'
+            """)
+            for author in cursor.fetchall():
+                ad = dict(author)
+                sid = ad['scopus_author_id']
+                stats = author_stats.get(sid)
+                if not stats or stats['count'] < 5 or stats['count'] > 30:
+                    continue
+                fwci_vals = stats['fwci_values']
+                if not fwci_vals:
+                    continue
+                avg_fwci = sum(fwci_vals) / len(fwci_vals)
+                if avg_fwci < 1.5:
+                    continue
+                # Median FWCI
+                sorted_fwci = sorted(fwci_vals)
+                n = len(sorted_fwci)
+                mid = n // 2
+                median_fwci = (sorted_fwci[mid - 1] + sorted_fwci[mid]) / 2 if n % 2 == 0 else sorted_fwci[mid]
+                efficiency = avg_fwci / max(1, math.log(stats['count'] + 1))
+                results.append({
+                    'scopus_author_id': sid,
+                    'name': ad['name'],
+                    'scholarly_output': stats['count'],
+                    'citations': ad['citations'],
+                    'fwci': round(avg_fwci, 2),
+                    'fwci_median': round(median_fwci, 2),
+                    'h_index': ad['h_index'],
+                    'efficiency_score': round(efficiency, 2),
+                    'profile_url': ad['profile_url'],
+                    'score_total': ad['score_total'] or 0,
+                    'potential_note': '논문 수 대비 높은 FWCI - 연구 지원 시 높은 성장 잠재력'
+                })
+        else:
+            cursor.execute("""
+                SELECT a.scopus_author_id, a.name, a.scholarly_output, a.citations,
+                       a.field_weighted_citation_impact as fwci, a.h_index,
+                       a.scopus_author_profile as profile_url,
+                       rs.fwci_median, rs.score_total_median as score_total
+                FROM author a
+                LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
+                WHERE a.primary_affiliation = 'Jeonbuk National University'
+                AND a.scholarly_output BETWEEN 5 AND 30
+                AND a.field_weighted_citation_impact >= 1.5
+                ORDER BY a.field_weighted_citation_impact DESC
+                LIMIT ?
+            """, (limit,))
+            rows = cursor.fetchall()
+
+            for row in rows:
+                row_dict = dict(row)
+                efficiency = row_dict['fwci'] / max(1, math.log(row_dict['scholarly_output'] + 1))
+                results.append({
+                    'scopus_author_id': row_dict['scopus_author_id'],
+                    'name': row_dict['name'],
+                    'scholarly_output': row_dict['scholarly_output'],
+                    'citations': row_dict['citations'],
+                    'fwci': round(row_dict['fwci'], 2) if row_dict['fwci'] else 0,
+                    'fwci_median': round(row_dict['fwci_median'], 2) if row_dict['fwci_median'] else 0,
+                    'h_index': row_dict['h_index'],
+                    'efficiency_score': round(efficiency, 2),
+                    'profile_url': row_dict['profile_url'],
+                    'score_total': row_dict['score_total'] or 0,
+                    'potential_note': '논문 수 대비 높은 FWCI - 연구 지원 시 높은 성장 잠재력'
+                })
+
+        results.sort(key=lambda x: x['efficiency_score'], reverse=True)
+
+    elif analysis_type == 'high_prominence':
+        # 3. Topic Prominence 90+ 분야 연구자
+        # 먼저 prominence 90+ 논문을 가진 저자들 찾기
+        prom_query = """
+            SELECT DISTINCT p.scopus_author_ids,
+                   p.topic_name, p.topic_prominence_percentile
+            FROM publication p
+            WHERE CAST(p.topic_prominence_percentile AS REAL) >= 90
+        """
+        if year_from and year_to:
+            prom_query += " AND CAST(p.year AS INTEGER) BETWEEN ? AND ?"
+            cursor.execute(prom_query, (year_from, year_to))
+        else:
+            cursor.execute(prom_query)
+        prominence_pubs = cursor.fetchall()
+
+        # 저자별 고prominence 논문 수 집계
+        author_prominence = {}
+        for pub in prominence_pubs:
+            scopus_ids_str = pub['scopus_author_ids'] or ''
+            scopus_ids = [sid.strip() for sid in scopus_ids_str.replace('|', ' ').split() if sid.strip()]
+            for sid in scopus_ids:
+                if sid not in author_prominence:
+                    author_prominence[sid] = {
+                        'count': 0,
+                        'topics': set(),
+                        'max_prominence': 0
+                    }
+                author_prominence[sid]['count'] += 1
+                if pub['topic_name']:
+                    author_prominence[sid]['topics'].add(pub['topic_name'])
+                try:
+                    prom = float(pub['topic_prominence_percentile'])
+                    if prom > author_prominence[sid]['max_prominence']:
+                        author_prominence[sid]['max_prominence'] = prom
+                except:
+                    pass
+
+        # 연도 필터 시: 해당 기간의 저자별 논문수를 별도 집계
+        prom_period_counts = {}
+        if year_from and year_to:
+            cursor.execute("""
+                SELECT scopus_author_ids
+                FROM publication
+                WHERE CAST(year AS INTEGER) BETWEEN ? AND ?
+                AND scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+            """, (year_from, year_to))
+            for pub in cursor.fetchall():
+                scopus_ids_str = pub['scopus_author_ids'] or ''
+                for sid in [s.strip() for s in scopus_ids_str.replace('|', ' ').split() if s.strip()]:
+                    prom_period_counts[sid] = prom_period_counts.get(sid, 0) + 1
+
+        # 전북대 연구자 정보와 결합
+        for scopus_id, prom_data in author_prominence.items():
+            if prom_data['count'] < 2:  # 최소 2편 이상
+                continue
+
+            cursor.execute("""
+                SELECT a.scopus_author_id, a.name, a.scholarly_output, a.citations,
+                       a.field_weighted_citation_impact as fwci, a.h_index,
+                       a.scopus_author_profile as profile_url,
+                       rs.score_total_median as score_total
+                FROM author a
+                LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
+                WHERE a.scopus_author_id = ?
+                AND a.primary_affiliation = 'Jeonbuk National University'
+            """, (scopus_id,))
+            author = cursor.fetchone()
+
+            if author:
+                author_dict = dict(author)
+                # 연도 필터 시 해당 기간 논문수, 아니면 전체 논문수
+                period_output = prom_period_counts.get(scopus_id, 0) if (year_from and year_to) else author_dict['scholarly_output']
+                results.append({
+                    'scopus_author_id': scopus_id,
+                    'name': author_dict['name'],
+                    'scholarly_output': period_output,
+                    'citations': author_dict['citations'],
+                    'fwci': round(author_dict['fwci'], 2) if author_dict['fwci'] else 0,
+                    'h_index': author_dict['h_index'],
+                    'high_prominence_count': prom_data['count'],
+                    'max_prominence': round(prom_data['max_prominence'], 1),
+                    'topics': list(prom_data['topics'])[:3],  # 상위 3개 토픽만
+                    'profile_url': author_dict['profile_url'],
+                    'score_total': author_dict['score_total'] or 0
+                })
+
+        results.sort(key=lambda x: (x['high_prominence_count'], x['max_prominence']), reverse=True)
+        results = results[:limit]
+
+    # DB 내 최신 데이터 연도
+    cursor.execute("SELECT MAX(CAST(year AS INTEGER)) FROM publication WHERE year IS NOT NULL")
+    max_data_year = cursor.fetchone()[0] or (datetime.now().year - 1)
+
+    conn.close()
+
+    return jsonify({
+        'analysis_type': analysis_type,
+        'count': len(results),
+        'researchers': results,
+        'max_data_year': max_data_year
+    })
+
+
+# ========================================
+# 고인용 논문 유도 대상 모듈 API
+# ========================================
+
+@app.route('/api/high_citation_potential')
+def api_high_citation_potential():
+    """
+    고인용 논문 유도 대상 API
+    1. 상위 저널 게재율 높지만 인용수 낮은 연구자
+    2. 국제협력 확대 시 인용 향상 가능한 연구자
+    3. Top 10% 저널 게재 경험 있지만 Top 10% 피인용 없는 연구자
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    analysis_type = request.args.get('type', 'top_journal_low_citation')
+    limit = request.args.get('limit', 50, type=int)
+    year_from = request.args.get('year_from', type=int)
+    year_to = request.args.get('year_to', type=int)
+
+    results = []
+
+    # 연도 필터 시 실시간 계산된 점수 사용
+    year_scores = None
+    if year_from and year_to:
+        year_scores = calculate_researcher_scores_by_year(year_from, year_to)
+        year_scores_map = {r['scopus_author_id']: r for r in year_scores}
+
+    if analysis_type == 'top_journal_low_citation':
+        # 1. 상위 저널 게재율 높지만 인용수 낮은 연구자
+        # 기대인용수 = SUM(field_citation_average) — 각 논문의 분야별 평균 인용수 합계
+        if year_from and year_to:
+            for sid, rs in year_scores_map.items():
+                if rs['top_journal_pct'] < 30 or rs['scholarly_output'] < 10:
+                    continue
+                expected_citations = rs.get('expected_citations', 0) or 0
+                actual_citations = rs.get('actual_citations_in_period', 0) or 0
+                if expected_citations <= 0:
+                    continue
+                citation_gap = expected_citations - actual_citations
+                if citation_gap > 0:
+                    cpp = actual_citations / max(1, rs['scholarly_output'])
+                    results.append({
+                        'scopus_author_id': sid,
+                        'name': rs['name'],
+                        'scholarly_output': rs['scholarly_output'],
+                        'expected_citations': round(expected_citations, 1),
+                        'citations': actual_citations,
+                        'fwci': round(rs['fwci'], 2) if rs['fwci'] else 0,
+                        'h_index': rs['h_index'],
+                        'top_journal_pct': round(rs['top_journal_pct'], 1),
+                        'citation_gap': round(citation_gap, 1),
+                        'citations_per_pub': round(cpp, 1),
+                        'profile_url': rs['profile_url'],
+                        'recommendation': '상위 저널 게재율 대비 인용 부족 - 홍보/네트워킹 지원 필요'
+                    })
+        else:
+            # 비필터 모드: 전체 publication 1회 스캔으로 저자별 기대인용수/실제인용수 집계
+            cursor.execute("""
+                SELECT scopus_author_ids, field_citation_average, citations
+                FROM publication
+                WHERE scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+            """)
+            author_citation_agg = {}  # {scopus_id: {expected, actual}}
+            for pub in cursor.fetchall():
+                fca = 0
+                if pub['field_citation_average']:
+                    try: fca = float(pub['field_citation_average'])
+                    except: pass
+                cit = 0
+                if pub['citations']:
+                    try: cit = int(float(str(pub['citations'])))
+                    except: pass
+                for sid in (s.strip() for s in (pub['scopus_author_ids'] or '').replace('|', ' ').split() if s.strip()):
+                    if sid not in author_citation_agg:
+                        author_citation_agg[sid] = {'expected': 0.0, 'actual': 0}
+                    author_citation_agg[sid]['expected'] += fca
+                    author_citation_agg[sid]['actual'] += cit
+
+            cursor.execute("""
+                SELECT rs.scopus_author_id, rs.name, rs.scholarly_output, rs.citations,
+                       rs.fwci, rs.h_index, rs.top_journal_pct, rs.profile_url,
+                       a.citations_per_publication
+                FROM researcher_score rs
+                JOIN author a ON rs.scopus_author_id = a.scopus_author_id
+                WHERE rs.top_journal_pct >= 30
+                AND rs.scholarly_output >= 10
+                ORDER BY rs.top_journal_pct DESC
+            """)
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                sid = row_dict['scopus_author_id']
+                agg = author_citation_agg.get(sid)
+                if not agg:
+                    continue
+
+                expected_citations = agg['expected']
+                actual_citations = agg['actual']
+
+                if expected_citations <= 0:
+                    continue
+                citation_gap = expected_citations - actual_citations
+                if citation_gap > 0:
+                    results.append({
+                        'scopus_author_id': sid,
+                        'name': row_dict['name'],
+                        'scholarly_output': row_dict['scholarly_output'],
+                        'expected_citations': round(expected_citations, 1),
+                        'citations': actual_citations,
+                        'fwci': round(row_dict['fwci'], 2) if row_dict['fwci'] else 0,
+                        'h_index': row_dict['h_index'],
+                        'top_journal_pct': round(row_dict['top_journal_pct'], 1),
+                        'citation_gap': round(citation_gap, 1),
+                        'citations_per_pub': round(row_dict['citations_per_publication'], 1) if row_dict['citations_per_publication'] else 0,
+                        'profile_url': row_dict['profile_url'],
+                        'recommendation': '상위 저널 게재율 대비 인용 부족 - 홍보/네트워킹 지원 필요'
+                    })
+
+        results.sort(key=lambda x: x['citation_gap'], reverse=True)
+        results = results[:limit]
+
+    elif analysis_type == 'intl_collab_potential':
+        # 2. 국제협력 확대 시 인용 향상 가능한 연구자
+        if year_from and year_to:
+            for sid, rs in year_scores_map.items():
+                if rs['scholarly_output'] < 10 or (rs['fwci_median'] or 0) < 1.0:
+                    continue
+                intl_ratio = (rs['intl_collab_count'] or 0) / max(1, rs['scholarly_output'])
+                if intl_ratio >= 0.3:
+                    continue
+                results.append({
+                    'scopus_author_id': sid,
+                    'name': rs['name'],
+                    'scholarly_output': rs['scholarly_output'],
+                    'citations': rs['citations'],
+                    'fwci': round(rs['fwci_median'], 2) if rs['fwci_median'] else 0,
+                    'h_index': rs['h_index'],
+                    'intl_collab_count': rs['intl_collab_count'] or 0,
+                    'intl_collab_ratio': round(intl_ratio * 100, 1),
+                    'intl_collab_fwci': round(rs['intl_collab_fwci'], 2) if rs['intl_collab_fwci'] else None,
+                    'profile_url': rs['profile_url'],
+                    'recommendation': '국제협력 확대 시 인용 향상 가능성 높음'
+                })
+            results.sort(key=lambda x: x['fwci'], reverse=True)
+        else:
+            cursor.execute("""
+                SELECT rs.*, a.most_recent_publication
+                FROM researcher_score rs
+                JOIN author a ON rs.scopus_author_id = a.scopus_author_id
+                WHERE rs.scholarly_output >= 10
+                AND rs.fwci_median >= 1.0
+                AND (rs.intl_collab_count * 1.0 / rs.scholarly_output) < 0.3
+                ORDER BY rs.fwci_median DESC
+            """)
+            rows = cursor.fetchall()
+            for row in rows:
+                row_dict = dict(row)
+                intl_ratio = (row_dict['intl_collab_count'] or 0) / max(1, row_dict['scholarly_output'])
+                results.append({
+                    'scopus_author_id': row_dict['scopus_author_id'],
+                    'name': row_dict['name'],
+                    'scholarly_output': row_dict['scholarly_output'],
+                    'citations': row_dict['citations'],
+                    'fwci': round(row_dict['fwci_median'], 2) if row_dict['fwci_median'] else 0,
+                    'h_index': row_dict['h_index'],
+                    'intl_collab_count': row_dict['intl_collab_count'] or 0,
+                    'intl_collab_ratio': round(intl_ratio * 100, 1),
+                    'intl_collab_fwci': round(row_dict['intl_collab_fwci'], 2) if row_dict['intl_collab_fwci'] else None,
+                    'profile_url': row_dict['profile_url'],
+                    'recommendation': '국제협력 확대 시 인용 향상 가능성 높음'
+                })
+
+        results = results[:limit]
+
+    elif analysis_type == 'top_journal_no_top_cited':
+        # 3. Top 10% 저널 게재 경험 있지만 Top 10% 피인용 없는 연구자
+        if year_from and year_to:
+            # 연도 필터 시: 해당 기간 top journal 보유 + top 10% 피인용 없는 저자
+            cursor.execute("""
+                SELECT a.output_in_top_10_percentile
+                FROM author a
+                WHERE a.primary_affiliation = 'Jeonbuk National University'
+                AND (a.output_in_top_10_percentile IS NULL OR a.output_in_top_10_percentile = 0)
+            """)
+            no_top_cited_set = set()
+            # 먼저 전북대 저자 중 top 10% 피인용 없는 저자 조회
+            cursor.execute("""
+                SELECT a.scopus_author_id
+                FROM author a
+                WHERE a.primary_affiliation = 'Jeonbuk National University'
+                AND (a.output_in_top_10_percentile IS NULL OR a.output_in_top_10_percentile = 0)
+            """)
+            no_top_cited_set = {row['scopus_author_id'] for row in cursor.fetchall()}
+
+            for sid, rs in year_scores_map.items():
+                if sid not in no_top_cited_set:
+                    continue
+                if rs['top_journal_pct'] <= 0 or rs['scholarly_output'] < 10:
+                    continue
+                results.append({
+                    'scopus_author_id': sid,
+                    'name': rs['name'],
+                    'scholarly_output': rs['scholarly_output'],
+                    'citations': rs['citations'],
+                    'fwci': round(rs['fwci'], 2) if rs['fwci'] else 0,
+                    'h_index': rs['h_index'],
+                    'top_journal_pct': round(rs['top_journal_pct'], 1),
+                    'top_10_cited_count': 0,
+                    'profile_url': rs['profile_url'],
+                    'recommendation': '상위 저널 게재 경험 있음 - 인용 극대화 전략 필요'
+                })
+        else:
+            cursor.execute("""
+                SELECT rs.*, a.output_in_top_10_percentile as top_cited_from_author
+                FROM researcher_score rs
+                JOIN author a ON rs.scopus_author_id = a.scopus_author_id
+                WHERE rs.top_journal_pct > 0
+                AND rs.scholarly_output >= 10
+                AND (a.output_in_top_10_percentile IS NULL OR a.output_in_top_10_percentile = 0)
+            """)
+            rows = cursor.fetchall()
+            for row in rows:
+                row_dict = dict(row)
+                results.append({
+                    'scopus_author_id': row_dict['scopus_author_id'],
+                    'name': row_dict['name'],
+                    'scholarly_output': row_dict['scholarly_output'],
+                    'citations': row_dict['citations'],
+                    'fwci': round(row_dict['fwci'], 2) if row_dict['fwci'] else 0,
+                    'h_index': row_dict['h_index'],
+                    'top_journal_pct': round(row_dict['top_journal_pct'], 1),
+                    'top_10_cited_count': 0,
+                    'profile_url': row_dict['profile_url'],
+                    'recommendation': '상위 저널 게재 경험 있음 - 인용 극대화 전략 필요'
+                })
+
+        results.sort(key=lambda x: x['top_journal_pct'], reverse=True)
+        results = results[:limit]
+
+    # DB 내 최신 데이터 연도
+    cursor.execute("SELECT MAX(CAST(year AS INTEGER)) FROM publication WHERE year IS NOT NULL")
+    max_data_year = cursor.fetchone()[0] or (datetime.now().year - 1)
+
+    conn.close()
+
+    return jsonify({
+        'analysis_type': analysis_type,
+        'count': len(results),
+        'researchers': results,
+        'max_data_year': max_data_year
+    })
+
+
+# ========================================
+# 공동연구 분석 모듈 API
+# ========================================
+
+@app.route('/api/collaboration_analysis')
+def api_collaboration_analysis():
+    """
+    공동연구 분석 API
+    1. 국제협력 없는 고성과 연구자 (지원 대상)
+    2. 공동연구 활발 + 고인용 연구자 (롤모델/멘토)
+    3. 분야별 협력 허브 연구자
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    analysis_type = request.args.get('type', 'no_intl_high_performer')
+    limit = request.args.get('limit', 50, type=int)
+    year_from = request.args.get('year_from', type=int)
+    year_to = request.args.get('year_to', type=int)
+
+    results = []
+
+    # 연도 필터 시 실시간 계산된 점수 사용
+    year_scores_map = None
+    if year_from and year_to and analysis_type in ('no_intl_high_performer', 'collab_high_citation'):
+        year_scores = calculate_researcher_scores_by_year(year_from, year_to)
+        year_scores_map = {r['scopus_author_id']: r for r in year_scores}
+
+    if analysis_type == 'no_intl_high_performer':
+        # 1. 국제협력 없는 고성과 연구자 (지원 대상)
+        if year_scores_map:
+            for sid, rs in year_scores_map.items():
+                if rs['scholarly_output'] < 15 or (rs['fwci_median'] or 0) < 1.0:
+                    continue
+                if (rs['intl_collab_count'] or 0) > 2:
+                    continue
+                results.append({
+                    'scopus_author_id': sid,
+                    'name': rs['name'],
+                    'scholarly_output': rs['scholarly_output'],
+                    'citations': rs['citations'],
+                    'fwci': round(rs['fwci_median'], 2) if rs['fwci_median'] else 0,
+                    'h_index': rs['h_index'],
+                    'intl_collab_count': rs['intl_collab_count'] or 0,
+                    'top_journal_pct': round(rs['top_journal_pct'], 1) if rs['top_journal_pct'] else 0,
+                    'profile_url': rs['profile_url'],
+                    'score_total': rs['score_total_median'] or 0,
+                    'support_type': '국제협력 지원 대상',
+                    'recommendation': '높은 연구 성과 보유 - 국제협력 지원 시 성장 잠재력 큼'
+                })
+            results.sort(key=lambda x: x['fwci'], reverse=True)
+        else:
+            cursor.execute("""
+                SELECT rs.*
+                FROM researcher_score rs
+                WHERE rs.scholarly_output >= 15
+                AND rs.fwci_median >= 1.0
+                AND (rs.intl_collab_count IS NULL OR rs.intl_collab_count <= 2)
+                ORDER BY rs.fwci_median DESC
+            """)
+            rows = cursor.fetchall()
+            for row in rows:
+                row_dict = dict(row)
+                results.append({
+                    'scopus_author_id': row_dict['scopus_author_id'],
+                    'name': row_dict['name'],
+                    'scholarly_output': row_dict['scholarly_output'],
+                    'citations': row_dict['citations'],
+                    'fwci': round(row_dict['fwci_median'], 2) if row_dict['fwci_median'] else 0,
+                    'h_index': row_dict['h_index'],
+                    'intl_collab_count': row_dict['intl_collab_count'] or 0,
+                    'top_journal_pct': round(row_dict['top_journal_pct'], 1) if row_dict['top_journal_pct'] else 0,
+                    'profile_url': row_dict['profile_url'],
+                    'score_total': row_dict['score_total_median'] or 0,
+                    'support_type': '국제협력 지원 대상',
+                    'recommendation': '높은 연구 성과 보유 - 국제협력 지원 시 성장 잠재력 큼'
+                })
+
+        results = results[:limit]
+
+    elif analysis_type == 'collab_high_citation':
+        # 2. 공동연구 활발 + 고인용 연구자 (롤모델/멘토)
+        if year_scores_map:
+            for sid, rs in year_scores_map.items():
+                if rs['scholarly_output'] < 20 or (rs['intl_collab_count'] or 0) < 5:
+                    continue
+                if (rs['fwci_median'] or 0) < 1.5:
+                    continue
+                intl_ratio = (rs['intl_collab_count'] or 0) / max(1, rs['scholarly_output'])
+                intl_collab_fwci = rs['intl_collab_fwci'] or 0
+                results.append({
+                    'scopus_author_id': sid,
+                    'name': rs['name'],
+                    'scholarly_output': rs['scholarly_output'],
+                    'citations': rs['citations'],
+                    'fwci': round(rs['fwci_median'], 2) if rs['fwci_median'] else 0,
+                    'h_index': rs['h_index'],
+                    'intl_collab_count': rs['intl_collab_count'] or 0,
+                    'intl_collab_ratio': round(intl_ratio * 100, 1),
+                    'intl_collab_fwci': round(intl_collab_fwci, 2) if intl_collab_fwci else None,
+                    'profile_url': rs['profile_url'],
+                    'score_total': rs['score_total_median'] or 0,
+                    'role': '롤모델/멘토',
+                    'recommendation': '국제협력 + 고인용 성과 - 신진 연구자 멘토링 적합'
+                })
+            results.sort(key=lambda x: ((x['intl_collab_fwci'] or 0) * x['intl_collab_count']), reverse=True)
+        else:
+            cursor.execute("""
+                SELECT rs.*
+                FROM researcher_score rs
+                WHERE rs.scholarly_output >= 20
+                AND rs.intl_collab_count >= 5
+                AND rs.fwci_median >= 1.5
+                ORDER BY (rs.intl_collab_fwci * rs.intl_collab_count) DESC
+            """)
+            rows = cursor.fetchall()
+            for row in rows:
+                row_dict = dict(row)
+                intl_ratio = (row_dict['intl_collab_count'] or 0) / max(1, row_dict['scholarly_output'])
+                results.append({
+                    'scopus_author_id': row_dict['scopus_author_id'],
+                    'name': row_dict['name'],
+                    'scholarly_output': row_dict['scholarly_output'],
+                    'citations': row_dict['citations'],
+                    'fwci': round(row_dict['fwci_median'], 2) if row_dict['fwci_median'] else 0,
+                    'h_index': row_dict['h_index'],
+                    'intl_collab_count': row_dict['intl_collab_count'] or 0,
+                    'intl_collab_ratio': round(intl_ratio * 100, 1),
+                    'intl_collab_fwci': round(row_dict['intl_collab_fwci'], 2) if row_dict['intl_collab_fwci'] else None,
+                    'profile_url': row_dict['profile_url'],
+                    'score_total': row_dict['score_total_median'] or 0,
+                    'role': '롤모델/멘토',
+                    'recommendation': '국제협력 + 고인용 성과 - 신진 연구자 멘토링 적합'
+                })
+
+        results = results[:limit]
+
+    elif analysis_type == 'field_hub':
+        # 3. 분야별 협력 허브 연구자
+        # 먼저 전북대 연구자 정보를 한 번에 캐싱
+        cursor.execute("""
+            SELECT a.scopus_author_id, a.name, a.scholarly_output, a.citations,
+                   a.field_weighted_citation_impact as fwci, a.h_index,
+                   a.scopus_author_profile as profile_url,
+                   rs.score_total_median as score_total, rs.intl_collab_count
+            FROM author a
+            LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
+            WHERE a.primary_affiliation = 'Jeonbuk National University'
+        """)
+        jbnu_authors = {row['scopus_author_id']: dict(row) for row in cursor.fetchall()}
+
+        # 연도 필터 시: 해당 기간의 저자별 논문수를 별도 집계
+        author_period_counts = {}
+        if year_from and year_to:
+            cursor.execute("""
+                SELECT scopus_author_ids
+                FROM publication
+                WHERE CAST(year AS INTEGER) BETWEEN ? AND ?
+                AND scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+            """, (year_from, year_to))
+            for pub in cursor.fetchall():
+                scopus_ids_str = pub['scopus_author_ids'] or ''
+                for sid in [s.strip() for s in scopus_ids_str.replace('|', ' ').split() if s.strip()]:
+                    if sid in jbnu_authors:
+                        author_period_counts[sid] = author_period_counts.get(sid, 0) + 1
+
+        # 각 분야에서 공저자 수가 많은 연구자 찾기
+        hub_query = """
+            SELECT p.all_science_journal_classification_asjc_field_name as field,
+                   p.scopus_author_ids, p.number_of_authors
+            FROM publication p
+            WHERE p.all_science_journal_classification_asjc_field_name IS NOT NULL
+            AND p.all_science_journal_classification_asjc_field_name != ''
+        """
+        if year_from and year_to:
+            hub_query += " AND CAST(p.year AS INTEGER) BETWEEN ? AND ?"
+            cursor.execute(hub_query, (year_from, year_to))
+        else:
+            cursor.execute(hub_query)
+        pubs = cursor.fetchall()
+
+        # 분야별 저자 협력 네트워크 분석
+        field_author_network = {}
+        for pub in pubs:
+            field = pub['field']
+            if not field:
+                continue
+
+            scopus_ids_str = pub['scopus_author_ids'] or ''
+            scopus_ids = [sid.strip() for sid in scopus_ids_str.replace('|', ' ').split() if sid.strip()]
+
+            try:
+                num_authors = int(pub['number_of_authors']) if pub['number_of_authors'] else len(scopus_ids)
+            except:
+                num_authors = len(scopus_ids)
+
+            for sid in scopus_ids:
+                # 전북대 연구자만 처리 (미리 필터링)
+                if sid not in jbnu_authors:
+                    continue
+
+                key = (field, sid)
+                if key not in field_author_network:
+                    field_author_network[key] = {
+                        'pub_count': 0,
+                        'total_coauthors': 0,
+                        'unique_coauthors': set()
+                    }
+                field_author_network[key]['pub_count'] += 1
+                field_author_network[key]['total_coauthors'] += num_authors - 1
+                for other_sid in scopus_ids:
+                    if other_sid != sid:
+                        field_author_network[key]['unique_coauthors'].add(other_sid)
+
+        # 전북대 연구자와 결합 (캐시에서 조회)
+        field_hubs = {}
+        for (field, scopus_id), data in field_author_network.items():
+            if data['pub_count'] < 5:  # 최소 5편 이상
+                continue
+
+            author_dict = jbnu_authors.get(scopus_id)
+            if author_dict:
+                hub_score = data['pub_count'] * len(data['unique_coauthors'])
+
+                if field not in field_hubs:
+                    field_hubs[field] = []
+
+                # 연도 필터 시 해당 기간 논문수, 아니면 전체 논문수
+                period_output = author_period_counts.get(scopus_id, 0) if (year_from and year_to) else author_dict['scholarly_output']
+
+                field_hubs[field].append({
+                    'scopus_author_id': scopus_id,
+                    'name': author_dict['name'],
+                    'scholarly_output': period_output,
+                    'citations': author_dict['citations'],
+                    'fwci': round(author_dict['fwci'], 2) if author_dict['fwci'] else 0,
+                    'h_index': author_dict['h_index'],
+                    'field': field,
+                    'field_pub_count': data['pub_count'],
+                    'unique_coauthors': len(data['unique_coauthors']),
+                    'hub_score': hub_score,
+                    'intl_collab_count': author_dict['intl_collab_count'] or 0,
+                    'profile_url': author_dict['profile_url'],
+                    'score_total': author_dict['score_total'] or 0,
+                    'role': '분야 허브 연구자'
+                })
+
+        # 각 분야별 상위 허브 연구자 추출
+        for field in field_hubs:
+            field_hubs[field].sort(key=lambda x: x['hub_score'], reverse=True)
+            field_hubs[field] = field_hubs[field][:3]  # 분야별 상위 3명
+
+        # 결과 평탄화
+        for field, researchers in field_hubs.items():
+            results.extend(researchers)
+
+        results.sort(key=lambda x: x['hub_score'], reverse=True)
+        results = results[:limit]
+
+    # DB 내 최신 데이터 연도
+    cursor.execute("SELECT MAX(CAST(year AS INTEGER)) FROM publication WHERE year IS NOT NULL")
+    max_data_year = cursor.fetchone()[0] or (datetime.now().year - 1)
+
+    conn.close()
+
+    return jsonify({
+        'analysis_type': analysis_type,
+        'count': len(results),
+        'researchers': results,
+        'max_data_year': max_data_year
+    })
+
+
+@app.route('/research_strategy')
+def research_strategy():
+    """연구 전략 메인 페이지"""
+    return render_template('research_strategy.html')
+
+
+@app.route('/api/research_trajectory')
+def api_research_trajectory():
+    """
+    연구 궤적 분석 API
+    1. growth_trajectory — 3년 연속 성장 연구자
+    2. early_warning — 연구 활동 감소 조기 경보
+    3. rising_star — 신진 라이징 스타
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    analysis_type = request.args.get('type', 'growth_trajectory')
+    limit = request.args.get('limit', 50, type=int)
+    year_from = request.args.get('year_from', type=int)
+    year_to = request.args.get('year_to', type=int)
+
+    from datetime import datetime
+    current_year = datetime.now().year
+
+    # author 테이블 dict 구축 (전북대 소속만)
+    cursor.execute("""
+        SELECT scopus_author_id, name, scholarly_output, citations,
+               field_weighted_citation_impact, h_index,
+               oldest_publication, most_recent_publication, scopus_author_profile
+        FROM author
+        WHERE primary_affiliation LIKE '%Jeonbuk%'
+    """)
+    jbnu_authors = {}
+    for row in cursor.fetchall():
+        jbnu_authors[row['scopus_author_id']] = {
+            'name': row['name'],
+            'scholarly_output': row['scholarly_output'] or 0,
+            'citations': row['citations'] or 0,
+            'fwci': row['field_weighted_citation_impact'] or 0,
+            'h_index': row['h_index'] or 0,
+            'oldest_pub': row['oldest_publication'],
+            'most_recent_pub': row['most_recent_publication'],
+            'profile_url': row['scopus_author_profile'] or ''
+        }
+
+    # publication 1회 스캔 → 연구자별 연도별 논문수 dict
+    # 궤적 분석은 연속 연도 비교가 필요하므로 항상 전체 데이터 로드
+    cursor.execute("""
+        SELECT scopus_author_ids, year, field_weighted_citation_impact
+        FROM publication
+        WHERE scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+    """)
+
+    author_year_counts = {}  # {scopus_id: {year: count}}
+    author_year_fwci = {}    # {scopus_id: {year: [fwci_vals]}}
+    for pub in cursor.fetchall():
+        try:
+            yr = int(pub['year']) if pub['year'] else None
+        except (ValueError, TypeError):
+            yr = None
+        if yr is None:
+            continue
+
+        fwci_val = 0
+        if pub['field_weighted_citation_impact']:
+            try:
+                fwci_val = float(pub['field_weighted_citation_impact'])
+            except (ValueError, TypeError):
+                pass
+
+        for sid in (s.strip() for s in (pub['scopus_author_ids'] or '').replace('|', ' ').split() if s.strip()):
+            if sid not in author_year_counts:
+                author_year_counts[sid] = {}
+                author_year_fwci[sid] = {}
+            author_year_counts[sid][yr] = author_year_counts[sid].get(yr, 0) + 1
+            if yr not in author_year_fwci[sid]:
+                author_year_fwci[sid][yr] = []
+            author_year_fwci[sid][yr].append(fwci_val)
+
+    results = []
+
+    # DB에서 가장 최근 연도 조회 (현재 연도에 데이터가 없을 수 있음)
+    cursor.execute("SELECT MAX(CAST(year AS INTEGER)) FROM publication WHERE year IS NOT NULL")
+    max_data_year = cursor.fetchone()[0] or (current_year - 1)
+
+    if analysis_type == 'growth_trajectory':
+        # 3년 연속 논문수 증가 연구자
+        check_end = min(year_to, max_data_year) if (year_from and year_to) else max_data_year
+        check_start = check_end - 2  # 최근 3년
+
+        for sid, year_dict in author_year_counts.items():
+            if sid not in jbnu_authors:
+                continue
+            author = jbnu_authors[sid]
+
+            counts = []
+            for y in range(check_start, check_end + 1):
+                counts.append(year_dict.get(y, 0))
+
+            # 3년 연속 증가 확인 (각 연도 >= 1편이면서 순차적 증가)
+            if len(counts) >= 3 and counts[0] >= 1:
+                is_growing = all(counts[i] > counts[i-1] for i in range(1, len(counts)))
+                if not is_growing:
+                    continue
+
+                total_period = sum(year_dict.get(y, 0) for y in range(check_start, check_end + 1))
+                growth_pct = round((counts[-1] - counts[0]) / counts[0] * 100) if counts[0] > 0 else 0
+
+                results.append({
+                    'scopus_author_id': sid,
+                    'name': author['name'],
+                    'scholarly_output': author['scholarly_output'],
+                    'citations': author['citations'],
+                    'fwci': round(author['fwci'], 2),
+                    'h_index': author['h_index'],
+                    'year_counts': {str(y): year_dict.get(y, 0) for y in range(check_start, check_end + 1)},
+                    'y1': counts[0],
+                    'y2': counts[1],
+                    'y3': counts[2],
+                    'growth_pct': growth_pct,
+                    'total_period': total_period,
+                    'profile_url': author['profile_url']
+                })
+
+        results.sort(key=lambda x: x['growth_pct'], reverse=True)
+        results = results[:limit]
+
+    elif analysis_type == 'early_warning':
+        # 연구 활동 감소 조기 경보: 과거 활발 + 최근 2년 급감
+        check_end = min(year_to, max_data_year) if (year_from and year_to) else max_data_year
+        recent_start = check_end - 1
+        past_start = check_end - 4
+        past_end = check_end - 2
+
+        for sid, year_dict in author_year_counts.items():
+            if sid not in jbnu_authors:
+                continue
+            author = jbnu_authors[sid]
+
+            past_count = sum(year_dict.get(y, 0) for y in range(past_start, past_end + 1))
+            recent_count = sum(year_dict.get(y, 0) for y in range(recent_start, check_end + 1))
+
+            if past_count < 5:  # 과거 최소 5편 이상이어야
+                continue
+
+            past_avg = past_count / 3.0
+            recent_avg = recent_count / 2.0
+
+            if past_avg > 0 and recent_avg < past_avg * 0.5:
+                decline_pct = round((1 - recent_avg / past_avg) * 100)
+                results.append({
+                    'scopus_author_id': sid,
+                    'name': author['name'],
+                    'scholarly_output': author['scholarly_output'],
+                    'citations': author['citations'],
+                    'fwci': round(author['fwci'], 2),
+                    'h_index': author['h_index'],
+                    'past_avg': round(past_avg, 1),
+                    'recent_avg': round(recent_avg, 1),
+                    'decline_pct': decline_pct,
+                    'past_period': f"{past_start}-{past_end}",
+                    'recent_period': f"{recent_start}-{check_end}",
+                    'profile_url': author['profile_url']
+                })
+
+        results.sort(key=lambda x: x['decline_pct'], reverse=True)
+        results = results[:limit]
+
+    elif analysis_type == 'rising_star':
+        # 신진 라이징 스타: 최초발표 5년 이내 + 높은 FWCI 또는 h-index
+        for sid, author in jbnu_authors.items():
+            oldest = author['oldest_pub']
+            if not oldest:
+                continue
+            try:
+                oldest_yr = int(oldest)
+            except (ValueError, TypeError):
+                continue
+
+            career_years = current_year - oldest_yr + 1
+            if career_years > 5 or career_years < 1:
+                continue
+
+            if sid not in author_year_counts:
+                continue
+
+            total_pubs = sum(author_year_counts[sid].values())
+            if total_pubs < 3:  # 최소 3편
+                continue
+
+            fwci = author['fwci']
+            h_index = author['h_index'] or 0
+
+            # FWCI > 1.5 또는 h_index >= 5 (신진 기준)
+            if fwci < 1.5 and h_index < 5:
+                continue
+
+            star_score = round(fwci * 40 + h_index * 3 + total_pubs * 2, 1)
+
+            results.append({
+                'scopus_author_id': sid,
+                'name': author['name'],
+                'scholarly_output': total_pubs,
+                'citations': author['citations'],
+                'fwci': round(fwci, 2),
+                'h_index': h_index,
+                'career_years': career_years,
+                'first_pub_year': oldest_yr,
+                'star_score': star_score,
+                'profile_url': author['profile_url']
+            })
+
+        results.sort(key=lambda x: x['star_score'], reverse=True)
+        results = results[:limit]
+
+    conn.close()
+
+    return jsonify({
+        'analysis_type': analysis_type,
+        'count': len(results),
+        'researchers': results,
+        'max_data_year': max_data_year
+    })
+
+
+@app.route('/api/societal_impact')
+def api_societal_impact():
+    """
+    사회적 영향력 분석 API
+    1. patent_cited — 특허 인용 연구자
+    2. policy_cited — 정책 인용 연구자
+    3. sdg_contribution — SDG 기여 연구자
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    analysis_type = request.args.get('type', 'patent_cited')
+    limit = request.args.get('limit', 50, type=int)
+    year_from = request.args.get('year_from', type=int)
+    year_to = request.args.get('year_to', type=int)
+
+    year_condition = ""
+    year_params = []
+    if year_from and year_to:
+        year_condition = " AND CAST(year AS INTEGER) BETWEEN ? AND ?"
+        year_params = [year_from, year_to]
+
+    # author 테이블 dict (전북대 소속만)
+    cursor.execute("""
+        SELECT scopus_author_id, name, scholarly_output, citations,
+               field_weighted_citation_impact, h_index, scopus_author_profile
+        FROM author
+        WHERE primary_affiliation LIKE '%Jeonbuk%'
+    """)
+    jbnu_authors = {}
+    for row in cursor.fetchall():
+        jbnu_authors[row['scopus_author_id']] = {
+            'name': row['name'],
+            'scholarly_output': row['scholarly_output'] or 0,
+            'citations': row['citations'] or 0,
+            'fwci': row['field_weighted_citation_impact'] or 0,
+            'h_index': row['h_index'] or 0,
+            'profile_url': row['scopus_author_profile'] or ''
+        }
+
+    results = []
+
+    if analysis_type == 'patent_cited':
+        # 특허 인용 연구자
+        cursor.execute(f"""
+            SELECT scopus_author_ids, main_patent_families
+            FROM publication
+            WHERE is_patent_cited = 1
+                  AND scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+                  {year_condition}
+        """, year_params)
+
+        author_patent = {}  # {sid: {'patent_pubs': count, 'total_patents': sum}}
+        for pub in cursor.fetchall():
+            patent_count = 0
+            if pub['main_patent_families']:
+                try:
+                    patent_count = int(float(str(pub['main_patent_families'])))
+                except (ValueError, TypeError):
+                    pass
+
+            for sid in (s.strip() for s in (pub['scopus_author_ids'] or '').replace('|', ' ').split() if s.strip()):
+                if sid not in author_patent:
+                    author_patent[sid] = {'patent_pubs': 0, 'total_patents': 0}
+                author_patent[sid]['patent_pubs'] += 1
+                author_patent[sid]['total_patents'] += patent_count
+
+        for sid, data in author_patent.items():
+            if sid not in jbnu_authors:
+                continue
+            author = jbnu_authors[sid]
+            results.append({
+                'scopus_author_id': sid,
+                'name': author['name'],
+                'scholarly_output': author['scholarly_output'],
+                'citations': author['citations'],
+                'fwci': round(author['fwci'], 2),
+                'h_index': author['h_index'],
+                'patent_pubs': data['patent_pubs'],
+                'total_patents': data['total_patents'],
+                'profile_url': author['profile_url']
+            })
+
+        results.sort(key=lambda x: x['total_patents'], reverse=True)
+        results = results[:limit]
+
+    elif analysis_type == 'policy_cited':
+        # 정책 인용 연구자
+        cursor.execute(f"""
+            SELECT scopus_author_ids, policy_citations
+            FROM publication
+            WHERE is_policy_cited = 1
+                  AND scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+                  {year_condition}
+        """, year_params)
+
+        author_policy = {}
+        for pub in cursor.fetchall():
+            policy_count = 0
+            if pub['policy_citations']:
+                try:
+                    policy_count = int(float(str(pub['policy_citations'])))
+                except (ValueError, TypeError):
+                    pass
+
+            for sid in (s.strip() for s in (pub['scopus_author_ids'] or '').replace('|', ' ').split() if s.strip()):
+                if sid not in author_policy:
+                    author_policy[sid] = {'policy_pubs': 0, 'total_policies': 0}
+                author_policy[sid]['policy_pubs'] += 1
+                author_policy[sid]['total_policies'] += policy_count
+
+        for sid, data in author_policy.items():
+            if sid not in jbnu_authors:
+                continue
+            author = jbnu_authors[sid]
+            results.append({
+                'scopus_author_id': sid,
+                'name': author['name'],
+                'scholarly_output': author['scholarly_output'],
+                'citations': author['citations'],
+                'fwci': round(author['fwci'], 2),
+                'h_index': author['h_index'],
+                'policy_pubs': data['policy_pubs'],
+                'total_policies': data['total_policies'],
+                'profile_url': author['profile_url']
+            })
+
+        results.sort(key=lambda x: x['total_policies'], reverse=True)
+        results = results[:limit]
+
+    elif analysis_type == 'sdg_contribution':
+        # SDG 기여 연구자
+        cursor.execute(f"""
+            SELECT scopus_author_ids, sustainable_development_goals_2025
+            FROM publication
+            WHERE is_SDG = 1
+                  AND scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+                  {year_condition}
+        """, year_params)
+
+        author_sdg = {}  # {sid: {'sdg_pubs': count, 'sdg_categories': set}}
+        for pub in cursor.fetchall():
+            sdg_text = pub['sustainable_development_goals_2025'] or ''
+            sdg_list = [s.strip() for s in sdg_text.replace('|', ',').split(',') if s.strip()]
+
+            for sid in (s.strip() for s in (pub['scopus_author_ids'] or '').replace('|', ' ').split() if s.strip()):
+                if sid not in author_sdg:
+                    author_sdg[sid] = {'sdg_pubs': 0, 'sdg_categories': set()}
+                author_sdg[sid]['sdg_pubs'] += 1
+                for sdg in sdg_list:
+                    author_sdg[sid]['sdg_categories'].add(sdg)
+
+        for sid, data in author_sdg.items():
+            if sid not in jbnu_authors:
+                continue
+            author = jbnu_authors[sid]
+            categories = sorted(data['sdg_categories'])
+            results.append({
+                'scopus_author_id': sid,
+                'name': author['name'],
+                'scholarly_output': author['scholarly_output'],
+                'citations': author['citations'],
+                'fwci': round(author['fwci'], 2),
+                'h_index': author['h_index'],
+                'sdg_pubs': data['sdg_pubs'],
+                'sdg_count': len(categories),
+                'sdg_categories': ', '.join(categories[:5]),
+                'profile_url': author['profile_url']
+            })
+
+        results.sort(key=lambda x: x['sdg_pubs'], reverse=True)
+        results = results[:limit]
+
+    conn.close()
+
+    return jsonify({
+        'analysis_type': analysis_type,
+        'count': len(results),
+        'researchers': results
+    })
+
+
+@app.route('/api/strategic_portfolio')
+def api_strategic_portfolio():
+    """
+    전략 포트폴리오 분석 API
+    1. field_strategy_map — 분야별 전략 맵
+    2. collab_effect — 협력 효과 분석
+    3. academic_corporate — 산학협력 분석
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    analysis_type = request.args.get('type', 'field_strategy_map')
+    limit = request.args.get('limit', 50, type=int)
+    year_from = request.args.get('year_from', type=int)
+    year_to = request.args.get('year_to', type=int)
+
+    year_condition = ""
+    year_params = []
+    if year_from and year_to:
+        year_condition = " AND CAST(year AS INTEGER) BETWEEN ? AND ?"
+        year_params = [year_from, year_to]
+
+    results = []
+
+    if analysis_type == 'field_strategy_map':
+        # 분야별 전략 맵: ASJC 분야별 논문수/평균FWCI/국제비율 집계
+        cursor.execute(f"""
+            SELECT all_science_journal_classification_asjc_field_name,
+                   field_weighted_citation_impact, is_international, is_top_cited,
+                   is_1, citations
+            FROM publication
+            WHERE all_science_journal_classification_asjc_field_name IS NOT NULL
+                  AND all_science_journal_classification_asjc_field_name != ''
+                  {year_condition}
+        """, year_params)
+
+        field_stats = {}  # {field: {count, fwci_sum, intl, top_cited, is_1, citations_sum}}
+        for pub in cursor.fetchall():
+            fields = [f.strip() for f in (pub['all_science_journal_classification_asjc_field_name'] or '').replace('|', ',').split(',') if f.strip()]
+
+            fwci_val = 0
+            if pub['field_weighted_citation_impact']:
+                try:
+                    fwci_val = float(pub['field_weighted_citation_impact'])
+                except (ValueError, TypeError):
+                    pass
+
+            cit_val = 0
+            if pub['citations']:
+                try:
+                    cit_val = int(float(str(pub['citations'])))
+                except (ValueError, TypeError):
+                    pass
+
+            is_intl = 1 if pub['is_international'] else 0
+            is_tc = 1 if pub['is_top_cited'] else 0
+            is_1_val = 1 if pub['is_1'] else 0
+
+            for field in fields:
+                if field not in field_stats:
+                    field_stats[field] = {'count': 0, 'fwci_sum': 0, 'intl': 0, 'top_cited': 0, 'is_1': 0, 'citations_sum': 0}
+                fs = field_stats[field]
+                fs['count'] += 1
+                fs['fwci_sum'] += fwci_val
+                fs['intl'] += is_intl
+                fs['top_cited'] += is_tc
+                fs['is_1'] += is_1_val
+                fs['citations_sum'] += cit_val
+
+        for field, fs in field_stats.items():
+            if fs['count'] < 10:  # 최소 10편
+                continue
+            avg_fwci = round(fs['fwci_sum'] / fs['count'], 2)
+            intl_ratio = round(fs['intl'] / fs['count'] * 100, 1)
+            top_cited_ratio = round(fs['top_cited'] / fs['count'] * 100, 1)
+            top_journal_ratio = round(fs['is_1'] / fs['count'] * 100, 1)
+
+            # 전략 등급: FWCI >= 1.5 + 국제비율 >= 40% = "핵심 강점"
+            if avg_fwci >= 1.5 and intl_ratio >= 40:
+                strategy = '핵심 강점'
+                strategy_class = 'success'
+            elif avg_fwci >= 1.0:
+                strategy = '성장 분야'
+                strategy_class = 'primary'
+            elif fs['count'] >= 50:
+                strategy = '규모 우위'
+                strategy_class = 'info'
+            else:
+                strategy = '육성 필요'
+                strategy_class = 'warning'
+
+            results.append({
+                'field': field,
+                'pub_count': fs['count'],
+                'avg_fwci': avg_fwci,
+                'intl_ratio': intl_ratio,
+                'top_cited_ratio': top_cited_ratio,
+                'top_journal_ratio': top_journal_ratio,
+                'total_citations': fs['citations_sum'],
+                'strategy': strategy,
+                'strategy_class': strategy_class
+            })
+
+        results.sort(key=lambda x: x['pub_count'], reverse=True)
+        results = results[:limit]
+
+    elif analysis_type == 'collab_effect':
+        # 협력 효과 분석: 연구자별 협력 유형별 FWCI 비교
+        cursor.execute(f"""
+            SELECT scopus_author_ids, field_weighted_citation_impact,
+                   is_single_author, is_institutional_collab, is_national_collab, is_international
+            FROM publication
+            WHERE scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+                  {year_condition}
+        """, year_params)
+
+        # author dict (전북대 소속만)
+        cursor2 = conn.cursor()
+        cursor2.execute("""
+            SELECT scopus_author_id, name, scholarly_output, citations,
+                   field_weighted_citation_impact, h_index, scopus_author_profile
+            FROM author
+            WHERE primary_affiliation LIKE '%Jeonbuk%'
+        """)
+        jbnu_authors = {}
+        for row in cursor2.fetchall():
+            jbnu_authors[row['scopus_author_id']] = {
+                'name': row['name'],
+                'scholarly_output': row['scholarly_output'] or 0,
+                'citations': row['citations'] or 0,
+                'fwci': row['field_weighted_citation_impact'] or 0,
+                'h_index': row['h_index'] or 0,
+                'profile_url': row['scopus_author_profile'] or ''
+            }
+
+        author_collab = {}  # {sid: {single: [fwci], institutional: [fwci], national: [fwci], international: [fwci]}}
+        for pub in cursor.fetchall():
+            fwci_val = 0
+            if pub['field_weighted_citation_impact']:
+                try:
+                    fwci_val = float(pub['field_weighted_citation_impact'])
+                except (ValueError, TypeError):
+                    pass
+
+            collab_type = 'other'
+            if pub['is_international']:
+                collab_type = 'international'
+            elif pub['is_national_collab']:
+                collab_type = 'national'
+            elif pub['is_institutional_collab']:
+                collab_type = 'institutional'
+            elif pub['is_single_author']:
+                collab_type = 'single'
+
+            for sid in (s.strip() for s in (pub['scopus_author_ids'] or '').replace('|', ' ').split() if s.strip()):
+                if sid not in author_collab:
+                    author_collab[sid] = {'single': [], 'institutional': [], 'national': [], 'international': [], 'other': []}
+                author_collab[sid][collab_type].append(fwci_val)
+
+        for sid, data in author_collab.items():
+            if sid not in jbnu_authors:
+                continue
+            author = jbnu_authors[sid]
+
+            total_pubs = sum(len(v) for v in data.values())
+            if total_pubs < 5:
+                continue
+
+            def avg_fwci(lst):
+                return round(sum(lst) / len(lst), 2) if lst else None
+
+            intl_fwci = avg_fwci(data['international'])
+            natl_fwci = avg_fwci(data['national'])
+            inst_fwci = avg_fwci(data['institutional'])
+            single_fwci = avg_fwci(data['single'])
+
+            # 국제 > 국내 효과 비교
+            best_fwci = max(filter(None, [intl_fwci, natl_fwci, inst_fwci, single_fwci]), default=0)
+            if intl_fwci and single_fwci and single_fwci > 0:
+                collab_boost = round((intl_fwci - single_fwci) / single_fwci * 100)
+            elif intl_fwci and natl_fwci and natl_fwci > 0:
+                collab_boost = round((intl_fwci - natl_fwci) / natl_fwci * 100)
+            else:
+                collab_boost = 0
+
+            results.append({
+                'scopus_author_id': sid,
+                'name': author['name'],
+                'scholarly_output': author['scholarly_output'],
+                'citations': author['citations'],
+                'fwci': round(author['fwci'], 2),
+                'h_index': author['h_index'],
+                'single_fwci': single_fwci,
+                'inst_fwci': inst_fwci,
+                'natl_fwci': natl_fwci,
+                'intl_fwci': intl_fwci,
+                'intl_count': len(data['international']),
+                'collab_boost': collab_boost,
+                'profile_url': author['profile_url']
+            })
+
+        results.sort(key=lambda x: x['collab_boost'], reverse=True)
+        results = results[:limit]
+
+    elif analysis_type == 'academic_corporate':
+        # 산학협력 분석
+        cursor.execute(f"""
+            SELECT scopus_author_ids, field_weighted_citation_impact, citations
+            FROM publication
+            WHERE is_academic_corporate = 1
+                  AND scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+                  {year_condition}
+        """, year_params)
+
+        # author dict (전북대 소속만)
+        cursor2 = conn.cursor()
+        cursor2.execute("""
+            SELECT scopus_author_id, name, scholarly_output, citations,
+                   field_weighted_citation_impact, h_index, scopus_author_profile
+            FROM author
+            WHERE primary_affiliation LIKE '%Jeonbuk%'
+        """)
+        jbnu_authors = {}
+        for row in cursor2.fetchall():
+            jbnu_authors[row['scopus_author_id']] = {
+                'name': row['name'],
+                'scholarly_output': row['scholarly_output'] or 0,
+                'citations': row['citations'] or 0,
+                'fwci': row['field_weighted_citation_impact'] or 0,
+                'h_index': row['h_index'] or 0,
+                'profile_url': row['scopus_author_profile'] or ''
+            }
+
+        # 전체 논문수도 필요 (산학 비율 계산용)
+        cursor.execute(f"""
+            SELECT scopus_author_ids
+            FROM publication
+            WHERE scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+                  {year_condition}
+        """, year_params)
+        author_total = {}
+        for pub in cursor.fetchall():
+            for sid in (s.strip() for s in (pub['scopus_author_ids'] or '').replace('|', ' ').split() if s.strip()):
+                author_total[sid] = author_total.get(sid, 0) + 1
+
+        # 산학협력 논문 집계 재수행
+        cursor.execute(f"""
+            SELECT scopus_author_ids, field_weighted_citation_impact, citations
+            FROM publication
+            WHERE is_academic_corporate = 1
+                  AND scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+                  {year_condition}
+        """, year_params)
+
+        author_corp = {}
+        for pub in cursor.fetchall():
+            fwci_val = 0
+            if pub['field_weighted_citation_impact']:
+                try:
+                    fwci_val = float(pub['field_weighted_citation_impact'])
+                except (ValueError, TypeError):
+                    pass
+            cit_val = 0
+            if pub['citations']:
+                try:
+                    cit_val = int(float(str(pub['citations'])))
+                except (ValueError, TypeError):
+                    pass
+
+            for sid in (s.strip() for s in (pub['scopus_author_ids'] or '').replace('|', ' ').split() if s.strip()):
+                if sid not in author_corp:
+                    author_corp[sid] = {'corp_pubs': 0, 'fwci_list': [], 'cit_sum': 0}
+                author_corp[sid]['corp_pubs'] += 1
+                author_corp[sid]['fwci_list'].append(fwci_val)
+                author_corp[sid]['cit_sum'] += cit_val
+
+        for sid, data in author_corp.items():
+            if sid not in jbnu_authors:
+                continue
+            if data['corp_pubs'] < 2:
+                continue
+            author = jbnu_authors[sid]
+            total = author_total.get(sid, 1)
+            corp_ratio = round(data['corp_pubs'] / total * 100, 1) if total > 0 else 0
+            avg_fwci = round(sum(data['fwci_list']) / len(data['fwci_list']), 2) if data['fwci_list'] else 0
+
+            results.append({
+                'scopus_author_id': sid,
+                'name': author['name'],
+                'scholarly_output': author['scholarly_output'],
+                'citations': author['citations'],
+                'fwci': round(author['fwci'], 2),
+                'h_index': author['h_index'],
+                'corp_pubs': data['corp_pubs'],
+                'corp_ratio': corp_ratio,
+                'corp_avg_fwci': avg_fwci,
+                'corp_citations': data['cit_sum'],
+                'profile_url': author['profile_url']
+            })
+
+        results.sort(key=lambda x: x['corp_pubs'], reverse=True)
+        results = results[:limit]
+
+    conn.close()
+
+    return jsonify({
+        'analysis_type': analysis_type,
+        'count': len(results),
+        'researchers': results
+    })
+
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 57769))
