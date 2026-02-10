@@ -3,112 +3,320 @@
 {% block title %}우수 연구자 랭킹 - JBNU ORAP{% endblock %}
 
 {% block content %}
+<style>
+    .drilldown-toggle:hover {
+        background-color: #f8f9fa;
+    }
+    .drilldown-toggle .drilldown-chevron {
+        transition: transform 0.2s ease;
+        margin-right: 5px;
+        color: #6c757d;
+    }
+    .drilldown-content {
+        transition: all 0.3s ease;
+    }
+    .drilldown-content td {
+        border-top: none !important;
+    }
+</style>
 <div class="row mb-4">
     <div class="col-12">
-        <h2><i class="fas fa-trophy"></i> 우수 연구자 랭킹</h2>
-        <p class="text-muted">연구 성과 지표 기반 점수 산출 시스템</p>
+        <h2><i class="fas fa-trophy"></i> <span data-i18n="researcher_ranking.title">우수 연구자 랭킹</span></h2>
+        <p class="text-muted" data-i18n="researcher_ranking.subtitle">전북대학교 소속 연구자의 연구 역량을 다면적으로 평가합니다</p>
     </div>
 </div>
 
 <!-- 점수 기준 안내 -->
 <div class="card mb-4">
     <div class="card-header" data-bs-toggle="collapse" data-bs-target="#scoringCriteria" style="cursor: pointer;">
-        <i class="fas fa-info-circle"></i> 점수 산출 기준 (클릭하여 펼치기)
+        <i class="fas fa-info-circle"></i> <span data-i18n="researcher_ranking.scoring_criteria">점수 산출 기준 (클릭하여 펼치기)</span>
     </div>
     <div class="collapse" id="scoringCriteria">
         <div class="card-body">
-            <!-- 점수 계산 방식 설명 -->
-            <div class="alert alert-secondary mb-3">
-                <h6 class="alert-heading"><i class="fas fa-calculator"></i> 점수 계산 방식</h6>
-                <p class="mb-2">각 지표는 <strong>개별 논문별로 점수를 산출</strong>한 후 <strong>평균</strong>을 계산합니다.</p>
-                <div class="small">
-                    <strong>예시)</strong> 연구자가 10편의 논문을 보유한 경우:<br>
-                    - 상위 저널 점수: 3편이 Top 10% 저널(15점), 7편이 기타 저널(5점)<br>
-                    - 최종 점수 = (3×15 + 7×5) ÷ 10 = <strong>8.0점</strong>
+            <!-- 1. 점수 체계 개요 -->
+            <div class="alert alert-primary mb-4">
+                <h6 class="alert-heading mb-2"><i class="fas fa-bullseye"></i> <span data-i18n="researcher_ranking.sc_overview_title">점수 체계 개요</span></h6>
+                <p class="mb-2" data-i18n-html="researcher_ranking.sc_overview_desc">본 랭킹 시스템은 연구자의 <strong>질적 우수성</strong>을 다면적으로 평가하기 위해 설계되었습니다.</p>
+                <ul class="mb-0 small">
+                    <li data-i18n-html="researcher_ranking.sc_overview_core"><strong>핵심지표 (80점)</strong>: 연구의 영향력과 질적 수준을 직접 측정 (FWCI, 피인용, 저널 수준, 국제협력)</li>
+                    <li data-i18n-html="researcher_ranking.sc_overview_secondary"><strong>보조지표 (10점)</strong>: 연구의 사회적 가치와 접근성 평가 (SDG, OA, 주목받는 주제)</li>
+                    <li data-i18n-html="researcher_ranking.sc_overview_total"><strong>총점: 90점 만점</strong> = 핵심지표(80) + 보조지표(10)</li>
+                </ul>
+            </div>
+
+            <!-- 2. 점수 계산 방식 -->
+            <div class="alert alert-secondary mb-4">
+                <h6 class="alert-heading mb-2"><i class="fas fa-calculator"></i> <span data-i18n="researcher_ranking.sc_method_title">점수 계산 방식: 논문별 점수의 평균</span></h6>
+                <p class="mb-2" data-i18n-html="researcher_ranking.sc_method_desc">각 지표는 <strong>개별 논문별로 점수를 산출</strong>한 후, 해당 연구자의 모든 논문에 대해 <strong>평균값</strong>을 계산합니다.</p>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="bg-white p-2 rounded border small">
+                            <strong data-i18n="researcher_ranking.sc_example1_title">예시 1) 상위 저널 점수</strong><br>
+                            <span data-i18n="researcher_ranking.sc_example1_line1">연구자 A: 총 10편 논문</span><br>
+                            <span data-i18n="researcher_ranking.sc_example1_line2">- 3편: Top 10% 저널 → 각 15점</span><br>
+                            <span data-i18n="researcher_ranking.sc_example1_line3">- 7편: 기타 저널 → 각 5점</span><br>
+                            <strong data-i18n="researcher_ranking.sc_example1_result">점수 = (3×15 + 7×5) ÷ 10 = 8.0점</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="bg-white p-2 rounded border small">
+                            <strong data-i18n="researcher_ranking.sc_example2_title">예시 2) FWCI 점수 (중위값 방식)</strong><br>
+                            <span data-i18n="researcher_ranking.sc_example2_line1">연구자 B: 5편 논문의 FWCI</span><br>
+                            <span data-i18n="researcher_ranking.sc_example2_line2">- 논문별 점수: 10, 15, 20, 25, 35점</span><br>
+                            <span data-i18n="researcher_ranking.sc_example2_result">중위값 = 20점 (정렬 후 가운데 값)</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2 small text-muted">
+                    <i class="fas fa-lightbulb"></i> <span data-i18n-html="researcher_ranking.sc_method_note"><strong>FWCI만 중위값/평균 선택 가능</strong>: 극단적 고인용 논문의 영향을 줄이기 위해 중위값 사용을 권장합니다.</span>
                 </div>
             </div>
 
-            <div class="row">
-                <div class="col-md-6">
-                    <h6><strong>핵심지표 (80점 만점)</strong></h6>
-                    <table class="table table-sm table-bordered">
-                        <thead class="table-light">
-                            <tr>
-                                <th>지표</th>
-                                <th>개별 논문 점수</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td><strong>FWCI (중위값)</strong><br><small class="text-muted">35점 만점</small></td>
-                                <td class="small">
-                                    &lt;2: 10점 | 2-4: 15점 | 4-6: 20점<br>
-                                    6-8: 25점 | 8-10: 30점 | &ge;10: 35점
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>Top 10% 피인용</strong><br><small class="text-muted">20점 만점</small></td>
-                                <td class="small">
-                                    Top 10% 해당: <strong>20점</strong><br>
-                                    비해당: <strong>10점</strong>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>상위 저널</strong><br><small class="text-muted">15점 만점</small></td>
-                                <td class="small">
-                                    Top 10% 저널: <strong>15점</strong><br>
-                                    기타 저널: <strong>5점</strong>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>국제협력 FWCI</strong><br><small class="text-muted">10점 만점</small></td>
-                                <td class="small">
-                                    국제협력 논문만 대상<br>
-                                    &lt;1.0: 1점 | 1.0-1.5: 4점<br>
-                                    1.5-2.0: 7점 | &ge;2.0: 10점
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="col-md-6">
-                    <h6><strong>보조지표 (10점 만점)</strong></h6>
-                    <table class="table table-sm table-bordered">
-                        <thead class="table-light">
-                            <tr>
-                                <th>지표</th>
-                                <th>개별 논문 점수</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td><strong>SDG 관련</strong><br><small class="text-muted">3점 만점</small></td>
-                                <td class="small">
-                                    SDG 해당: <strong>3점</strong><br>
-                                    비해당: <strong>0점</strong>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>Open Access</strong><br><small class="text-muted">2점 만점</small></td>
-                                <td class="small">
-                                    OA 논문: <strong>2점</strong><br>
-                                    비해당: <strong>0점</strong>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>Topic Prominence</strong><br><small class="text-muted">5점 만점</small></td>
-                                <td class="small">
-                                    Percentile &ge;90: <strong>5점</strong><br>
-                                    Percentile &lt;90: <strong>0점</strong>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <div class="alert alert-info py-2 mb-0">
-                        <strong>총점: 90점 만점</strong><br>
-                        <small>= 핵심지표(80) + 보조지표(10)</small>
+            <!-- 3. 핵심지표 상세 -->
+            <h5 class="mb-3"><i class="fas fa-star text-warning"></i> <span data-i18n="researcher_ranking.sc_core_title">핵심지표 (80점 만점)</span></h5>
+            <div class="row mb-4">
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100 border-primary">
+                        <div class="card-header bg-primary text-white py-2">
+                            <strong data-i18n="researcher_ranking.sc_fwci_title">① FWCI (Field-Weighted Citation Impact)</strong>
+                            <span class="badge bg-light text-primary float-end" data-i18n="researcher_ranking.sc_fwci_max">35점 만점</span>
+                        </div>
+                        <div class="card-body small">
+                            <p data-i18n-html="researcher_ranking.sc_fwci_def"><strong>정의:</strong> 동일 연도·분야·문헌유형의 세계 평균 인용수 대비 해당 논문의 인용수 비율</p>
+                            <p data-i18n-html="researcher_ranking.sc_fwci_meaning"><strong>의미:</strong> 1.0 = 세계 평균, 2.0 = 세계 평균의 2배 인용</p>
+                            <table class="table table-sm table-bordered mb-2">
+                                <thead class="table-light">
+                                    <tr><th data-i18n="researcher_ranking.sc_fwci_range">FWCI 범위</th><th data-i18n="researcher_ranking.score">점수</th><th data-i18n="researcher_ranking.sc_fwci_interp">해석</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>≥ 10.0</td><td><strong>35</strong></td><td data-i18n="researcher_ranking.sc_fwci_top">최상위 영향력</td></tr>
+                                    <tr><td>8.0 ~ 9.99</td><td>30</td><td data-i18n="researcher_ranking.sc_fwci_very_high">매우 높은 영향력</td></tr>
+                                    <tr><td>6.0 ~ 7.99</td><td>25</td><td data-i18n="researcher_ranking.sc_fwci_high">높은 영향력</td></tr>
+                                    <tr><td>4.0 ~ 5.99</td><td>20</td><td data-i18n="researcher_ranking.sc_fwci_excellent">우수한 영향력</td></tr>
+                                    <tr><td>2.0 ~ 3.99</td><td>15</td><td data-i18n="researcher_ranking.sc_fwci_above_avg">평균 이상</td></tr>
+                                    <tr><td>< 2.0</td><td>10</td><td data-i18n="researcher_ranking.sc_fwci_avg">평균 수준</td></tr>
+                                </tbody>
+                            </table>
+                            <p class="mb-0 text-muted"><i class="fas fa-database"></i> <span data-i18n-html="researcher_ranking.sc_fwci_source"><strong>데이터 출처:</strong> Elsevier SciVal</span></p>
+                        </div>
                     </div>
                 </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100 border-success">
+                        <div class="card-header bg-success text-white py-2">
+                            <strong data-i18n="researcher_ranking.sc_top_cited_title">② Top 10% 피인용 (Highly Cited)</strong>
+                            <span class="badge bg-light text-success float-end" data-i18n="researcher_ranking.sc_top_cited_max">20점 만점</span>
+                        </div>
+                        <div class="card-body small">
+                            <p data-i18n-html="researcher_ranking.sc_top_cited_def"><strong>정의:</strong> 동일 연도·분야 내에서 피인용수 상위 10%에 해당하는 논문 여부</p>
+                            <p data-i18n-html="researcher_ranking.sc_top_cited_meaning"><strong>의미:</strong> 해당 분야에서 가장 많이 인용된 우수 논문</p>
+                            <table class="table table-sm table-bordered mb-2">
+                                <thead class="table-light">
+                                    <tr><th data-i18n="researcher_ranking.sc_condition">조건</th><th data-i18n="researcher_ranking.score">점수</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td data-i18n="researcher_ranking.sc_top_cited_yes">Top 10% 피인용 논문</td><td><strong>20</strong></td></tr>
+                                    <tr><td data-i18n="researcher_ranking.sc_top_cited_no">비해당</td><td>10</td></tr>
+                                </tbody>
+                            </table>
+                            <p class="mb-0 text-muted"><i class="fas fa-database"></i> <span data-i18n-html="researcher_ranking.sc_top_cited_source"><strong>데이터 출처:</strong> Scopus is_10 필드 (SciVal 기준)</span></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100 border-warning">
+                        <div class="card-header bg-warning py-2">
+                            <strong data-i18n="researcher_ranking.sc_top_journal_title">③ 상위 저널 게재 (Top Journal)</strong>
+                            <span class="badge bg-light text-warning float-end" data-i18n="researcher_ranking.sc_top_journal_max">15점 만점</span>
+                        </div>
+                        <div class="card-body small">
+                            <p data-i18n-html="researcher_ranking.sc_top_journal_def"><strong>정의:</strong> SNIP, CiteScore, SJR 중 하나라도 상위 10% 이내인 저널에 게재된 논문</p>
+                            <p data-i18n-html="researcher_ranking.sc_top_journal_meaning"><strong>의미:</strong> 해당 분야에서 가장 영향력 있는 저널에 논문을 게재</p>
+                            <table class="table table-sm table-bordered mb-2">
+                                <thead class="table-light">
+                                    <tr><th data-i18n="researcher_ranking.sc_condition">조건</th><th data-i18n="researcher_ranking.score">점수</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td data-i18n="researcher_ranking.sc_top_journal_yes">Top 10% 저널 (SNIP/CiteScore/SJR ≤ 10 percentile)</td><td><strong>15</strong></td></tr>
+                                    <tr><td data-i18n="researcher_ranking.sc_top_journal_no">기타 저널</td><td>5</td></tr>
+                                </tbody>
+                            </table>
+                            <p class="mb-1" data-i18n-html="researcher_ranking.sc_journal_metrics"><strong>저널 지표 설명:</strong></p>
+                            <ul class="mb-0">
+                                <li data-i18n-html="researcher_ranking.sc_snip_desc"><strong>SNIP</strong>: Source Normalized Impact per Paper (분야 정규화 인용)</li>
+                                <li data-i18n-html="researcher_ranking.sc_citescore_desc"><strong>CiteScore</strong>: 최근 4년간 인용수 / 동 기간 발표 논문수</li>
+                                <li data-i18n-html="researcher_ranking.sc_sjr_desc"><strong>SJR</strong>: SCImago Journal Rank (인용 네트워크 기반)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100 border-info">
+                        <div class="card-header bg-info text-white py-2">
+                            <strong data-i18n="researcher_ranking.sc_intl_title">④ 국제협력 FWCI</strong>
+                            <span class="badge bg-light text-info float-end" data-i18n="researcher_ranking.sc_intl_max">10점 만점</span>
+                        </div>
+                        <div class="card-body small">
+                            <p data-i18n-html="researcher_ranking.sc_intl_def"><strong>정의:</strong> 해외 기관 소속 연구자와 공동으로 수행한 논문(국제협력 논문)의 FWCI</p>
+                            <p data-i18n-html="researcher_ranking.sc_intl_meaning"><strong>의미:</strong> 국제 공동연구의 질적 수준 평가</p>
+                            <table class="table table-sm table-bordered mb-2">
+                                <thead class="table-light">
+                                    <tr><th data-i18n="researcher_ranking.sc_intl_fwci">국제협력 논문 FWCI</th><th data-i18n="researcher_ranking.score">점수</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>≥ 2.0</td><td><strong>10</strong></td></tr>
+                                    <tr><td>1.5 ~ 1.99</td><td>7</td></tr>
+                                    <tr><td>1.0 ~ 1.49</td><td>4</td></tr>
+                                    <tr><td>< 1.0</td><td>1</td></tr>
+                                </tbody>
+                            </table>
+                            <p class="mb-0 text-muted"><i class="fas fa-info-circle"></i> <span data-i18n-html="researcher_ranking.sc_intl_note"><strong>참고:</strong> 국제협력 논문이 없는 경우 0점 (평균 계산에서 제외)</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. 보조지표 상세 -->
+            <h5 class="mb-3"><i class="fas fa-plus-circle text-secondary"></i> <span data-i18n="researcher_ranking.sc_secondary_title">보조지표 (10점 만점)</span></h5>
+            <div class="row mb-3">
+                <div class="col-md-4 mb-3">
+                    <div class="card h-100">
+                        <div class="card-header bg-light py-2">
+                            <strong data-i18n="researcher_ranking.sc_sdg_title">⑤ SDG 관련 연구</strong>
+                            <span class="badge bg-success float-end" data-i18n="researcher_ranking.sc_sdg_max">3점 만점</span>
+                        </div>
+                        <div class="card-body small">
+                            <p data-i18n-html="researcher_ranking.sc_sdg_def"><strong>정의:</strong> UN 지속가능발전목표(SDG)와 관련된 연구 논문</p>
+                            <p data-i18n-html="researcher_ranking.sc_sdg_meaning"><strong>의미:</strong> 연구의 사회적 가치와 기여도</p>
+                            <table class="table table-sm table-bordered mb-2">
+                                <tr><td data-i18n="researcher_ranking.sc_sdg_yes">SDG 관련 논문</td><td><strong>3</strong></td></tr>
+                                <tr><td data-i18n="researcher_ranking.sc_not_applicable">비해당</td><td>0</td></tr>
+                            </table>
+                            <p class="mb-0 text-muted small"><i class="fas fa-database"></i> <span data-i18n="researcher_ranking.sc_sdg_source">SciVal SDG 매핑 기준</span></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card h-100">
+                        <div class="card-header bg-light py-2">
+                            <strong data-i18n="researcher_ranking.sc_oa_title">⑥ Open Access</strong>
+                            <span class="badge bg-warning text-dark float-end" data-i18n="researcher_ranking.sc_oa_max">2점 만점</span>
+                        </div>
+                        <div class="card-body small">
+                            <p data-i18n-html="researcher_ranking.sc_oa_def"><strong>정의:</strong> 누구나 무료로 접근 가능한 오픈액세스 논문</p>
+                            <p data-i18n-html="researcher_ranking.sc_oa_meaning"><strong>의미:</strong> 연구 성과의 개방성과 접근성</p>
+                            <table class="table table-sm table-bordered mb-2">
+                                <tr><td data-i18n="researcher_ranking.sc_oa_yes">OA 논문</td><td><strong>2</strong></td></tr>
+                                <tr><td data-i18n="researcher_ranking.sc_not_applicable">비해당</td><td>0</td></tr>
+                            </table>
+                            <p class="mb-0 text-muted small"><i class="fas fa-database"></i> <span data-i18n="researcher_ranking.sc_oa_source">Scopus OA 분류 기준</span></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card h-100">
+                        <div class="card-header bg-light py-2">
+                            <strong data-i18n="researcher_ranking.sc_prom_title">⑦ Topic Prominence</strong>
+                            <span class="badge bg-danger float-end" data-i18n="researcher_ranking.sc_prom_max">5점 만점</span>
+                        </div>
+                        <div class="card-body small">
+                            <p data-i18n-html="researcher_ranking.sc_prom_def"><strong>정의:</strong> SciVal Topic의 학술적 주목도 백분위</p>
+                            <p data-i18n-html="researcher_ranking.sc_prom_meaning"><strong>의미:</strong> 떠오르는 연구 주제에 대한 참여</p>
+                            <table class="table table-sm table-bordered mb-2">
+                                <tr><td data-i18n="researcher_ranking.sc_prom_yes">Prominence ≥ 90%</td><td><strong>5</strong></td></tr>
+                                <tr><td data-i18n="researcher_ranking.sc_prom_no">Prominence < 90%</td><td>0</td></tr>
+                            </table>
+                            <p class="mb-0 text-muted small"><i class="fas fa-info-circle"></i> <span data-i18n="researcher_ranking.sc_prom_note">최근 인용·조회·Mendeley 저장 등 종합</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 보조지표 점수 산출 예시 -->
+            <div class="alert alert-secondary mb-4">
+                <h6 class="alert-heading mb-2"><i class="fas fa-calculator"></i> <span data-i18n="researcher_ranking.sc_secondary_example_title">보조지표 점수 산출 예시</span></h6>
+                <p class="mb-2 small" data-i18n-html="researcher_ranking.sc_secondary_example_desc">보조지표도 핵심지표와 동일하게 <strong>개별 논문별 점수의 평균</strong>으로 계산합니다.</p>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="bg-white p-2 rounded border small">
+                            <strong data-i18n="researcher_ranking.sc_sdg_example_title">예시) SDG 점수</strong><br>
+                            <span data-i18n="researcher_ranking.sc_sdg_example_researcher">연구자 C: 총 5편 논문</span><br>
+                            <table class="table table-sm table-bordered mb-1 mt-1">
+                                <tr><td><span data-i18n="researcher_ranking.sc_sdg_example_paper">논문</span> 1</td><td data-i18n="researcher_ranking.sc_applicable">해당</td><td class="text-end">3</td></tr>
+                                <tr><td><span data-i18n="researcher_ranking.sc_sdg_example_paper">논문</span> 2</td><td data-i18n="researcher_ranking.sc_not_applicable">비해당</td><td class="text-end">0</td></tr>
+                                <tr><td><span data-i18n="researcher_ranking.sc_sdg_example_paper">논문</span> 3</td><td data-i18n="researcher_ranking.sc_not_applicable">비해당</td><td class="text-end">0</td></tr>
+                                <tr><td><span data-i18n="researcher_ranking.sc_sdg_example_paper">논문</span> 4</td><td data-i18n="researcher_ranking.sc_applicable">해당</td><td class="text-end">3</td></tr>
+                                <tr><td><span data-i18n="researcher_ranking.sc_sdg_example_paper">논문</span> 5</td><td data-i18n="researcher_ranking.sc_not_applicable">비해당</td><td class="text-end">0</td></tr>
+                                <tr class="table-light"><td colspan="2"><strong data-i18n="researcher_ranking.sc_sum">합계</strong></td><td class="text-end"><strong>6</strong></td></tr>
+                            </table>
+                            <strong data-i18n="researcher_ranking.sc_sdg_example_result">SDG 점수 = 6 ÷ 5 = 1.2점</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="bg-white p-2 rounded border small">
+                            <strong data-i18n="researcher_ranking.sc_oa_example_title">예시) OA 점수</strong><br>
+                            <span data-i18n="researcher_ranking.sc_oa_example_researcher">연구자 D: 총 4편 논문</span><br>
+                            <table class="table table-sm table-bordered mb-1 mt-1">
+                                <tr><td><span data-i18n="researcher_ranking.sc_sdg_example_paper">논문</span> 1</td><td>OA</td><td class="text-end">2</td></tr>
+                                <tr><td><span data-i18n="researcher_ranking.sc_sdg_example_paper">논문</span> 2</td><td>OA</td><td class="text-end">2</td></tr>
+                                <tr><td><span data-i18n="researcher_ranking.sc_sdg_example_paper">논문</span> 3</td><td>OA</td><td class="text-end">2</td></tr>
+                                <tr><td><span data-i18n="researcher_ranking.sc_sdg_example_paper">논문</span> 4</td><td data-i18n="researcher_ranking.sc_not_applicable">비해당</td><td class="text-end">0</td></tr>
+                                <tr class="table-light"><td colspan="2"><strong data-i18n="researcher_ranking.sc_sum">합계</strong></td><td class="text-end"><strong>6</strong></td></tr>
+                            </table>
+                            <strong data-i18n="researcher_ranking.sc_oa_example_result">OA 점수 = 6 ÷ 4 = 1.5점</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="bg-white p-2 rounded border small">
+                            <strong data-i18n="researcher_ranking.sc_prom_example_title">예시) Prominence 점수</strong><br>
+                            <span data-i18n="researcher_ranking.sc_prom_example_researcher">연구자 E: 총 3편 논문</span><br>
+                            <table class="table table-sm table-bordered mb-1 mt-1">
+                                <tr><td><span data-i18n="researcher_ranking.sc_sdg_example_paper">논문</span> 1</td><td>Prom 95%</td><td class="text-end">5</td></tr>
+                                <tr><td><span data-i18n="researcher_ranking.sc_sdg_example_paper">논문</span> 2</td><td>Prom 72%</td><td class="text-end">0</td></tr>
+                                <tr><td><span data-i18n="researcher_ranking.sc_sdg_example_paper">논문</span> 3</td><td>Prom 91%</td><td class="text-end">5</td></tr>
+                                <tr class="table-light"><td colspan="2"><strong data-i18n="researcher_ranking.sc_sum">합계</strong></td><td class="text-end"><strong>10</strong></td></tr>
+                            </table>
+                            <strong data-i18n="researcher_ranking.sc_prom_example_result">Prominence 점수 = 10 ÷ 3 = 3.33점</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2 small">
+                    <div class="bg-light p-2 rounded">
+                        <strong><i class="fas fa-sigma"></i> <span data-i18n="researcher_ranking.sc_secondary_sum_title">보조지표 소계 계산 예시</span></strong><br>
+                        <span data-i18n-html="researcher_ranking.sc_secondary_sum_example">위 연구자들의 보조지표 소계: SDG(1.2) + OA(1.5) + Prominence(3.33) = <strong>6.03점</strong> (최대 10점)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. 총점 산출 공식 -->
+            <div class="alert alert-dark">
+                <h6 class="alert-heading mb-2"><i class="fas fa-function"></i> <span data-i18n="researcher_ranking.sc_total_formula_title">총점 산출 공식</span></h6>
+                <div class="bg-white p-3 rounded border mb-2">
+                    <code class="fs-6" data-i18n-html="researcher_ranking.sc_total_formula">
+                        <strong>총점</strong> = FWCI점수 + Top10%피인용점수 + 상위저널점수 + 국제협력FWCI점수 + SDG점수 + OA점수 + Prominence점수
+                    </code>
+                </div>
+                <div class="row small">
+                    <div class="col-md-6">
+                        <span data-i18n-html="researcher_ranking.sc_core_subtotal"><strong>핵심지표 소계 (최대 80점)</strong></span><br>
+                        <span data-i18n="researcher_ranking.sc_core_formula">= FWCI(35) + Top10%피인용(20) + 상위저널(15) + 국제협력FWCI(10)</span>
+                    </div>
+                    <div class="col-md-6">
+                        <span data-i18n-html="researcher_ranking.sc_secondary_subtotal"><strong>보조지표 소계 (최대 10점)</strong></span><br>
+                        <span data-i18n="researcher_ranking.sc_secondary_formula">= SDG(3) + OA(2) + Prominence(5)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 6. 참고사항 -->
+            <div class="small text-muted mt-3">
+                <i class="fas fa-exclamation-triangle"></i> <strong data-i18n="researcher_ranking.sc_notes_title">참고사항</strong>
+                <ul class="mb-0 mt-1">
+                    <li data-i18n="researcher_ranking.sc_note1">분석 대상: Scopus 등재 논문 및 전북대학교 주 소속 연구자</li>
+                    <li data-i18n="researcher_ranking.sc_note2">기간 필터 적용 시: 해당 기간 내 발표 논문만으로 실시간 재계산</li>
+                    <li data-i18n="researcher_ranking.sc_note3">FWCI 계산 방식은 '중위값'과 '산술평균' 중 선택 가능 (중위값 권장)</li>
+                    <li data-i18n="researcher_ranking.sc_note4">동점 시 FWCI 값이 높은 연구자가 상위 순위</li>
+                </ul>
             </div>
         </div>
     </div>
@@ -119,36 +327,36 @@
     <div class="card-body">
         <div class="row align-items-end">
             <div class="col-md-2">
-                <label for="minOutput" class="form-label">최소 논문 수</label>
+                <label for="minOutput" class="form-label" data-i18n="researcher_ranking.min_papers">최소 논문수</label>
                 <input type="number" class="form-control" id="minOutput" value="10" min="1">
             </div>
             <div class="col-md-2">
-                <label for="limit" class="form-label">표시 인원</label>
+                <label for="limit" class="form-label" data-i18n="researcher_ranking.display_count">표시 인원</label>
                 <select class="form-select" id="limit">
-                    <option value="50">50명</option>
-                    <option value="100" selected>100명</option>
-                    <option value="200">200명</option>
-                    <option value="500">500명</option>
-                    <option value="1000">전체</option>
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                    <option value="1000" data-i18n="common.all">전체</option>
                 </select>
             </div>
             <div class="col-md-2">
-                <label for="fwciMethod" class="form-label">FWCI 계산 방식</label>
+                <label for="fwciMethod" class="form-label" data-i18n="researcher_ranking.fwci_method">FWCI 계산방식</label>
                 <select class="form-select" id="fwciMethod" onchange="onFwciMethodChange()">
-                    <option value="median" selected>중위값 (Median)</option>
-                    <option value="mean">산술평균 (Mean)</option>
+                    <option value="median" selected data-i18n="researcher_ranking.fwci_median">중위값 (Median)</option>
+                    <option value="mean" data-i18n="researcher_ranking.fwci_mean">산술평균 (Mean)</option>
                 </select>
             </div>
             <div class="col-md-6">
                 <label class="form-label">&nbsp;</label><br>
                 <button class="btn btn-primary" onclick="loadRanking()">
-                    <i class="fas fa-search"></i> 조회
+                    <i class="fas fa-search"></i> <span data-i18n="common.search">조회</span>
                 </button>
                 <button class="btn btn-success" onclick="downloadCSV()">
-                    <i class="fas fa-download"></i> CSV 다운로드
+                    <i class="fas fa-download"></i> <span data-i18n="common.download_csv">CSV 다운로드</span>
                 </button>
                 <button class="btn btn-warning" onclick="recalculateScores()">
-                    <i class="fas fa-sync-alt"></i> 점수 재계산
+                    <i class="fas fa-sync-alt"></i> <span data-i18n="researcher_ranking.recalculate">점수 재계산</span>
                 </button>
             </div>
         </div>
@@ -156,20 +364,20 @@
         <!-- 분석기간 필터 -->
         <div class="row align-items-end mt-3 pt-3 border-top">
             <div class="col-auto">
-                <label class="form-label fw-bold"><i class="fas fa-calendar-alt"></i> 분석기간</label>
+                <label class="form-label fw-bold"><i class="fas fa-calendar-alt"></i> <span data-i18n="researcher_ranking.analysis_period">분석기간</span></label>
                 <div class="btn-group" id="yearPresetGroup">
-                    <button type="button" class="btn btn-sm btn-outline-secondary active" onclick="setYearPreset('all', this)">전체</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setYearPreset('3y', this)">최근 3년</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setYearPreset('5y', this)">최근 5년</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary active" onclick="setYearPreset('all', this)" data-i18n="common.all">전체</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setYearPreset('3y', this)" data-i18n="researcher_ranking.recent_3y">최근 3년</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setYearPreset('5y', this)" data-i18n="researcher_ranking.recent_5y">최근 5년</button>
                 </div>
             </div>
             <div class="col-auto">
                 <div class="d-flex align-items-center gap-2">
-                    <input type="number" class="form-control form-control-sm" id="yearFrom" placeholder="시작연도" style="width: 100px;" min="1990" max="2030">
+                    <input type="number" class="form-control form-control-sm" id="yearFrom" data-i18n-placeholder="researcher_ranking.start_year" placeholder="시작연도" style="width: 100px;" min="1990" max="2030">
                     <span class="text-muted">~</span>
-                    <input type="number" class="form-control form-control-sm" id="yearTo" placeholder="종료연도" style="width: 100px;" min="1990" max="2030">
+                    <input type="number" class="form-control form-control-sm" id="yearTo" data-i18n-placeholder="researcher_ranking.end_year" placeholder="종료연도" style="width: 100px;" min="1990" max="2030">
                     <button class="btn btn-sm btn-outline-primary" onclick="applyCustomYear()">
-                        <i class="fas fa-check"></i> 적용
+                        <i class="fas fa-check"></i> <span data-i18n="common.apply">적용</span>
                     </button>
                 </div>
             </div>
@@ -202,13 +410,13 @@
     <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
     </div>
-    <p>연구자 점수 계산 중... (저자별 논문 분석이 진행됩니다)</p>
+    <p data-i18n="researcher_ranking.calculating">연구자 점수 계산 중... (저자별 논문 분석이 진행됩니다)</p>
 </div>
 
 <!-- 결과 요약 -->
 <div id="resultSummary" class="alert alert-info" style="display: none;">
-    <i class="fas fa-users"></i> 총 <strong><span id="totalCount">0</span></strong>명 중 <strong><span id="returnedCount">0</span></strong>명 표시
-    | FWCI 방식: <strong><span id="fwciMethodDisplay">중위값</span></strong>
+    <i class="fas fa-users"></i> <span data-i18n="common.total">총</span> <strong><span id="totalCount">0</span></strong><span data-i18n="common.person">명</span> <span data-i18n="researcher_ranking.out_of">중</span> <strong><span id="returnedCount">0</span></strong><span data-i18n="common.person">명</span> <span data-i18n="researcher_ranking.displayed">표시</span>
+    | <span data-i18n="researcher_ranking.fwci_method">FWCI 방식</span>: <strong><span id="fwciMethodDisplay">중위값</span></strong>
 </div>
 
 <!-- 결과 테이블 -->
@@ -228,16 +436,16 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-user"></i> 연구자 상세 점수</h5>
+                <h5 class="modal-title"><i class="fas fa-user"></i> <span data-i18n="researcher_ranking.detail_score">연구자 상세 점수</span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="detailContent">
             </div>
             <div class="modal-footer">
                 <a id="scopusLink" href="#" target="_blank" class="btn btn-primary">
-                    <i class="fas fa-external-link-alt"></i> Scopus 프로필
+                    <i class="fas fa-external-link-alt"></i> <span data-i18n="researcher_ranking.profile">Scopus 프로필</span>
                 </a>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">닫기</button>
             </div>
         </div>
     </div>
@@ -287,16 +495,16 @@ function handleRankingSort(key) {
 
 function renderRankingTable() {
     const headerRow = document.getElementById('rankingHeader');
-    headerRow.innerHTML = rkThP('순위', 'style="width:50px;"')
-        + rkThS('연구자명', 'name', '')
-        + rkThS('논문수', 'scholarly_output', '')
-        + rkThS('인용수', 'citations', '')
-        + rkThS('FWCI', 'fwci', '')
-        + rkThS('h-index', 'h_index', '')
-        + rkThS('핵심지표<br>(80점)', 'score_core', 'text-center')
-        + rkThS('보조지표<br>(10점)', 'score_secondary', 'text-center')
-        + rkThS('<strong>총점<br>(90점)</strong>', 'score_total', 'text-center')
-        + rkThP('상세');
+    headerRow.innerHTML = rkThP(i18n.t('researcher_ranking.table_rank'), 'style="width:50px;"')
+        + rkThS(i18n.t('researcher_ranking.table_researcher'), 'name', '')
+        + rkThS(i18n.t('researcher_ranking.table_papers'), 'scholarly_output', '')
+        + rkThS(i18n.t('researcher_ranking.table_citations'), 'citations', '')
+        + rkThS(i18n.t('researcher_ranking.table_fwci'), 'fwci', '')
+        + rkThS(i18n.t('researcher_ranking.table_hindex'), 'h_index', '')
+        + rkThS(i18n.t('researcher_ranking.table_core') + '<br>' + i18n.t('researcher_ranking.table_core_max'), 'score_core', 'text-center')
+        + rkThS(i18n.t('researcher_ranking.table_secondary') + '<br>' + i18n.t('researcher_ranking.table_secondary_max'), 'score_secondary', 'text-center')
+        + rkThS('<strong>' + i18n.t('researcher_ranking.table_total') + '<br>' + i18n.t('researcher_ranking.table_total_max') + '</strong>', 'score_total', 'text-center')
+        + rkThP(i18n.t('researcher_ranking.table_detail'));
 
     const sorted = rankingSortState.key
         ? sortByKey(currentData, rankingSortState.key, rankingSortState.asc)
@@ -382,11 +590,11 @@ function applyCustomYear() {
     const yearTo = parseInt(document.getElementById('yearTo').value);
 
     if (!yearFrom || !yearTo) {
-        alert('시작연도와 종료연도를 모두 입력해주세요.');
+        alert(i18n.t('researcher_ranking.alert_enter_years'));
         return;
     }
     if (yearFrom > yearTo) {
-        alert('시작연도가 종료연도보다 클 수 없습니다.');
+        alert(i18n.t('researcher_ranking.alert_year_invalid'));
         return;
     }
 
@@ -423,7 +631,7 @@ function loadRanking() {
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('데이터 로딩 중 오류가 발생했습니다.');
+            alert(i18n.t('researcher_ranking.alert_load_error'));
         })
         .finally(() => {
             document.getElementById('loadingIndicator').style.display = 'none';
@@ -433,7 +641,7 @@ function loadRanking() {
 function displayResults(data) {
     document.getElementById('totalCount').textContent = data.total_count;
     document.getElementById('returnedCount').textContent = data.returned_count;
-    document.getElementById('fwciMethodDisplay').textContent = data.fwci_method === 'mean' ? '산술평균' : '중위값';
+    document.getElementById('fwciMethodDisplay').textContent = data.fwci_method === 'mean' ? i18n.t('researcher_ranking.fwci_display_mean') : i18n.t('researcher_ranking.fwci_display_median');
     document.getElementById('resultSummary').style.display = 'block';
 
     currentData = data.researchers;
@@ -453,14 +661,15 @@ function getBadgeClass(score, max) {
 }
 
 function showDetail(scopusId) {
-    fetch(`/api/researcher_score/${scopusId}`)
+    const fwciMethod = document.getElementById('fwciMethod').value;
+    fetch(`/api/researcher_score/${scopusId}?fwci_method=${fwciMethod}`)
         .then(response => response.json())
         .then(data => {
             displayDetailModal(data);
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('상세 정보 로딩 중 오류가 발생했습니다.');
+            alert(i18n.t('researcher_ranking.alert_detail_error'));
         });
 }
 
@@ -468,20 +677,79 @@ function displayDetailModal(data) {
     const author = data.author;
     const scores = data.scores;
     const breakdown = data.score_breakdown;
+    const drilldown = data.paper_drilldown || { papers: {}, summary: {} };
+
+    const intlCollabValue = breakdown.core_indicators.intl_collab.value?.toFixed(2) || i18n.t('researcher_ranking.modal_intl_collab_none');
+    const sdgStatus = breakdown.secondary_indicators.sdg.value ? i18n.t('researcher_ranking.modal_sdg_yes') : i18n.t('researcher_ranking.modal_sdg_no');
+    const oaStatus = breakdown.secondary_indicators.open_access.value ? i18n.t('researcher_ranking.modal_oa_yes') : i18n.t('researcher_ranking.modal_oa_no');
+
+    // 드릴다운 논문 목록 렌더링 함수
+    function renderPaperList(papers, indicatorType) {
+        if (!papers || papers.length === 0) {
+            return `<div class="text-muted small p-2">${i18n.t('researcher_ranking.drilldown_no_papers')}</div>`;
+        }
+        const maxShow = 10;
+        const showPapers = papers.slice(0, maxShow);
+        let html = '<div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;">';
+        html += `<thead class="table-light"><tr>
+            <th style="width:50%">${i18n.t('researcher_ranking.drilldown_title')}</th>
+            <th>${i18n.t('researcher_ranking.drilldown_year')}</th>
+            <th>${i18n.t('researcher_ranking.drilldown_value')}</th>
+            <th>${i18n.t('researcher_ranking.drilldown_score')}</th>
+            <th></th>
+        </tr></thead><tbody>`;
+        showPapers.forEach(p => {
+            const link = p.scopus_link ? `<a href="${p.scopus_link}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-1"><i class="fas fa-external-link-alt"></i></a>` : '';
+            html += `<tr>
+                <td title="${p.title}">${p.title}</td>
+                <td>${p.year}</td>
+                <td><span class="badge bg-info">${p.value}</span></td>
+                <td><strong>${p.score}</strong>/${p.max}</td>
+                <td>${link}</td>
+            </tr>`;
+        });
+        html += '</tbody></table></div>';
+        if (papers.length > maxShow) {
+            html += `<div class="text-muted small text-center mt-1">... ${i18n.t('researcher_ranking.drilldown_and_more').replace('{count}', papers.length - maxShow)}</div>`;
+        }
+        return html;
+    }
+
+    // 드릴다운 아코디언 생성 함수
+    function createDrilldownRow(indicatorKey, label, value, score, max, papers) {
+        const count = papers?.length || 0;
+        const hasData = count > 0;
+        const chevron = hasData ? '<i class="fas fa-chevron-down drilldown-chevron"></i>' : '';
+        const countBadge = hasData ? `<span class="badge bg-secondary ms-1">${count}</span>` : '';
+        const clickClass = hasData ? 'drilldown-toggle' : '';
+        const cursor = hasData ? 'cursor: pointer;' : '';
+
+        return `
+            <tr class="${clickClass}" data-indicator="${indicatorKey}" style="${cursor}">
+                <td>${chevron} ${label} (${value}) ${countBadge}</td>
+                <td class="text-end"><strong>${score}/${max}</strong></td>
+            </tr>
+            <tr class="drilldown-content" id="drilldown-${indicatorKey}" style="display: none;">
+                <td colspan="2" class="bg-light p-0">
+                    ${renderPaperList(papers, indicatorKey)}
+                </td>
+            </tr>
+        `;
+    }
 
     let content = `
         <h5>${author.name}</h5>
         <p class="text-muted">
-            Scopus ID: ${author.scopus_author_id}<br>
-            ${author.orcid ? 'ORCID: ' + author.orcid + '<br>' : ''}
-            소속: ${author.primary_affiliation || '-'}
+            ${i18n.t('researcher_ranking.modal_scopus_id')}: ${author.scopus_author_id}<br>
+            ${author.orcid ? i18n.t('researcher_ranking.modal_orcid') + ': ' + author.orcid + '<br>' : ''}
+            ${i18n.t('researcher_ranking.modal_affiliation')}: ${author.primary_affiliation || '-'}
         </p>
 
         <div class="row mb-3">
             <div class="col-md-4 text-center">
                 <div class="card bg-light">
                     <div class="card-body">
-                        <h6>총 논문수</h6>
+                        <h6>${i18n.t('researcher_ranking.modal_total_papers')}</h6>
                         <h3>${author.scholarly_output || 0}</h3>
                     </div>
                 </div>
@@ -489,7 +757,7 @@ function displayDetailModal(data) {
             <div class="col-md-4 text-center">
                 <div class="card bg-light">
                     <div class="card-body">
-                        <h6>총 인용수</h6>
+                        <h6>${i18n.t('researcher_ranking.modal_total_citations')}</h6>
                         <h3>${(author.citations || 0).toLocaleString()}</h3>
                     </div>
                 </div>
@@ -497,56 +765,56 @@ function displayDetailModal(data) {
             <div class="col-md-4 text-center">
                 <div class="card bg-light">
                     <div class="card-body">
-                        <h6>h-index</h6>
+                        <h6>${i18n.t('researcher_ranking.table_hindex')}</h6>
                         <h3>${author.h_index || 0}</h3>
                     </div>
                 </div>
             </div>
         </div>
 
-        <h6>핵심지표 점수 (${breakdown.totals.core.score}/${breakdown.totals.core.max}점)</h6>
-        <table class="table table-sm">
-            <tr>
-                <td>FWCI (${breakdown.core_indicators.fwci.value?.toFixed(2) || 0})</td>
-                <td class="text-end"><strong>${breakdown.core_indicators.fwci.score}/${breakdown.core_indicators.fwci.max}</strong></td>
-            </tr>
-            <tr>
-                <td>Top 10% 피인용 논문 (${breakdown.core_indicators.top_cited.value || 0}편)</td>
-                <td class="text-end"><strong>${breakdown.core_indicators.top_cited.score}/${breakdown.core_indicators.top_cited.max}</strong></td>
-            </tr>
-            <tr>
-                <td>상위 저널 비율 (${breakdown.core_indicators.top_journal.value})</td>
-                <td class="text-end"><strong>${breakdown.core_indicators.top_journal.score}/${breakdown.core_indicators.top_journal.max}</strong></td>
-            </tr>
-            <tr>
-                <td>국제협력 FWCI (${breakdown.core_indicators.intl_collab.value?.toFixed(2) || '없음'})</td>
-                <td class="text-end"><strong>${breakdown.core_indicators.intl_collab.score}/${breakdown.core_indicators.intl_collab.max}</strong></td>
-            </tr>
+        <div class="small text-muted mb-2"><i class="fas fa-info-circle"></i> ${i18n.t('researcher_ranking.drilldown_hint')}</div>
+
+        <h6>${i18n.t('researcher_ranking.modal_core_score_label')} (${breakdown.totals.core.score}/${breakdown.totals.core.max})</h6>
+        <table class="table table-sm mb-2">
+            ${createDrilldownRow('fwci', i18n.t('researcher_ranking.modal_fwci_label'), breakdown.core_indicators.fwci.value?.toFixed(2) || 0, breakdown.core_indicators.fwci.score, breakdown.core_indicators.fwci.max, drilldown.papers?.fwci)}
+            ${createDrilldownRow('top_cited', i18n.t('researcher_ranking.modal_top_cited_label'), (breakdown.core_indicators.top_cited.value || 0) + i18n.t('researcher_ranking.modal_top_cited_count'), breakdown.core_indicators.top_cited.score, breakdown.core_indicators.top_cited.max, drilldown.papers?.top_cited)}
+            ${createDrilldownRow('top_journal', i18n.t('researcher_ranking.modal_top_journal_label'), breakdown.core_indicators.top_journal.value, breakdown.core_indicators.top_journal.score, breakdown.core_indicators.top_journal.max, drilldown.papers?.top_journal)}
+            ${createDrilldownRow('intl_collab', i18n.t('researcher_ranking.modal_intl_collab_label'), intlCollabValue, breakdown.core_indicators.intl_collab.score, breakdown.core_indicators.intl_collab.max, drilldown.papers?.intl_collab)}
         </table>
 
-        <h6>보조지표 점수 (${breakdown.totals.secondary.score}/${breakdown.totals.secondary.max}점)</h6>
-        <table class="table table-sm">
-            <tr>
-                <td>SDG 관련 (${breakdown.secondary_indicators.sdg.value ? '해당' : '비해당'})</td>
-                <td class="text-end"><strong>${breakdown.secondary_indicators.sdg.score}/${breakdown.secondary_indicators.sdg.max}</strong></td>
-            </tr>
-            <tr>
-                <td>Open Access (${breakdown.secondary_indicators.open_access.value ? '해당' : '비해당'})</td>
-                <td class="text-end"><strong>${breakdown.secondary_indicators.open_access.score}/${breakdown.secondary_indicators.open_access.max}</strong></td>
-            </tr>
-            <tr>
-                <td>Topic Prominence (평균 ${breakdown.secondary_indicators.topic_prominence.value?.toFixed(1) || 0})</td>
-                <td class="text-end"><strong>${breakdown.secondary_indicators.topic_prominence.score}/${breakdown.secondary_indicators.topic_prominence.max}</strong></td>
-            </tr>
+        <h6>${i18n.t('researcher_ranking.modal_secondary_score_label')} (${breakdown.totals.secondary.score}/${breakdown.totals.secondary.max})</h6>
+        <table class="table table-sm mb-2">
+            ${createDrilldownRow('sdg', i18n.t('researcher_ranking.modal_sdg_label'), sdgStatus, breakdown.secondary_indicators.sdg.score, breakdown.secondary_indicators.sdg.max, drilldown.papers?.sdg)}
+            ${createDrilldownRow('open_access', i18n.t('researcher_ranking.modal_oa_label'), oaStatus, breakdown.secondary_indicators.open_access.score, breakdown.secondary_indicators.open_access.max, drilldown.papers?.open_access)}
+            ${createDrilldownRow('prominence', i18n.t('researcher_ranking.modal_prominence_label'), (breakdown.secondary_indicators.topic_prominence.value?.toFixed(1) || 0) + '%', breakdown.secondary_indicators.topic_prominence.score, breakdown.secondary_indicators.topic_prominence.max, drilldown.papers?.prominence)}
         </table>
 
         <div class="alert alert-primary text-center">
-            <h5 class="mb-0">총점: <strong>${breakdown.totals.total.score} / ${breakdown.totals.total.max}</strong></h5>
+            <h5 class="mb-0">${i18n.t('researcher_ranking.modal_total_score_label')}: <strong>${breakdown.totals.total.score} / ${breakdown.totals.total.max}</strong></h5>
         </div>
     `;
 
     document.getElementById('detailContent').innerHTML = content;
     document.getElementById('scopusLink').href = author.scopus_author_profile || '#';
+
+    // 드릴다운 클릭 이벤트 바인딩
+    document.querySelectorAll('.drilldown-toggle').forEach(row => {
+        row.addEventListener('click', function() {
+            const indicator = this.dataset.indicator;
+            const contentRow = document.getElementById('drilldown-' + indicator);
+            const chevron = this.querySelector('.drilldown-chevron');
+
+            if (contentRow.style.display === 'none') {
+                contentRow.style.display = 'table-row';
+                chevron.classList.remove('fa-chevron-down');
+                chevron.classList.add('fa-chevron-up');
+            } else {
+                contentRow.style.display = 'none';
+                chevron.classList.remove('fa-chevron-up');
+                chevron.classList.add('fa-chevron-down');
+            }
+        });
+    });
 
     const modal = new bootstrap.Modal(document.getElementById('detailModal'));
     modal.show();
@@ -563,7 +831,7 @@ function downloadCSV() {
 }
 
 function recalculateScores() {
-    if (!confirm('점수를 재계산하시겠습니까? 수 분이 소요될 수 있습니다.')) {
+    if (!confirm(i18n.t('researcher_ranking.alert_recalc_confirm'))) {
         return;
     }
 
@@ -577,21 +845,37 @@ function recalculateScores() {
                 alert(data.message);
                 loadRanking();
             } else {
-                alert('재계산 실패: ' + data.error);
+                alert(i18n.t('researcher_ranking.alert_recalc_fail') + ' ' + data.error);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('재계산 중 오류가 발생했습니다.');
+            alert(i18n.t('researcher_ranking.alert_recalc_error'));
         })
         .finally(() => {
             document.getElementById('loadingIndicator').style.display = 'none';
         });
 }
 
-// 페이지 로드 시 자동 조회
-document.addEventListener('DOMContentLoaded', function() {
+// 페이지 초기화 함수
+function initPage() {
     loadRanking();
-});
+
+    // Register language change callback
+    i18n.onLanguageChange(function() {
+        // Re-render tables and dynamic content
+        renderRankingTable();
+        // Update FWCI method display
+        const fwciMethod = document.getElementById('fwciMethod').value;
+        document.getElementById('fwciMethodDisplay').textContent = fwciMethod === 'mean' ? i18n.t('researcher_ranking.fwci_display_mean') : i18n.t('researcher_ranking.fwci_display_median');
+    });
+}
+
+// 페이지 로드 시 i18n 준비 확인 후 초기화
+if (window.i18n && window.i18n.ready) {
+    initPage();
+} else {
+    window.addEventListener('i18nReady', initPage);
+}
 </script>
 {% endblock %}

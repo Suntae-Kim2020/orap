@@ -254,9 +254,10 @@ def safe_remove_file(filepath):
     except:
         pass
 
+# 메인 페이지 - 연구자 랭킹으로 리다이렉트
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return redirect(url_for('researcher_ranking'))
 
 @app.route('/room_manager')
 def room_manager():
@@ -799,7 +800,7 @@ def get_upload_result(task_id):
     except Exception as e:
         return jsonify({'success': False, 'error': f'결과를 읽는 중 오류가 발생했습니다: {str(e)}'})
 
-# 분석
+# [사용 안 함] 분석 - 메뉴에서 숨김 처리됨
 @app.route('/analysis')
 def analysis():
     conn = get_db_connection()
@@ -819,7 +820,7 @@ def analysis_run(room_id=None):
     conn.close()
     return render_template('analysis_run.html', rooms=rooms, selected_room=selected_room)
 
-# 분석방 관리 페이지
+# [사용 안 함] 분석방 관리 페이지 - 메뉴에서 숨김 처리됨
 @app.route('/manage_rooms')
 def manage_rooms():
     try:
@@ -2098,7 +2099,7 @@ def download_second_stage_candidates():
     except Exception as e:
         return f"2단계 CSV 다운로드 중 오류가 발생했습니다: {str(e)}", 500
 
-# 도움말 라우트
+# [사용 안 함] 도움말 라우트 - 메뉴에서 숨김 처리됨
 @app.route('/help/stage1')
 def help_stage1():
     return render_template('help_stage1.html')
@@ -2297,6 +2298,216 @@ def get_author_publication_stats(conn, scopus_author_id):
         stats['avg_topic_prominence'] = stats['topic_prominence_sum'] / stats['topic_prominence_count']
 
     return stats
+
+
+def get_author_paper_drilldown(conn, scopus_author_id):
+    """
+    저자의 논문별 점수 기여도 드릴다운 데이터 조회
+    각 지표별로 기여한 논문 목록 반환
+    """
+    cursor = conn.cursor()
+
+    # 해당 저자가 참여한 논문들 조회 (상세 정보 포함)
+    cursor.execute("""
+        SELECT
+            title,
+            year,
+            field_weighted_citation_impact,
+            is_international,
+            is_top_cited,
+            snip_percentile_publication_year,
+            citescore_percentile_publication_year,
+            sjr_percentile_publication_year,
+            sustainable_development_goals_2025,
+            open_access,
+            topic_prominence_percentile,
+            topic_name,
+            doi,
+            eid,
+            scopus_source_title,
+            citations
+        FROM publication
+        WHERE scopus_author_ids LIKE ?
+        ORDER BY year DESC, citations DESC
+    """, (f'%{scopus_author_id}%',))
+
+    publications = cursor.fetchall()
+
+    # 각 지표별 논문 목록 분류
+    drilldown = {
+        'fwci': [],           # 모든 논문 (FWCI 점수 기여)
+        'top_cited': [],      # is_top_cited=1 논문
+        'top_journal': [],    # 상위 저널 논문
+        'intl_collab': [],    # is_international=1 논문
+        'sdg': [],            # SDG 관련 논문
+        'open_access': [],    # OA 논문
+        'prominence': []      # Prominence >= 90% 논문
+    }
+
+    # FWCI 점수 계산 함수 (inline)
+    def calc_fwci_score(fwci):
+        if fwci is None:
+            return 0
+        try:
+            fwci = float(fwci)
+        except:
+            return 0
+        if fwci >= 4.0:
+            return 35
+        elif fwci >= 3.0:
+            return 30
+        elif fwci >= 2.0:
+            return 25
+        elif fwci >= 1.5:
+            return 20
+        elif fwci >= 1.0:
+            return 15
+        elif fwci >= 0.5:
+            return 10
+        else:
+            return 5
+
+    for pub in publications:
+        title = pub['title'] or 'Untitled'
+        year = pub['year'] or ''
+        fwci = pub['field_weighted_citation_impact']
+        is_intl = pub['is_international']
+        is_top_cited = pub['is_top_cited']
+        snip_pct = pub['snip_percentile_publication_year']
+        citescore_pct = pub['citescore_percentile_publication_year']
+        sjr_pct = pub['sjr_percentile_publication_year']
+        sdg = pub['sustainable_development_goals_2025']
+        oa = pub['open_access']
+        topic_prom = pub['topic_prominence_percentile']
+        topic_name = pub['topic_name']
+        doi = pub['doi']
+        eid = pub['eid']
+        journal = pub['scopus_source_title'] or ''
+        citations = pub['citations'] or 0
+
+        # Scopus 링크 생성
+        scopus_link = None
+        if eid:
+            scopus_link = f"https://www.scopus.com/record/display.uri?eid={eid}&origin=resultslist"
+        elif doi:
+            scopus_link = f"https://doi.org/{doi}"
+
+        # 기본 논문 정보
+        paper_info = {
+            'title': title[:80] + '...' if len(title) > 80 else title,
+            'year': year,
+            'journal': journal[:40] + '...' if len(journal) > 40 else journal,
+            'citations': citations,
+            'scopus_link': scopus_link
+        }
+
+        # 1. FWCI (모든 논문)
+        try:
+            fwci_val = float(fwci) if fwci else 0
+            fwci_score = calc_fwci_score(fwci_val)
+            drilldown['fwci'].append({
+                **paper_info,
+                'value': round(fwci_val, 2),
+                'score': fwci_score,
+                'max': 35
+            })
+        except:
+            pass
+
+        # 2. Top 10% 피인용
+        if is_top_cited == 1:
+            drilldown['top_cited'].append({
+                **paper_info,
+                'value': 'Top 10%',
+                'score': 20,
+                'max': 20
+            })
+
+        # 3. 상위 저널
+        is_top_journal = False
+        best_percentile = None
+        for pct in [snip_pct, citescore_pct, sjr_pct]:
+            if pct:
+                try:
+                    pct_val = int(pct)
+                    if pct_val <= 10:
+                        is_top_journal = True
+                        if best_percentile is None or pct_val < best_percentile:
+                            best_percentile = pct_val
+                except:
+                    pass
+        if is_top_journal:
+            drilldown['top_journal'].append({
+                **paper_info,
+                'value': f'Top {best_percentile}%',
+                'score': 15,
+                'max': 15
+            })
+
+        # 4. 국제협력
+        if is_intl == 1:
+            try:
+                fwci_val = float(fwci) if fwci else 0
+                drilldown['intl_collab'].append({
+                    **paper_info,
+                    'value': round(fwci_val, 2),
+                    'score': 10 if fwci_val >= 1.5 else (5 if fwci_val >= 1.0 else 0),
+                    'max': 10
+                })
+            except:
+                pass
+
+        # 5. SDG
+        if sdg and str(sdg).strip():
+            drilldown['sdg'].append({
+                **paper_info,
+                'value': str(sdg)[:30],
+                'score': 3,
+                'max': 3
+            })
+
+        # 6. Open Access
+        if oa and str(oa).strip():
+            drilldown['open_access'].append({
+                **paper_info,
+                'value': str(oa),
+                'score': 2,
+                'max': 2
+            })
+
+        # 7. Prominence
+        if topic_prom:
+            try:
+                prom_val = float(topic_prom)
+                if prom_val >= 90:
+                    drilldown['prominence'].append({
+                        **paper_info,
+                        'value': f'{prom_val:.1f}%',
+                        'topic': topic_name[:30] if topic_name else '',
+                        'score': 5,
+                        'max': 5
+                    })
+            except:
+                pass
+
+    # 각 지표별 요약 정보 추가
+    summary = {
+        'fwci': {
+            'count': len(drilldown['fwci']),
+            'avg_score': round(sum(p['score'] for p in drilldown['fwci']) / max(1, len(drilldown['fwci'])), 1)
+        },
+        'top_cited': {'count': len(drilldown['top_cited'])},
+        'top_journal': {'count': len(drilldown['top_journal'])},
+        'intl_collab': {'count': len(drilldown['intl_collab'])},
+        'sdg': {'count': len(drilldown['sdg'])},
+        'open_access': {'count': len(drilldown['open_access'])},
+        'prominence': {'count': len(drilldown['prominence'])}
+    }
+
+    return {
+        'papers': drilldown,
+        'summary': summary
+    }
 
 
 def batch_calculate_researcher_scores():
@@ -2948,10 +3159,14 @@ def api_researcher_scores():
 
 @app.route('/api/researcher_score/<scopus_id>')
 def api_researcher_score_detail(scopus_id):
-    """개별 연구자 점수 상세 API"""
+    """개별 연구자 점수 상세 API - researcher_score 테이블 사용"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # FWCI 방식 파라미터 (기본: median)
+    fwci_method = request.args.get('fwci_method', 'median')
+
+    # author 테이블에서 기본 정보 조회
     cursor.execute("""
         SELECT
             author_id,
@@ -2980,37 +3195,111 @@ def api_researcher_score_detail(scopus_id):
 
     author_dict = dict(author)
 
-    # 논문 통계 조회
-    pub_stats = get_author_publication_stats(conn, scopus_id)
+    # researcher_score 테이블에서 사전 계산된 점수 조회
+    cursor.execute("""
+        SELECT * FROM researcher_score
+        WHERE scopus_author_id = ?
+    """, (scopus_id,))
 
-    # 점수 계산
-    scores = calculate_researcher_score(author_dict, pub_stats)
+    score_row = cursor.fetchone()
 
-    conn.close()
+    # 논문별 드릴다운 데이터 조회
+    paper_drilldown = get_author_paper_drilldown(conn, scopus_id)
 
-    return jsonify({
-        'author': author_dict,
-        'publication_stats': pub_stats,
-        'scores': scores,
-        'score_breakdown': {
-            'core_indicators': {
-                'fwci': {'score': scores['fwci'], 'max': 35, 'value': author_dict['field_weighted_citation_impact']},
-                'top_cited': {'score': scores['top_cited'], 'max': 20, 'value': author_dict['output_in_top_10_percentile']},
-                'top_journal': {'score': scores['top_journal'], 'max': 15, 'value': f"{pub_stats['top_journal_percentage']:.1f}%"},
-                'intl_collab': {'score': scores['intl_collab'], 'max': 10, 'value': pub_stats['international_collab_fwci']}
+    if score_row:
+        # researcher_score 테이블에서 점수 사용
+        row = dict(score_row)
+        conn.close()
+
+        # FWCI 방식에 따른 값 선택
+        if fwci_method == 'mean':
+            fwci_val = row.get('fwci_mean', 0) or 0
+            score_fwci = row.get('score_fwci_mean', 0) or 0
+            score_core = row.get('score_core_mean', 0) or 0
+            score_total = row.get('score_total_mean', 0) or 0
+        else:
+            fwci_val = row.get('fwci_median', 0) or 0
+            score_fwci = row.get('score_fwci_median', 0) or 0
+            score_core = row.get('score_core_median', 0) or 0
+            score_total = row.get('score_total_median', 0) or 0
+
+        # 드릴다운에서 센 개수를 사용 (표시값과 논문 목록 일치)
+        drilldown_summary = paper_drilldown.get('summary', {})
+
+        return jsonify({
+            'author': author_dict,
+            'publication_stats': {
+                'total_publications': row.get('scholarly_output', 0),
+                'international_collab_count': drilldown_summary.get('intl_collab', {}).get('count', 0),
+                'international_collab_fwci': row.get('intl_collab_fwci'),
+                'top_journal_count': drilldown_summary.get('top_journal', {}).get('count', 0),
+                'top_journal_percentage': row.get('top_journal_pct', 0),
+                'has_sdg_publications': row.get('has_sdg', 0) == 1,
+                'has_open_access': row.get('has_oa', 0) == 1,
+                'avg_topic_prominence': row.get('avg_topic_prominence', 0)
             },
-            'secondary_indicators': {
-                'sdg': {'score': scores['sdg'], 'max': 3, 'value': pub_stats['has_sdg_publications']},
-                'open_access': {'score': scores['open_access'], 'max': 2, 'value': pub_stats['has_open_access']},
-                'topic_prominence': {'score': scores['topic_prominence'], 'max': 5, 'value': pub_stats['avg_topic_prominence']}
+            'scores': {
+                'fwci': score_fwci,
+                'top_cited': row.get('score_top_cited', 0),
+                'top_journal': row.get('score_top_journal', 0),
+                'intl_collab': row.get('score_intl_collab', 0),
+                'core_total': score_core,
+                'sdg': row.get('score_sdg', 0),
+                'open_access': row.get('score_oa', 0),
+                'topic_prominence': row.get('score_prominence', 0),
+                'secondary_total': row.get('score_secondary', 0),
+                'total': score_total
             },
-            'totals': {
-                'core': {'score': scores['core_total'], 'max': 80},
-                'secondary': {'score': scores['secondary_total'], 'max': 10},
-                'total': {'score': scores['total'], 'max': 90}
-            }
-        }
-    })
+            'score_breakdown': {
+                'core_indicators': {
+                    'fwci': {'score': score_fwci, 'max': 35, 'value': round(fwci_val, 2)},
+                    'top_cited': {'score': row.get('score_top_cited', 0), 'max': 20, 'value': drilldown_summary.get('top_cited', {}).get('count', 0)},
+                    'top_journal': {'score': row.get('score_top_journal', 0), 'max': 15, 'value': f"{row.get('top_journal_pct', 0):.1f}%"},
+                    'intl_collab': {'score': row.get('score_intl_collab', 0), 'max': 10, 'value': row.get('intl_collab_fwci')}
+                },
+                'secondary_indicators': {
+                    'sdg': {'score': row.get('score_sdg', 0), 'max': 3, 'value': row.get('has_sdg', 0) == 1},
+                    'open_access': {'score': row.get('score_oa', 0), 'max': 2, 'value': row.get('has_oa', 0) == 1},
+                    'topic_prominence': {'score': row.get('score_prominence', 0), 'max': 5, 'value': row.get('avg_topic_prominence', 0)}
+                },
+                'totals': {
+                    'core': {'score': score_core, 'max': 80},
+                    'secondary': {'score': row.get('score_secondary', 0), 'max': 10},
+                    'total': {'score': score_total, 'max': 90}
+                }
+            },
+            'paper_drilldown': paper_drilldown
+        })
+    else:
+        # researcher_score 테이블에 없는 경우 기존 방식으로 계산 (fallback)
+        pub_stats = get_author_publication_stats(conn, scopus_id)
+        scores = calculate_researcher_score(author_dict, pub_stats)
+        conn.close()
+
+        return jsonify({
+            'author': author_dict,
+            'publication_stats': pub_stats,
+            'scores': scores,
+            'score_breakdown': {
+                'core_indicators': {
+                    'fwci': {'score': scores['fwci'], 'max': 35, 'value': author_dict['field_weighted_citation_impact']},
+                    'top_cited': {'score': scores['top_cited'], 'max': 20, 'value': author_dict['output_in_top_10_percentile']},
+                    'top_journal': {'score': scores['top_journal'], 'max': 15, 'value': f"{pub_stats['top_journal_percentage']:.1f}%"},
+                    'intl_collab': {'score': scores['intl_collab'], 'max': 10, 'value': pub_stats['international_collab_fwci']}
+                },
+                'secondary_indicators': {
+                    'sdg': {'score': scores['sdg'], 'max': 3, 'value': pub_stats['has_sdg_publications']},
+                    'open_access': {'score': scores['open_access'], 'max': 2, 'value': pub_stats['has_open_access']},
+                    'topic_prominence': {'score': scores['topic_prominence'], 'max': 5, 'value': pub_stats['avg_topic_prominence']}
+                },
+                'totals': {
+                    'core': {'score': scores['core_total'], 'max': 80},
+                    'secondary': {'score': scores['secondary_total'], 'max': 10},
+                    'total': {'score': scores['total'], 'max': 90}
+                }
+            },
+            'paper_drilldown': paper_drilldown
+        })
 
 
 @app.route('/api/download_researcher_ranking')
@@ -3477,8 +3766,8 @@ def api_high_citation_potential():
                 actual_citations = rs.get('actual_citations_in_period', 0) or 0
                 if expected_citations <= 0:
                     continue
-                citation_gap = expected_citations - actual_citations
-                if citation_gap > 0:
+                citation_gap = actual_citations - expected_citations
+                if citation_gap < 0:
                     cpp = actual_citations / max(1, rs['scholarly_output'])
                     results.append({
                         'scopus_author_id': sid,
@@ -3539,8 +3828,8 @@ def api_high_citation_potential():
 
                 if expected_citations <= 0:
                     continue
-                citation_gap = expected_citations - actual_citations
-                if citation_gap > 0:
+                citation_gap = actual_citations - expected_citations
+                if citation_gap < 0:
                     results.append({
                         'scopus_author_id': sid,
                         'name': row_dict['name'],
@@ -3556,7 +3845,7 @@ def api_high_citation_potential():
                         'recommendation': '상위 저널 게재율 대비 인용 부족 - 홍보/네트워킹 지원 필요'
                     })
 
-        results.sort(key=lambda x: x['citation_gap'], reverse=True)
+        results.sort(key=lambda x: x['citation_gap'], reverse=False)
         results = results[:limit]
 
     elif analysis_type == 'intl_collab_potential':
@@ -4681,6 +4970,367 @@ def api_strategic_portfolio():
         'analysis_type': analysis_type,
         'count': len(results),
         'researchers': results
+    })
+
+
+###############################################################################
+# 학문분야분석 (Field Analysis)
+###############################################################################
+
+@app.route('/field_analysis')
+def field_analysis():
+    return render_template('field_analysis.html')
+
+
+@app.route('/api/field_list')
+def api_field_list():
+    """학문분야 목록 조회 — ASJC 분야명별 논문 수 (5편 이상)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT all_science_journal_classification_asjc_field_name
+        FROM publication
+        WHERE all_science_journal_classification_asjc_field_name IS NOT NULL
+              AND all_science_journal_classification_asjc_field_name != ''
+    """)
+
+    field_counts = {}
+    for pub in cursor.fetchall():
+        fields = [f.strip() for f in (pub['all_science_journal_classification_asjc_field_name'] or '').replace('|', ',').split(',') if f.strip()]
+        for field in fields:
+            field_counts[field] = field_counts.get(field, 0) + 1
+
+    conn.close()
+
+    result = [{'name': name, 'pub_count': cnt}
+              for name, cnt in field_counts.items() if cnt >= 5]
+    result.sort(key=lambda x: x['pub_count'], reverse=True)
+
+    return jsonify({'fields': result})
+
+
+@app.route('/api/field_analysis/overview')
+def api_field_analysis_overview():
+    """
+    분야별 종합 현황 API
+    - fields: ||| 구분 분야명
+    - year_from / year_to: 기간 필터
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    fields_param = request.args.get('fields', '')
+    selected_fields = [f.strip() for f in fields_param.split('|||') if f.strip()]
+    if not selected_fields:
+        conn.close()
+        return jsonify({'count': 0, 'fields': []})
+
+    year_from = request.args.get('year_from', type=int)
+    year_to = request.args.get('year_to', type=int)
+
+    year_condition = ""
+    year_params = []
+    if year_from and year_to:
+        year_condition = " AND CAST(year AS INTEGER) BETWEEN ? AND ?"
+        year_params = [year_from, year_to]
+
+    cursor.execute(f"""
+        SELECT all_science_journal_classification_asjc_field_name,
+               field_weighted_citation_impact, is_international, is_top_cited,
+               is_1, citations, is_SDG, is_patent_cited, is_academic_corporate
+        FROM publication
+        WHERE all_science_journal_classification_asjc_field_name IS NOT NULL
+              AND all_science_journal_classification_asjc_field_name != ''
+              {year_condition}
+    """, year_params)
+
+    selected_set = set(selected_fields)
+    field_stats = {}
+    for pub in cursor.fetchall():
+        fields = [f.strip() for f in (pub['all_science_journal_classification_asjc_field_name'] or '').replace('|', ',').split(',') if f.strip()]
+        matched = [f for f in fields if f in selected_set]
+        if not matched:
+            continue
+
+        fwci_val = 0
+        try:
+            fwci_val = float(pub['field_weighted_citation_impact']) if pub['field_weighted_citation_impact'] else 0
+        except (ValueError, TypeError):
+            pass
+
+        cit_val = 0
+        try:
+            cit_val = int(float(str(pub['citations']))) if pub['citations'] else 0
+        except (ValueError, TypeError):
+            pass
+
+        is_intl = 1 if pub['is_international'] else 0
+        is_tc = 1 if pub['is_top_cited'] else 0
+        is_1_val = 1 if pub['is_1'] else 0
+        is_sdg = 1 if pub['is_SDG'] else 0
+        is_patent = 1 if pub['is_patent_cited'] else 0
+        is_corp = 1 if pub['is_academic_corporate'] else 0
+
+        for field in matched:
+            if field not in field_stats:
+                field_stats[field] = {
+                    'count': 0, 'fwci_sum': 0, 'intl': 0, 'top_cited': 0,
+                    'is_1': 0, 'citations_sum': 0, 'sdg': 0, 'patent': 0, 'corp': 0
+                }
+            fs = field_stats[field]
+            fs['count'] += 1
+            fs['fwci_sum'] += fwci_val
+            fs['intl'] += is_intl
+            fs['top_cited'] += is_tc
+            fs['is_1'] += is_1_val
+            fs['citations_sum'] += cit_val
+            fs['sdg'] += is_sdg
+            fs['patent'] += is_patent
+            fs['corp'] += is_corp
+
+    conn.close()
+
+    results = []
+    for field in selected_fields:
+        fs = field_stats.get(field)
+        if not fs:
+            results.append({
+                'field': field, 'pub_count': 0, 'total_citations': 0,
+                'avg_fwci': 0, 'intl_ratio': 0, 'top_journal_ratio': 0,
+                'top_cited_ratio': 0, 'strategy': '데이터 없음', 'strategy_class': 'secondary',
+                'sdg_ratio': 0, 'corp_ratio': 0, 'patent_ratio': 0
+            })
+            continue
+
+        cnt = fs['count']
+        avg_fwci = round(fs['fwci_sum'] / cnt, 2)
+        intl_ratio = round(fs['intl'] / cnt * 100, 1)
+        top_cited_ratio = round(fs['top_cited'] / cnt * 100, 1)
+        top_journal_ratio = round(fs['is_1'] / cnt * 100, 1)
+        sdg_ratio = round(fs['sdg'] / cnt * 100, 1)
+        corp_ratio = round(fs['corp'] / cnt * 100, 1)
+        patent_ratio = round(fs['patent'] / cnt * 100, 1)
+
+        if avg_fwci >= 1.5 and intl_ratio >= 40:
+            strategy = '핵심 강점'
+            strategy_class = 'success'
+        elif avg_fwci >= 1.0:
+            strategy = '성장 분야'
+            strategy_class = 'primary'
+        elif cnt >= 50:
+            strategy = '규모 우위'
+            strategy_class = 'info'
+        else:
+            strategy = '육성 필요'
+            strategy_class = 'warning'
+
+        results.append({
+            'field': field,
+            'pub_count': cnt,
+            'total_citations': fs['citations_sum'],
+            'avg_fwci': avg_fwci,
+            'intl_ratio': intl_ratio,
+            'top_journal_ratio': top_journal_ratio,
+            'top_cited_ratio': top_cited_ratio,
+            'strategy': strategy,
+            'strategy_class': strategy_class,
+            'sdg_ratio': sdg_ratio,
+            'corp_ratio': corp_ratio,
+            'patent_ratio': patent_ratio
+        })
+
+    return jsonify({'count': len(results), 'fields': results})
+
+
+@app.route('/api/field_analysis/researchers')
+def api_field_analysis_researchers():
+    """
+    분야별 주요 연구자 API
+    - fields: ||| 구분 분야명
+    - year_from / year_to: 기간 필터
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    fields_param = request.args.get('fields', '')
+    selected_fields = [f.strip() for f in fields_param.split('|||') if f.strip()]
+    if not selected_fields:
+        conn.close()
+        return jsonify({'count': 0, 'researchers': []})
+
+    year_from = request.args.get('year_from', type=int)
+    year_to = request.args.get('year_to', type=int)
+
+    year_condition = ""
+    year_params = []
+    if year_from and year_to:
+        year_condition = " AND CAST(year AS INTEGER) BETWEEN ? AND ?"
+        year_params = [year_from, year_to]
+
+    # 전북대 저자 정보
+    cursor.execute("""
+        SELECT scopus_author_id, name, scholarly_output, citations,
+               field_weighted_citation_impact, h_index, scopus_author_profile
+        FROM author
+        WHERE primary_affiliation LIKE '%Jeonbuk%'
+    """)
+    jbnu_authors = {}
+    for row in cursor.fetchall():
+        jbnu_authors[row['scopus_author_id']] = {
+            'name': row['name'],
+            'scholarly_output': row['scholarly_output'] or 0,
+            'citations': row['citations'] or 0,
+            'fwci': row['field_weighted_citation_impact'] or 0,
+            'h_index': row['h_index'] or 0,
+            'profile_url': row['scopus_author_profile'] or ''
+        }
+
+    # 분야별 논문에서 저자 추출
+    cursor.execute(f"""
+        SELECT all_science_journal_classification_asjc_field_name,
+               scopus_author_ids, field_weighted_citation_impact, is_international
+        FROM publication
+        WHERE all_science_journal_classification_asjc_field_name IS NOT NULL
+              AND all_science_journal_classification_asjc_field_name != ''
+              AND scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+              {year_condition}
+    """, year_params)
+
+    selected_set = set(selected_fields)
+    # {(sid, field): {pubs, fwci_list, intl}}
+    author_field = {}
+    for pub in cursor.fetchall():
+        fields = [f.strip() for f in (pub['all_science_journal_classification_asjc_field_name'] or '').replace('|', ',').split(',') if f.strip()]
+        matched = [f for f in fields if f in selected_set]
+        if not matched:
+            continue
+
+        fwci_val = 0
+        try:
+            fwci_val = float(pub['field_weighted_citation_impact']) if pub['field_weighted_citation_impact'] else 0
+        except (ValueError, TypeError):
+            pass
+
+        is_intl = 1 if pub['is_international'] else 0
+
+        sids = [s.strip() for s in (pub['scopus_author_ids'] or '').replace('|', ' ').split() if s.strip()]
+        for sid in sids:
+            if sid not in jbnu_authors:
+                continue
+            for field in matched:
+                key = (sid, field)
+                if key not in author_field:
+                    author_field[key] = {'pubs': 0, 'fwci_list': [], 'intl': 0}
+                af = author_field[key]
+                af['pubs'] += 1
+                af['fwci_list'].append(fwci_val)
+                af['intl'] += is_intl
+
+    conn.close()
+
+    results = []
+    for (sid, field), data in author_field.items():
+        if data['pubs'] < 2:
+            continue
+        author = jbnu_authors[sid]
+        avg_fwci = round(sum(data['fwci_list']) / len(data['fwci_list']), 2) if data['fwci_list'] else 0
+        results.append({
+            'scopus_author_id': sid,
+            'name': author['name'],
+            'field': field,
+            'field_pubs': data['pubs'],
+            'field_fwci': avg_fwci,
+            'h_index': author['h_index'],
+            'scholarly_output': author['scholarly_output'],
+            'citations': author['citations'],
+            'intl_collabs': data['intl'],
+            'profile_url': author['profile_url']
+        })
+
+    results.sort(key=lambda x: x['field_pubs'], reverse=True)
+    results = results[:200]
+
+    return jsonify({'count': len(results), 'researchers': results})
+
+
+@app.route('/api/field_analysis/trend')
+def api_field_analysis_trend():
+    """
+    분야별 연도 추이 API
+    - fields: ||| 구분 분야명
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    fields_param = request.args.get('fields', '')
+    selected_fields = [f.strip() for f in fields_param.split('|||') if f.strip()]
+    if not selected_fields:
+        conn.close()
+        return jsonify({'count': 0, 'trends': []})
+
+    cursor.execute("""
+        SELECT all_science_journal_classification_asjc_field_name,
+               year, field_weighted_citation_impact
+        FROM publication
+        WHERE all_science_journal_classification_asjc_field_name IS NOT NULL
+              AND all_science_journal_classification_asjc_field_name != ''
+              AND year IS NOT NULL AND year != ''
+    """)
+
+    selected_set = set(selected_fields)
+    # {field: {year: {count, fwci_sum}}}
+    field_year = {}
+    for pub in cursor.fetchall():
+        fields = [f.strip() for f in (pub['all_science_journal_classification_asjc_field_name'] or '').replace('|', ',').split(',') if f.strip()]
+        matched = [f for f in fields if f in selected_set]
+        if not matched:
+            continue
+
+        try:
+            year = int(pub['year'])
+        except (ValueError, TypeError):
+            continue
+
+        fwci_val = 0
+        try:
+            fwci_val = float(pub['field_weighted_citation_impact']) if pub['field_weighted_citation_impact'] else 0
+        except (ValueError, TypeError):
+            pass
+
+        for field in matched:
+            if field not in field_year:
+                field_year[field] = {}
+            if year not in field_year[field]:
+                field_year[field][year] = {'count': 0, 'fwci_sum': 0}
+            field_year[field][year]['count'] += 1
+            field_year[field][year]['fwci_sum'] += fwci_val
+
+    conn.close()
+
+    # 연도 범위 결정
+    all_years = set()
+    for fy in field_year.values():
+        all_years.update(fy.keys())
+    if not all_years:
+        return jsonify({'count': 0, 'trends': [], 'years': []})
+
+    years_sorted = sorted(all_years)
+
+    trends = []
+    for field in selected_fields:
+        fy = field_year.get(field, {})
+        yearly = []
+        for y in years_sorted:
+            d = fy.get(y, {'count': 0, 'fwci_sum': 0})
+            avg_fwci = round(d['fwci_sum'] / d['count'], 2) if d['count'] > 0 else 0
+            yearly.append({'year': y, 'pub_count': d['count'], 'avg_fwci': avg_fwci})
+        trends.append({'field': field, 'yearly': yearly})
+
+    return jsonify({
+        'count': len(trends),
+        'years': years_sorted,
+        'trends': trends
     })
 
 

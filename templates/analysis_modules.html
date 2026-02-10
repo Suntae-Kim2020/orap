@@ -3,34 +3,34 @@
 
 {% block content %}
 <div class="container-fluid">
-    <h2 class="mb-4"><i class="fas fa-microscope"></i> 연구자 분석 모듈</h2>
+    <h2 class="mb-4"><i class="fas fa-microscope"></i> <span data-i18n="analysis_modules.title">분석 모듈</span></h2>
 
     <p class="text-muted mb-4">
-        전북대학교 연구진흥을 위한 다양한 분석 모듈입니다. THE/QS 세계대학평가 순위 향상을 목표로 합니다.<br>
-        <small><i class="fas fa-database"></i> 본 분석은 <strong>Scopus 등재 논문</strong> 및 <strong>전북대학교 소속 연구자</strong>만을 대상으로 합니다. KCI 전용 국내 등재지 논문은 포함되지 않습니다.</small>
+        <span data-i18n="analysis_modules.subtitle">연구 전략 수립을 위한 다양한 분석 기능을 제공합니다</span><br>
+        <small><i class="fas fa-database"></i> <span data-i18n="analysis_modules.data_note">본 분석은 Scopus 등재 논문 및 전북대학교 소속 연구자만을 대상으로 합니다.</span></small>
     </p>
 
     <!-- 분석기간 필터 (전체 탭 공통) -->
     <div class="card mb-4">
         <div class="card-body py-2">
             <div class="d-flex align-items-center flex-wrap gap-3">
-                <span class="fw-bold"><i class="fas fa-calendar-alt"></i> 분석기간</span>
+                <span class="fw-bold"><i class="fas fa-calendar-alt"></i> <span data-i18n="common.analysis_period">분석기간</span></span>
                 <div class="btn-group" id="moduleYearPresetGroup">
-                    <button type="button" class="btn btn-sm btn-outline-secondary active" onclick="setModuleYearPreset('all', this)">전체</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setModuleYearPreset('3y', this)">최근 3년</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setModuleYearPreset('5y', this)">최근 5년</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary active" onclick="setModuleYearPreset('all', this)" data-i18n="common.all">전체</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setModuleYearPreset('3y', this)" data-i18n="common.recent_3y">최근 3년</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setModuleYearPreset('5y', this)" data-i18n="common.recent_5y">최근 5년</button>
                 </div>
                 <div class="d-flex align-items-center gap-2">
-                    <input type="number" class="form-control form-control-sm" id="moduleYearFrom" placeholder="시작연도" style="width: 100px;" min="1990" max="2030">
+                    <input type="number" class="form-control form-control-sm" id="moduleYearFrom" data-i18n-placeholder="common.start_year" placeholder="시작연도" style="width: 100px;" min="1990" max="2030">
                     <span class="text-muted">~</span>
-                    <input type="number" class="form-control form-control-sm" id="moduleYearTo" placeholder="종료연도" style="width: 100px;" min="1990" max="2030">
+                    <input type="number" class="form-control form-control-sm" id="moduleYearTo" data-i18n-placeholder="common.end_year" placeholder="종료연도" style="width: 100px;" min="1990" max="2030">
                     <button class="btn btn-sm btn-outline-primary" onclick="applyModuleCustomYear()">
-                        <i class="fas fa-check"></i> 적용
+                        <i class="fas fa-check"></i> <span data-i18n="common.apply">적용</span>
                     </button>
                 </div>
                 <span id="moduleYearDisplay" class="badge bg-info" style="display: none;"></span>
                 <small id="moduleYearNote" class="text-info" style="display: none;">
-                    <i class="fas fa-info-circle"></i> 기간 지정 시 실시간 계산 (다소 시간 소요)
+                    <i class="fas fa-info-circle"></i> <span data-i18n="common.period_note">기간 지정 시 실시간 계산 (다소 시간 소요)</span>
                 </small>
             </div>
         </div>
@@ -40,17 +40,17 @@
     <ul class="nav nav-tabs mb-4" id="analysisTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="potential-tab" data-bs-toggle="tab" data-bs-target="#potential" type="button">
-                <i class="fas fa-seedling"></i> 잠재 연구자 발굴
+                <i class="fas fa-seedling"></i> <span data-i18n="analysis_modules.potential_researchers">잠재 연구자 발굴</span>
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="citation-tab" data-bs-toggle="tab" data-bs-target="#citation" type="button">
-                <i class="fas fa-quote-right"></i> 고인용 유도 대상
+                <i class="fas fa-quote-right"></i> <span data-i18n="analysis_modules.high_citation_potential">고인용 유도 대상</span>
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="collab-tab" data-bs-toggle="tab" data-bs-target="#collab" type="button">
-                <i class="fas fa-handshake"></i> 공동연구 분석
+                <i class="fas fa-handshake"></i> <span data-i18n="analysis_modules.collaboration_analysis">공동연구 분석</span>
             </button>
         </li>
     </ul>
@@ -64,13 +64,13 @@
                 <div class="col-md-6">
                     <div class="btn-group" role="group">
                         <button type="button" class="btn btn-outline-primary active" onclick="loadPotentialResearchers('growth', this)">
-                            <i class="fas fa-chart-line"></i> 최근 성장률
+                            <i class="fas fa-chart-line"></i> <span data-i18n="analysis_modules.btn_growth">최근 성장률</span>
                         </button>
                         <button type="button" class="btn btn-outline-primary" onclick="loadPotentialResearchers('high_fwci_low_output', this)">
-                            <i class="fas fa-gem"></i> 고FWCI 저논문
+                            <i class="fas fa-gem"></i> <span data-i18n="analysis_modules.btn_high_fwci_low">고FWCI 저논문</span>
                         </button>
                         <button type="button" class="btn btn-outline-primary" onclick="loadPotentialResearchers('high_prominence', this)">
-                            <i class="fas fa-fire"></i> 고Prominence 분야
+                            <i class="fas fa-fire"></i> <span data-i18n="analysis_modules.btn_high_prominence">고Prominence 분야</span>
                         </button>
                     </div>
                 </div>
@@ -90,17 +90,17 @@
                     <div class="card border-0 mb-3" style="background-color: #f0f7f0;">
                         <div class="card-body py-3" style="font-size: 0.875rem;">
                             <div class="mb-2">
-                                <strong><i class="fas fa-gavel text-success"></i> 의사결정 활용</strong><br>
+                                <strong><i class="fas fa-gavel text-success"></i> <span data-i18n="analysis_modules.decision_label">의사결정 활용</span></strong><br>
                                 <span id="potentialDecision" class="text-muted"></span>
                             </div>
                             <hr class="my-2">
                             <div class="mb-2">
-                                <strong><i class="fas fa-search text-success"></i> 파악 가능 사항</strong><br>
+                                <strong><i class="fas fa-search text-success"></i> <span data-i18n="analysis_modules.insights_label">파악 가능 사항</span></strong><br>
                                 <span id="potentialInsights" class="text-muted"></span>
                             </div>
                             <hr class="my-2">
                             <div>
-                                <strong><i class="fas fa-calculator text-success"></i> 컬럼 산출 공식</strong><br>
+                                <strong><i class="fas fa-calculator text-success"></i> <span data-i18n="analysis_modules.formula_label">컬럼 산출 공식</span></strong><br>
                                 <span id="potentialFormulas" class="text-muted"></span>
                             </div>
                         </div>
@@ -125,13 +125,13 @@
                 <div class="col-md-8">
                     <div class="btn-group" role="group">
                         <button type="button" class="btn btn-outline-warning active" onclick="loadCitationPotential('top_journal_low_citation', this)">
-                            <i class="fas fa-book"></i> 상위저널-저인용
+                            <i class="fas fa-book"></i> <span data-i18n="analysis_modules.btn_top_journal_low_citation">상위저널-저인용</span>
                         </button>
                         <button type="button" class="btn btn-outline-warning" onclick="loadCitationPotential('intl_collab_potential', this)">
-                            <i class="fas fa-globe"></i> 국제협력 확대 대상
+                            <i class="fas fa-globe"></i> <span data-i18n="analysis_modules.btn_intl_collab_potential">국제협력 확대 대상</span>
                         </button>
                         <button type="button" class="btn btn-outline-warning" onclick="loadCitationPotential('top_journal_no_top_cited', this)">
-                            <i class="fas fa-medal"></i> Top저널 경험-Top피인용 無
+                            <i class="fas fa-medal"></i> <span data-i18n="analysis_modules.btn_top_journal_no_top_cited">Top저널 경험-Top피인용 無</span>
                         </button>
                     </div>
                 </div>
@@ -151,17 +151,17 @@
                     <div class="card border-0 mb-3" style="background-color: #fffaf0;">
                         <div class="card-body py-3" style="font-size: 0.875rem;">
                             <div class="mb-2">
-                                <strong><i class="fas fa-gavel text-warning"></i> 의사결정 활용</strong><br>
+                                <strong><i class="fas fa-gavel text-warning"></i> <span data-i18n="analysis_modules.decision_label">의사결정 활용</span></strong><br>
                                 <span id="citationDecision" class="text-muted"></span>
                             </div>
                             <hr class="my-2">
                             <div class="mb-2">
-                                <strong><i class="fas fa-search text-warning"></i> 파악 가능 사항</strong><br>
+                                <strong><i class="fas fa-search text-warning"></i> <span data-i18n="analysis_modules.insights_label">파악 가능 사항</span></strong><br>
                                 <span id="citationInsights" class="text-muted"></span>
                             </div>
                             <hr class="my-2">
                             <div>
-                                <strong><i class="fas fa-calculator text-warning"></i> 컬럼 산출 공식</strong><br>
+                                <strong><i class="fas fa-calculator text-warning"></i> <span data-i18n="analysis_modules.formula_label">컬럼 산출 공식</span></strong><br>
                                 <span id="citationFormulas" class="text-muted"></span>
                             </div>
                         </div>
@@ -186,13 +186,13 @@
                 <div class="col-md-8">
                     <div class="btn-group" role="group">
                         <button type="button" class="btn btn-outline-info active" onclick="loadCollabAnalysis('no_intl_high_performer', this)">
-                            <i class="fas fa-user-plus"></i> 국제협력 지원 대상
+                            <i class="fas fa-user-plus"></i> <span data-i18n="analysis_modules.btn_no_intl_high_performer">국제협력 지원 대상</span>
                         </button>
                         <button type="button" class="btn btn-outline-info" onclick="loadCollabAnalysis('collab_high_citation', this)">
-                            <i class="fas fa-star"></i> 롤모델/멘토
+                            <i class="fas fa-star"></i> <span data-i18n="analysis_modules.btn_collab_high_citation">롤모델/멘토</span>
                         </button>
                         <button type="button" class="btn btn-outline-info" onclick="loadCollabAnalysis('field_hub', this)">
-                            <i class="fas fa-network-wired"></i> 분야별 허브 연구자
+                            <i class="fas fa-network-wired"></i> <span data-i18n="analysis_modules.btn_field_hub">분야별 허브 연구자</span>
                         </button>
                     </div>
                 </div>
@@ -212,17 +212,17 @@
                     <div class="card border-0 mb-3" style="background-color: #f0f8ff;">
                         <div class="card-body py-3" style="font-size: 0.875rem;">
                             <div class="mb-2">
-                                <strong><i class="fas fa-gavel text-info"></i> 의사결정 활용</strong><br>
+                                <strong><i class="fas fa-gavel text-info"></i> <span data-i18n="analysis_modules.decision_label">의사결정 활용</span></strong><br>
                                 <span id="collabDecision" class="text-muted"></span>
                             </div>
                             <hr class="my-2">
                             <div class="mb-2">
-                                <strong><i class="fas fa-search text-info"></i> 파악 가능 사항</strong><br>
+                                <strong><i class="fas fa-search text-info"></i> <span data-i18n="analysis_modules.insights_label">파악 가능 사항</span></strong><br>
                                 <span id="collabInsights" class="text-muted"></span>
                             </div>
                             <hr class="my-2">
                             <div>
-                                <strong><i class="fas fa-calculator text-info"></i> 컬럼 산출 공식</strong><br>
+                                <strong><i class="fas fa-calculator text-info"></i> <span data-i18n="analysis_modules.formula_label">컬럼 산출 공식</span></strong><br>
                                 <span id="collabFormulas" class="text-muted"></span>
                             </div>
                         </div>
@@ -247,6 +247,11 @@
 
 {% block scripts %}
 <script>
+// i18n helper function
+function t(key) {
+    return window.i18n && window.i18n.t ? i18n.t(key) : key;
+}
+
 // 현재 활성 분석 타입 추적
 let currentPotentialType = 'growth';
 let currentCitationType = 'top_journal_low_citation';
@@ -284,12 +289,13 @@ function sortIcon(tbl, key) {
     return '';
 }
 
-function thS(tbl, label, key) {
+function thS(tbl, labelKey, key) {
+    const label = t(labelKey);
     return `<th style="cursor:pointer;user-select:none;white-space:nowrap;" onclick="handleSort('${tbl}','${key}')">${label}<span class="text-muted">${sortIcon(tbl, key)}</span></th>`;
 }
 
-function thP(label) {
-    return `<th>${label}</th>`;
+function thP(labelKey) {
+    return `<th>${t(labelKey)}</th>`;
 }
 
 function handleSort(tbl, key) {
@@ -336,11 +342,11 @@ function applyModuleCustomYear() {
     const yearFrom = parseInt(document.getElementById('moduleYearFrom').value);
     const yearTo = parseInt(document.getElementById('moduleYearTo').value);
     if (!yearFrom || !yearTo) {
-        alert('시작연도와 종료연도를 모두 입력해주세요.');
+        alert(t('analysis_modules.alert_enter_years'));
         return;
     }
     if (yearFrom > yearTo) {
-        alert('시작연도가 종료연도보다 클 수 없습니다.');
+        alert(t('analysis_modules.alert_year_invalid'));
         return;
     }
     moduleYearFrom = yearFrom;
@@ -374,8 +380,8 @@ function reloadCurrentTab() {
     }
 }
 
-// 페이지 로드 시 초기 데이터 로드
-document.addEventListener('DOMContentLoaded', function() {
+// 페이지 초기화 함수
+function initPage() {
     loadPotentialResearchers('growth');
 
     // 탭 변경 시 데이터 로드
@@ -385,7 +391,57 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('collab-tab').addEventListener('shown.bs.tab', function() {
         loadCollabAnalysis(currentCollabType);
     });
-});
+
+    // 언어 변경 시 현재 탭 다시 렌더링
+    if (window.i18n && window.i18n.onLanguageChange) {
+        i18n.onLanguageChange(function() {
+            // 현재 탭의 테이블 다시 렌더링
+            const activeTab = document.querySelector('#analysisTabs .nav-link.active');
+            if (activeTab) {
+                const tabId = activeTab.id;
+                if (tabId === 'potential-tab' && potentialData.length > 0) {
+                    renderPotentialTable(potentialData, currentPotentialType);
+                    updatePotentialInfo(currentPotentialType);
+                } else if (tabId === 'citation-tab' && citationData.length > 0) {
+                    renderCitationTable(citationData, currentCitationType);
+                    updateCitationInfo(currentCitationType);
+                } else if (tabId === 'collab-tab' && collabData.length > 0) {
+                    renderCollabTable(collabData, currentCollabType);
+                    updateCollabInfo(currentCollabType);
+                }
+            }
+        });
+    }
+}
+
+// 페이지 로드 시 초기 데이터 로드
+if (window.i18n && window.i18n.ready) {
+    initPage();
+} else {
+    window.addEventListener('i18nReady', initPage);
+}
+
+// 잠재 연구자 정보 업데이트 (언어 변경 시 재사용)
+function updatePotentialInfo(type) {
+    document.getElementById('potentialTitle').textContent = t('analysis_modules.title_' + type);
+    document.getElementById('potentialDecision').innerHTML = t('analysis_modules.decision_' + type);
+
+    const hasYearFilter = moduleYearFrom && moduleYearTo;
+    const periodSpan = hasYearFilter ? (moduleYearTo - moduleYearFrom + 1) : 3;
+    const periodColName = t('analysis_modules.recent_n_years').replace('{n}', periodSpan);
+
+    if (type === 'growth') {
+        const insightText = hasYearFilter
+            ? t('analysis_modules.insight_growth_period').replace('{period}', periodColName)
+            : t('analysis_modules.insight_growth');
+        document.getElementById('potentialInsights').innerHTML = insightText;
+    } else {
+        document.getElementById('potentialInsights').innerHTML = t('analysis_modules.insight_' + type);
+    }
+
+    // 공식 설명 업데이트
+    document.getElementById('potentialFormulas').innerHTML = t('analysis_modules.formula_' + type);
+}
 
 // 잠재 연구자 발굴 로드
 function loadPotentialResearchers(type, clickedBtn) {
@@ -401,77 +457,20 @@ function loadPotentialResearchers(type, clickedBtn) {
         document.querySelector('#potential .btn-group .btn').classList.add('active');
     }
 
-    // 연도 필터에 따른 동적 라벨 생성
-    const hasYearFilter = moduleYearFrom && moduleYearTo;
-    const periodSpan = hasYearFilter ? (moduleYearTo - moduleYearFrom + 1) : 3;
-    const periodColName = `최근${periodSpan}년`;
-    const periodColDesc = hasYearFilter
-        ? `${periodColName}(${moduleYearFrom}~${moduleYearTo} 논문 수)`
-        : '최근3년(2022년 이후 논문 수)';
-    const pubCountDesc = hasYearFilter ? `논문수(${moduleYearFrom}~${moduleYearTo} 기간 논문 수)` : '논문수(총 논문 수)';
-
     // 제목 및 설명 업데이트
-    const titles = {
-        'growth': '최근 성장률 높은 연구자',
-        'high_fwci_low_output': 'FWCI 높지만 논문 수 적은 연구자',
-        'high_prominence': 'Topic Prominence 90+ 분야 연구자'
-    };
-    const decisions = {
-        'growth': '연구 활성화 지원 대상자 우선순위 결정, 성과급·인센티브 배분 참고, 향후 성장 잠재력 기반 연구비 투자 대상 선정',
-        'high_fwci_low_output': '연구비·연구환경 지원으로 논문수 증가 기대 연구자 발굴, 소수정예 연구자 육성 프로그램 대상 선정, 맞춤형 연구 지원 대상 파악',
-        'high_prominence': '떠오르는 연구 분야의 핵심 연구자 지원, 전략적 연구 분야 투자 우선순위 결정, 미래 유망 분야 선점 전략 수립'
-    };
-    const insights = {
-        'growth': `${hasYearFilter ? periodColName + ' 기간' : '최근'} 논문 발표 비율이 경력 대비 높은 연구자(최근 연구 활동이 활발한 연구자)를 파악합니다. 성장률이 높을수록 최근 연구 활동이 활발하다는 의미입니다.`,
-        'high_fwci_low_output': '논문 수는 적지만(5~30편) FWCI가 1.5 이상으로 높은 연구자를 파악합니다. 적은 논문으로 높은 영향력을 발휘하는 효율적 연구자를 발견할 수 있습니다.',
-        'high_prominence': 'Topic Prominence 90% 이상의 떠오르는 연구 분야에서 활동하는 연구자를 파악합니다. 학술적으로 주목받는 최신 분야의 핵심 인력을 확인할 수 있습니다.'
-    };
-    const formulas = {
-        'growth': `<ul class="mb-0 ps-3">
-            <li><b>논문수</b>: ${pubCountDesc}</li>
-            <li><b>인용수</b>: Scopus 총 피인용 횟수</li>
-            <li><b>FWCI</b>: Field-Weighted Citation Impact (1.0 = 세계평균)</li>
-            <li><b>${periodColName}</b>: ${periodColDesc}</li>
-            <li><b>성장률(%)</b>: (actual_ratio ÷ expected_ratio − 1) × 100</li>
-            <li style="margin-left:1em; list-style:none;">· expected_ratio = 지정기간 년수 ÷ 전체 경력 년수</li>
-            <li style="margin-left:1em; list-style:none;">· actual_ratio = 지정기간 논문수 ÷ 전체 논문수</li>
-            <li style="margin-left:1em; list-style:none;">· 예: 경력 10년, 최근 3년 → expected=0.3, actual=0.5 → 성장률=67%</li>
-            <li><b>총점</b>: researcher_score 테이블의 score_total_median (종합 평가 점수)</li>
-            <li><b>선정조건</b>: 총 논문수 ≥ 5편, 최근기간 논문 ≥ 3편</li></ul>`,
-        'high_fwci_low_output': `<ul class="mb-0 ps-3">
-            <li><b>논문수</b>: ${pubCountDesc}</li>
-            <li><b>FWCI</b>: Field-Weighted Citation Impact (기간필터 시 해당 기간 논문 평균, 전체일 때 Scopus 프로필 값)</li>
-            <li><b>효율성</b>: avg_fwci ÷ log(논문수 + 1)</li>
-            <li style="margin-left:1em; list-style:none;">· 적은 논문으로 높은 FWCI일수록 효율성 점수가 높음</li>
-            <li style="margin-left:1em; list-style:none;">· log 함수로 논문수 차이를 완화 (10편→2.4, 30편→3.4)</li>
-            <li><b>잠재력</b>: "논문 수 대비 높은 FWCI - 연구 지원 시 높은 성장 잠재력" (고정 텍스트)</li>
-            <li><b>총점</b>: researcher_score 테이블의 score_total_median</li>
-            <li><b>선정조건</b>: 5 ≤ 논문수 ≤ 30, FWCI ≥ 1.5</li></ul>`,
-        'high_prominence': `<ul class="mb-0 ps-3">
-            <li><b>논문수</b>: ${pubCountDesc}</li>
-            <li><b>고Prom편수</b>: topic_prominence_percentile ≥ 90인 논문 수</li>
-            <li><b>최대Prom</b>: 해당 연구자 논문 중 가장 높은 topic_prominence_percentile 값</li>
-            <li><b>주요토픽</b>: 고Prominence 논문의 topic_name (상위 3개까지 표시)</li>
-            <li><b>데이터 출처</b>: SciVal의 topic_prominence_percentile, topic_name 컬럼</li>
-            <li><b>선정조건</b>: 고Prominence(90%+) 논문 ≥ 2편, 전북대 소속</li></ul>`
-    };
-
-    document.getElementById('potentialTitle').textContent = titles[type];
-    document.getElementById('potentialDecision').innerHTML = decisions[type];
-    document.getElementById('potentialInsights').innerHTML = insights[type];
-    document.getElementById('potentialFormulas').innerHTML = formulas[type];
-    document.getElementById('potentialBody').innerHTML = '<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>';
+    updatePotentialInfo(type);
+    document.getElementById('potentialBody').innerHTML = `<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> ${t('common.loading')}</td></tr>`;
 
     fetch(`/api/potential_researchers?type=${type}&limit=50${getYearParams()}`)
         .then(response => response.json())
         .then(data => {
             if (data.max_data_year) moduleMaxDataYear = data.max_data_year;
-            document.getElementById('potentialCount').textContent = `${data.count}명`;
+            document.getElementById('potentialCount').textContent = `${data.count}${t('analysis_modules.persons_unit')}`;
             renderPotentialTable(data.researchers, type);
         })
         .catch(error => {
             console.error('Error:', error);
-            document.getElementById('potentialBody').innerHTML = '<tr><td colspan="10" class="text-center text-danger">데이터 로드 실패</td></tr>';
+            document.getElementById('potentialBody').innerHTML = `<tr><td colspan="10" class="text-center text-danger">${t('analysis_modules.data_load_fail')}</td></tr>`;
         });
 }
 
@@ -485,23 +484,25 @@ function renderPotentialTable(researchers, type) {
 
     const hasYF = moduleYearFrom && moduleYearTo;
     const pSpan = hasYF ? (moduleYearTo - moduleYearFrom + 1) : 3;
-    const pColName = `최근${pSpan}년`;
+    const pColName = t('analysis_modules.recent_n_years').replace('{n}', pSpan);
     const recentKey = hasYF ? 'scholarly_output' : 'recent_3yr_count';
+    const papersUnit = t('analysis_modules.papers_unit');
 
-    let headerHTML = thP('#') + thS('potential','연구자명','name') + thS('potential','논문수','scholarly_output') + thS('potential','인용수','citations') + thS('potential','FWCI','fwci') + thS('potential','h-index','h_index');
+    let headerHTML = thP('common.rank') + thS('potential','analysis_modules.researcher_name','name') + thS('potential','analysis_modules.papers','scholarly_output') + thS('potential','analysis_modules.citations','citations') + thS('potential','researcher_ranking.fwci','fwci') + thS('potential','analysis_modules.h_index','h_index');
 
     if (type === 'growth') {
-        headerHTML += thS('potential', pColName, recentKey) + thS('potential','성장률','growth_rate') + thS('potential','총점','score_total') + thP('프로필');
+        headerHTML += `<th style="cursor:pointer;user-select:none;white-space:nowrap;" onclick="handleSort('potential','${recentKey}')">${pColName}<span class="text-muted">${sortIcon('potential', recentKey)}</span></th>`;
+        headerHTML += thS('potential','analysis_modules.growth_rate','growth_rate') + thS('potential','analysis_modules.total_score','score_total') + thP('analysis_modules.profile');
     } else if (type === 'high_fwci_low_output') {
-        headerHTML += thS('potential','효율성','efficiency_score') + thP('잠재력') + thS('potential','총점','score_total') + thP('프로필');
+        headerHTML += thS('potential','analysis_modules.efficiency_score','efficiency_score') + thP('analysis_modules.potential_note') + thS('potential','analysis_modules.total_score','score_total') + thP('analysis_modules.profile');
     } else if (type === 'high_prominence') {
-        headerHTML += thS('potential','고Prom편수','high_prominence_count') + thS('potential','최대Prom','max_prominence') + thP('주요토픽') + thP('프로필');
+        headerHTML += thS('potential','analysis_modules.high_prom_count','high_prominence_count') + thS('potential','analysis_modules.max_prom','max_prominence') + thP('analysis_modules.main_topics') + thP('analysis_modules.profile');
     }
 
     header.innerHTML = headerHTML;
 
     if (sorted.length === 0) {
-        body.innerHTML = '<tr><td colspan="10" class="text-center">데이터가 없습니다.</td></tr>';
+        body.innerHTML = `<tr><td colspan="10" class="text-center">${t('common.no_data')}</td></tr>`;
         return;
     }
 
@@ -518,18 +519,18 @@ function renderPotentialTable(researchers, type) {
         if (type === 'growth') {
             const recentVal = hasYF ? r.scholarly_output : r.recent_3yr_count;
             bodyHTML += `
-                <td><span class="badge bg-primary">${recentVal}편</span></td>
+                <td><span class="badge bg-primary">${recentVal}${papersUnit}</span></td>
                 <td><span class="badge ${r.growth_rate > 50 ? 'bg-success' : 'bg-secondary'}">+${r.growth_rate}%</span></td>
                 <td>${r.score_total?.toFixed(1) || '-'}</td>`;
         } else if (type === 'high_fwci_low_output') {
             bodyHTML += `
                 <td><span class="badge bg-warning text-dark">${r.efficiency_score}</span></td>
-                <td><small class="text-muted">${r.potential_note}</small></td>
+                <td><small class="text-muted">${t('analysis_modules.potential_note')}</small></td>
                 <td>${r.score_total?.toFixed(1) || '-'}</td>`;
         } else if (type === 'high_prominence') {
             const topics = r.topics?.slice(0, 2).join(', ') || '-';
             bodyHTML += `
-                <td><span class="badge bg-danger">${r.high_prominence_count}편</span></td>
+                <td><span class="badge bg-danger">${r.high_prominence_count}${papersUnit}</span></td>
                 <td>${r.max_prominence}%</td>
                 <td><small>${topics}</small></td>`;
         }
@@ -539,6 +540,14 @@ function renderPotentialTable(researchers, type) {
     });
 
     body.innerHTML = bodyHTML;
+}
+
+// 고인용 유도 정보 업데이트 (언어 변경 시 재사용)
+function updateCitationInfo(type) {
+    document.getElementById('citationTitle').textContent = t('analysis_modules.title_' + type);
+    document.getElementById('citationDecision').innerHTML = t('analysis_modules.decision_' + type);
+    document.getElementById('citationInsights').innerHTML = t('analysis_modules.insight_' + type);
+    document.getElementById('citationFormulas').innerHTML = t('analysis_modules.formula_' + type);
 }
 
 // 고인용 유도 대상 로드
@@ -554,62 +563,20 @@ function loadCitationPotential(type, clickedBtn) {
         document.querySelector('#citation .btn-group .btn').classList.add('active');
     }
 
-    const hasYearFilter2 = moduleYearFrom && moduleYearTo;
-    const pubCountDesc2 = hasYearFilter2 ? `논문수(${moduleYearFrom}~${moduleYearTo} 기간 논문 수)` : '논문수(총 논문 수)';
-
-    const titles = {
-        'top_journal_low_citation': '상위 저널 게재율 높지만 인용수 낮은 연구자',
-        'intl_collab_potential': '국제협력 확대 시 인용 향상 가능한 연구자',
-        'top_journal_no_top_cited': 'Top 10% 저널 게재 경험 있지만 Top 10% 피인용 없는 연구자'
-    };
-    const decisions = {
-        'top_journal_low_citation': '연구 홍보·네트워킹 지원 대상 선정, 인용 향상 프로그램 대상자 파악, 오픈액세스 전환 지원 대상 선정',
-        'intl_collab_potential': '국제협력 지원 프로그램 대상자 선정, 국제 공동연구비 신청 지원 대상, 국제 네트워크 확대 지원 후보 파악',
-        'top_journal_no_top_cited': '인용 극대화 전략 지원 대상 선정, 연구 홍보·오픈액세스 지원 대상, Top 피인용 달성을 위한 맞춤 지원 대상'
-    };
-    const insights = {
-        'top_journal_low_citation': '상위 저널에 꾸준히 게재하지만 인용 수가 기대에 미치지 못하는 연구자를 파악합니다. 인용갭(기대인용수−실제인용수)이 클수록 인용 향상의 여지가 큽니다.',
-        'intl_collab_potential': 'FWCI는 높지만(중앙값 ≥ 1.0) 국제협력 비율이 30% 미만인 연구자를 파악합니다. 국제협력 확대 시 인용 성과 향상이 기대되는 연구자입니다.',
-        'top_journal_no_top_cited': '상위 10% 저널에 게재한 경험이 있지만 아직 상위 10% 피인용 논문이 없는 연구자를 파악합니다. 저널 게재 역량은 있으나 인용 전략이 필요한 연구자입니다.'
-    };
-    const formulas = {
-        'top_journal_low_citation': `<ul class="mb-0 ps-3">
-            <li><b>논문수</b>: ${pubCountDesc2}</li>
-            <li><b>상위저널%</b>: researcher_score.top_journal_pct (Top 10% 저널 게재 비율)</li>
-            <li><b>기대인용수</b>: SUM(field_citation_average) — 각 논문의 분야별 평균 인용수를 모두 합산</li>
-            <li><b>인용갭</b>: 기대인용수 − 실제인용수 (클수록 인용이 기대치에 크게 미달)</li>
-            <li><b>편당인용수</b>: 실제인용수 ÷ 논문수</li>
-            <li><b>선정조건</b>: 상위저널% ≥ 30, 논문수 ≥ 10, 기대인용수 &gt; 0, 인용갭 &gt; 0</li></ul>`,
-        'intl_collab_potential': `<ul class="mb-0 ps-3">
-            <li><b>논문수</b>: ${pubCountDesc2}</li>
-            <li><b>FWCI</b>: researcher_score.fwci_median (FWCI 중앙값, 이상치 영향 최소화)</li>
-            <li><b>국제협력</b>: researcher_score.intl_collab_count (국제 공저 논문 수)</li>
-            <li><b>국제협력비율(%)</b>: 국제협력 논문수 ÷ 전체 논문수 × 100</li>
-            <li><b>국제FWCI</b>: researcher_score.intl_collab_fwci (국제 공저 논문의 FWCI)</li>
-            <li><b>선정조건</b>: 논문수 ≥ 10, FWCI 중앙값 ≥ 1.0, 국제협력비율 &lt; 30%</li></ul>`,
-        'top_journal_no_top_cited': `<ul class="mb-0 ps-3">
-            <li><b>논문수</b>: ${pubCountDesc2}</li>
-            <li><b>상위저널%</b>: researcher_score.top_journal_pct (Top 10% 저널 게재 비율)</li>
-            <li><b>Top피인용</b>: author.output_in_top_10_percentile (상위 10% 피인용 논문 수, 이 리스트에서는 0)</li>
-            <li><b>선정조건</b>: 상위저널% &gt; 0, 논문수 ≥ 10, output_in_top_10_percentile = 0 또는 NULL</li></ul>`
-    };
-
-    document.getElementById('citationTitle').textContent = titles[type];
-    document.getElementById('citationDecision').innerHTML = decisions[type];
-    document.getElementById('citationInsights').innerHTML = insights[type];
-    document.getElementById('citationFormulas').innerHTML = formulas[type];
-    document.getElementById('citationBody').innerHTML = '<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>';
+    // 제목 및 설명 업데이트
+    updateCitationInfo(type);
+    document.getElementById('citationBody').innerHTML = `<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> ${t('common.loading')}</td></tr>`;
 
     fetch(`/api/high_citation_potential?type=${type}&limit=50${getYearParams()}`)
         .then(response => response.json())
         .then(data => {
             if (data.max_data_year) moduleMaxDataYear = data.max_data_year;
-            document.getElementById('citationCount').textContent = `${data.count}명`;
+            document.getElementById('citationCount').textContent = `${data.count}${t('analysis_modules.persons_unit')}`;
             renderCitationTable(data.researchers, type);
         })
         .catch(error => {
             console.error('Error:', error);
-            document.getElementById('citationBody').innerHTML = '<tr><td colspan="10" class="text-center text-danger">데이터 로드 실패</td></tr>';
+            document.getElementById('citationBody').innerHTML = `<tr><td colspan="10" class="text-center text-danger">${t('analysis_modules.data_load_fail')}</td></tr>`;
         });
 }
 
@@ -620,21 +587,22 @@ function renderCitationTable(researchers, type) {
 
     const header = document.getElementById('citationHeader');
     const body = document.getElementById('citationBody');
+    const papersUnit = t('analysis_modules.papers_unit');
 
-    let headerHTML = thP('#') + thS('citation','연구자명','name') + thS('citation','논문수','scholarly_output') + thS('citation','인용수','citations') + thS('citation','FWCI','fwci') + thS('citation','h-index','h_index');
+    let headerHTML = thP('common.rank') + thS('citation','analysis_modules.researcher_name','name') + thS('citation','analysis_modules.papers','scholarly_output') + thS('citation','analysis_modules.citations','citations') + thS('citation','researcher_ranking.fwci','fwci') + thS('citation','analysis_modules.h_index','h_index');
 
     if (type === 'top_journal_low_citation') {
-        headerHTML += thS('citation','상위저널%','top_journal_pct') + thS('citation','기대인용수','expected_citations') + thS('citation','인용갭','citation_gap') + thP('권고') + thP('프로필');
+        headerHTML += thS('citation','analysis_modules.top_journal_pct','top_journal_pct') + thS('citation','analysis_modules.expected_citations','expected_citations') + thS('citation','analysis_modules.citation_gap','citation_gap') + thP('analysis_modules.recommendation') + thP('analysis_modules.profile');
     } else if (type === 'intl_collab_potential') {
-        headerHTML += thS('citation','국제협력','intl_collab_count') + thS('citation','국제협력비율','intl_collab_ratio') + thS('citation','국제FWCI','intl_collab_fwci') + thP('프로필');
+        headerHTML += thS('citation','analysis_modules.intl_collab_count','intl_collab_count') + thS('citation','analysis_modules.intl_collab_ratio','intl_collab_ratio') + thS('citation','analysis_modules.intl_fwci','intl_collab_fwci') + thP('analysis_modules.profile');
     } else if (type === 'top_journal_no_top_cited') {
-        headerHTML += thS('citation','상위저널%','top_journal_pct') + thS('citation','Top피인용','top_10_cited_count') + thP('권고') + thP('프로필');
+        headerHTML += thS('citation','analysis_modules.top_journal_pct','top_journal_pct') + thS('citation','analysis_modules.top_10_cited','top_10_cited_count') + thP('analysis_modules.recommendation') + thP('analysis_modules.profile');
     }
 
     header.innerHTML = headerHTML;
 
     if (sorted.length === 0) {
-        body.innerHTML = '<tr><td colspan="10" class="text-center">데이터가 없습니다.</td></tr>';
+        body.innerHTML = `<tr><td colspan="10" class="text-center">${t('common.no_data')}</td></tr>`;
         return;
     }
 
@@ -652,17 +620,17 @@ function renderCitationTable(researchers, type) {
             bodyHTML += `
                 <td><span class="badge bg-success">${r.top_journal_pct}%</span></td>
                 <td>${r.expected_citations?.toLocaleString() || 0}</td>
-                <td><span class="badge bg-danger">-${r.citation_gap?.toLocaleString()}</span></td>
+                <td><span class="badge bg-danger">${r.citation_gap?.toLocaleString()}</span></td>
                 <td><small class="text-muted">${r.recommendation}</small></td>`;
         } else if (type === 'intl_collab_potential') {
             bodyHTML += `
-                <td>${r.intl_collab_count}편</td>
+                <td>${r.intl_collab_count}${papersUnit}</td>
                 <td><span class="badge bg-secondary">${r.intl_collab_ratio}%</span></td>
                 <td>${r.intl_collab_fwci || '-'}</td>`;
         } else if (type === 'top_journal_no_top_cited') {
             bodyHTML += `
                 <td><span class="badge bg-success">${r.top_journal_pct}%</span></td>
-                <td><span class="badge bg-secondary">${r.top_10_cited_count}편</span></td>
+                <td><span class="badge bg-secondary">${r.top_10_cited_count}${papersUnit}</span></td>
                 <td><small class="text-muted">${r.recommendation}</small></td>`;
         }
 
@@ -671,6 +639,14 @@ function renderCitationTable(researchers, type) {
     });
 
     body.innerHTML = bodyHTML;
+}
+
+// 공동연구 정보 업데이트 (언어 변경 시 재사용)
+function updateCollabInfo(type) {
+    document.getElementById('collabTitle').textContent = t('analysis_modules.title_' + type);
+    document.getElementById('collabDecision').innerHTML = t('analysis_modules.decision_' + type);
+    document.getElementById('collabInsights').innerHTML = t('analysis_modules.insight_' + type);
+    document.getElementById('collabFormulas').innerHTML = t('analysis_modules.formula_' + type);
 }
 
 // 공동연구 분석 로드
@@ -686,63 +662,20 @@ function loadCollabAnalysis(type, clickedBtn) {
         document.querySelector('#collab .btn-group .btn').classList.add('active');
     }
 
-    const hasYearFilter3 = moduleYearFrom && moduleYearTo;
-    const pubCountDesc3 = hasYearFilter3 ? `논문수(${moduleYearFrom}~${moduleYearTo} 기간 논문 수)` : '논문수(총 논문 수)';
-
-    const titles = {
-        'no_intl_high_performer': '국제협력 없는 고성과 연구자',
-        'collab_high_citation': '공동연구 활발 + 고인용 연구자 (롤모델)',
-        'field_hub': '분야별 협력 허브 연구자'
-    };
-    const decisions = {
-        'no_intl_high_performer': '국제협력 프로그램 우선 지원 대상 선정, 국제공동연구비 신청 지원 대상, 해외학회·연구교류 파견 후보 파악',
-        'collab_high_citation': '신진 연구자 멘토링 프로그램 멘토 선정, 국제협력 노하우 공유 대상, 연구 역량 강화 워크숍 강사 후보',
-        'field_hub': '학제간·분야간 협력 촉진 프로그램 대상 파악, 연구 네트워크 핵심 인력 관리, 분야별 연구 클러스터 리더 선정'
-    };
-    const insights = {
-        'no_intl_high_performer': '높은 연구 성과(FWCI 중앙값 ≥ 1.0)를 보이지만 국제협력이 부족한(0~2편) 연구자를 파악합니다. 국제협력 지원 시 성과가 크게 향상될 잠재력이 있습니다.',
-        'collab_high_citation': '국제협력이 활발하고(5편 이상) 인용 성과도 높은(FWCI 중앙값 ≥ 1.5) 연구자를 파악합니다. 국제협력 성공 모델로서 신진 연구자 멘토링에 적합합니다.',
-        'field_hub': '각 ASJC 연구 분야에서 많은 공저자와 협력하는 허브 역할의 연구자를 파악합니다. 분야별 상위 3명의 핵심 네트워크 인력을 확인할 수 있습니다.'
-    };
-    const formulas = {
-        'no_intl_high_performer': `<ul class="mb-0 ps-3">
-            <li><b>논문수</b>: ${pubCountDesc3}</li>
-            <li><b>FWCI</b>: researcher_score.fwci_median (FWCI 중앙값)</li>
-            <li><b>국제협력</b>: researcher_score.intl_collab_count (국제 공저 논문 수, 0~2편)</li>
-            <li><b>상위저널%</b>: researcher_score.top_journal_pct (Top 10% 저널 게재 비율)</li>
-            <li><b>선정조건</b>: 논문수 ≥ 15, FWCI 중앙값 ≥ 1.0, 국제협력 ≤ 2편</li></ul>`,
-        'collab_high_citation': `<ul class="mb-0 ps-3">
-            <li><b>논문수</b>: ${pubCountDesc3}</li>
-            <li><b>FWCI</b>: researcher_score.fwci_median (FWCI 중앙값)</li>
-            <li><b>국제협력</b>: researcher_score.intl_collab_count (국제 공저 논문 수)</li>
-            <li><b>국제비율(%)</b>: 국제협력 논문수 ÷ 전체 논문수 × 100</li>
-            <li><b>국제FWCI</b>: researcher_score.intl_collab_fwci (국제 공저 논문의 FWCI)</li>
-            <li><b>선정조건</b>: 논문수 ≥ 20, 국제협력 ≥ 5편, FWCI 중앙값 ≥ 1.5</li></ul>`,
-        'field_hub': `<ul class="mb-0 ps-3">
-            <li><b>논문수</b>: ${pubCountDesc3}</li>
-            <li><b>분야</b>: ASJC (All Science Journal Classification) 분야명</li>
-            <li><b>분야논문</b>: 해당 ASJC 분야에서의 논문 수</li>
-            <li><b>공저자수</b>: 해당 분야에서 함께 논문을 쓴 고유 공저자 수</li>
-            <li><b>허브점수(정렬 기준)</b>: 분야논문수 × 고유공저자수 — 분야별 상위 3명 추출</li>
-            <li><b>선정조건</b>: 분야 내 논문 ≥ 5편, 전북대 소속 연구자</li></ul>`
-    };
-
-    document.getElementById('collabTitle').textContent = titles[type];
-    document.getElementById('collabDecision').innerHTML = decisions[type];
-    document.getElementById('collabInsights').innerHTML = insights[type];
-    document.getElementById('collabFormulas').innerHTML = formulas[type];
-    document.getElementById('collabBody').innerHTML = '<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>';
+    // 제목 및 설명 업데이트
+    updateCollabInfo(type);
+    document.getElementById('collabBody').innerHTML = `<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> ${t('common.loading')}</td></tr>`;
 
     fetch(`/api/collaboration_analysis?type=${type}&limit=50${getYearParams()}`)
         .then(response => response.json())
         .then(data => {
             if (data.max_data_year) moduleMaxDataYear = data.max_data_year;
-            document.getElementById('collabCount').textContent = `${data.count}명`;
+            document.getElementById('collabCount').textContent = `${data.count}${t('analysis_modules.persons_unit')}`;
             renderCollabTable(data.researchers, type);
         })
         .catch(error => {
             console.error('Error:', error);
-            document.getElementById('collabBody').innerHTML = '<tr><td colspan="10" class="text-center text-danger">데이터 로드 실패</td></tr>';
+            document.getElementById('collabBody').innerHTML = `<tr><td colspan="10" class="text-center text-danger">${t('analysis_modules.data_load_fail')}</td></tr>`;
         });
 }
 
@@ -753,21 +686,23 @@ function renderCollabTable(researchers, type) {
 
     const header = document.getElementById('collabHeader');
     const body = document.getElementById('collabBody');
+    const papersUnit = t('analysis_modules.papers_unit');
+    const personsUnit = t('analysis_modules.persons_unit');
 
-    let headerHTML = thP('#') + thS('collab','연구자명','name') + thS('collab','논문수','scholarly_output') + thS('collab','인용수','citations') + thS('collab','FWCI','fwci') + thS('collab','h-index','h_index');
+    let headerHTML = thP('common.rank') + thS('collab','analysis_modules.researcher_name','name') + thS('collab','analysis_modules.papers','scholarly_output') + thS('collab','analysis_modules.citations','citations') + thS('collab','researcher_ranking.fwci','fwci') + thS('collab','analysis_modules.h_index','h_index');
 
     if (type === 'no_intl_high_performer') {
-        headerHTML += thS('collab','국제협력','intl_collab_count') + thS('collab','상위저널%','top_journal_pct') + thP('권고') + thP('프로필');
+        headerHTML += thS('collab','analysis_modules.intl_collab_count','intl_collab_count') + thS('collab','analysis_modules.top_journal_pct','top_journal_pct') + thP('analysis_modules.recommendation') + thP('analysis_modules.profile');
     } else if (type === 'collab_high_citation') {
-        headerHTML += thS('collab','국제협력','intl_collab_count') + thS('collab','국제비율','intl_collab_ratio') + thS('collab','국제FWCI','intl_collab_fwci') + thP('프로필');
+        headerHTML += thS('collab','analysis_modules.intl_collab_count','intl_collab_count') + thS('collab','analysis_modules.intl_ratio','intl_collab_ratio') + thS('collab','analysis_modules.intl_fwci','intl_collab_fwci') + thP('analysis_modules.profile');
     } else if (type === 'field_hub') {
-        headerHTML += thS('collab','분야','field') + thS('collab','분야논문','field_pub_count') + thS('collab','공저자수','unique_coauthors') + thP('프로필');
+        headerHTML += thS('collab','analysis_modules.field','field') + thS('collab','analysis_modules.field_papers','field_pub_count') + thS('collab','analysis_modules.coauthors','unique_coauthors') + thP('analysis_modules.profile');
     }
 
     header.innerHTML = headerHTML;
 
     if (sorted.length === 0) {
-        body.innerHTML = '<tr><td colspan="10" class="text-center">데이터가 없습니다.</td></tr>';
+        body.innerHTML = `<tr><td colspan="10" class="text-center">${t('common.no_data')}</td></tr>`;
         return;
     }
 
@@ -783,19 +718,19 @@ function renderCollabTable(researchers, type) {
 
         if (type === 'no_intl_high_performer') {
             bodyHTML += `
-                <td><span class="badge bg-secondary">${r.intl_collab_count}편</span></td>
+                <td><span class="badge bg-secondary">${r.intl_collab_count}${papersUnit}</span></td>
                 <td>${r.top_journal_pct}%</td>
                 <td><small class="text-success">${r.recommendation}</small></td>`;
         } else if (type === 'collab_high_citation') {
             bodyHTML += `
-                <td><span class="badge bg-primary">${r.intl_collab_count}편</span></td>
+                <td><span class="badge bg-primary">${r.intl_collab_count}${papersUnit}</span></td>
                 <td>${r.intl_collab_ratio}%</td>
                 <td><span class="badge bg-success">${r.intl_collab_fwci || '-'}</span></td>`;
         } else if (type === 'field_hub') {
             bodyHTML += `
                 <td><small>${r.field?.substring(0, 30) || '-'}</small></td>
-                <td>${r.field_pub_count}편</td>
-                <td><span class="badge bg-info">${r.unique_coauthors}명</span></td>`;
+                <td>${r.field_pub_count}${papersUnit}</td>
+                <td><span class="badge bg-info">${r.unique_coauthors}${personsUnit}</span></td>`;
         }
 
         bodyHTML += `<td><a href="${r.profile_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
@@ -838,98 +773,98 @@ function triggerCSVDownload(csvContent, filename) {
 
 function getModulePeriodLabel() {
     if (moduleYearFrom && moduleYearTo) return `${moduleYearFrom}-${moduleYearTo}`;
-    return '전체기간';
+    return t('analysis_modules.full_period');
 }
 
 function downloadPotentialCSV() {
-    if (!potentialData || potentialData.length === 0) { alert('다운로드할 데이터가 없습니다.'); return; }
-    const typeNames = { 'growth': '최근성장률', 'high_fwci_low_output': '고FWCI저논문', 'high_prominence': '고Prominence' };
+    if (!potentialData || potentialData.length === 0) { alert(t('analysis_modules.alert_no_download')); return; }
+    const typeKeys = { 'growth': 'csv_potential_growth', 'high_fwci_low_output': 'csv_potential_high_fwci', 'high_prominence': 'csv_potential_high_prominence' };
     const hasYF = moduleYearFrom && moduleYearTo;
     const colDefs = {
         'growth': [
-            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
-            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
-            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
-            {key: hasYF ? 'scholarly_output' : 'recent_3yr_count', header:'최근논문수'},
-            {key:'growth_rate',header:'성장률(%)'},{key:'score_total',header:'총점'}
+            {key:'name',header:t('analysis_modules.researcher_name')},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:t('analysis_modules.papers')},{key:'citations',header:t('analysis_modules.citations')},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:t('analysis_modules.h_index')},
+            {key: hasYF ? 'scholarly_output' : 'recent_3yr_count', header:t('analysis_modules.recent_papers')},
+            {key:'growth_rate',header:t('analysis_modules.growth_rate')},{key:'score_total',header:t('analysis_modules.total_score')}
         ],
         'high_fwci_low_output': [
-            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
-            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
-            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
-            {key:'efficiency_score',header:'효율성점수'},{key:'score_total',header:'총점'}
+            {key:'name',header:t('analysis_modules.researcher_name')},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:t('analysis_modules.papers')},{key:'citations',header:t('analysis_modules.citations')},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:t('analysis_modules.h_index')},
+            {key:'efficiency_score',header:t('analysis_modules.efficiency_score')},{key:'score_total',header:t('analysis_modules.total_score')}
         ],
         'high_prominence': [
-            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
-            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
-            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
-            {key:'high_prominence_count',header:'고Prominence편수'},
-            {key:'max_prominence',header:'최대Prominence(%)'},
-            {key:'topics',header:'주요토픽'}
+            {key:'name',header:t('analysis_modules.researcher_name')},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:t('analysis_modules.papers')},{key:'citations',header:t('analysis_modules.citations')},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:t('analysis_modules.h_index')},
+            {key:'high_prominence_count',header:t('analysis_modules.high_prom_count')},
+            {key:'max_prominence',header:t('analysis_modules.max_prom')},
+            {key:'topics',header:t('analysis_modules.main_topics')}
         ]
     };
-    const filename = `분석모듈_${typeNames[currentPotentialType]}_${getModulePeriodLabel()}.csv`;
+    const filename = `${t('analysis_modules.' + typeKeys[currentPotentialType])}_${getModulePeriodLabel()}.csv`;
     triggerCSVDownload(generateCSV(potentialData, colDefs[currentPotentialType]), filename);
 }
 
 function downloadCitationCSV() {
-    if (!citationData || citationData.length === 0) { alert('다운로드할 데이터가 없습니다.'); return; }
-    const typeNames = { 'top_journal_low_citation': '상위저널저인용', 'intl_collab_potential': '국제협력확대대상', 'top_journal_no_top_cited': 'Top저널Top피인용없음' };
+    if (!citationData || citationData.length === 0) { alert(t('analysis_modules.alert_no_download')); return; }
+    const typeKeys = { 'top_journal_low_citation': 'csv_citation_top_journal', 'intl_collab_potential': 'csv_citation_intl_collab', 'top_journal_no_top_cited': 'csv_citation_top_journal_no_top' };
     const colDefs = {
         'top_journal_low_citation': [
-            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
-            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
-            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
-            {key:'top_journal_pct',header:'상위저널(%)'},{key:'expected_citations',header:'기대인용수'},
-            {key:'citation_gap',header:'인용갭'},{key:'citations_per_pub',header:'편당인용수'},
-            {key:'recommendation',header:'권고'}
+            {key:'name',header:t('analysis_modules.researcher_name')},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:t('analysis_modules.papers')},{key:'citations',header:t('analysis_modules.citations')},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:t('analysis_modules.h_index')},
+            {key:'top_journal_pct',header:t('analysis_modules.top_journal_pct')},{key:'expected_citations',header:t('analysis_modules.expected_citations')},
+            {key:'citation_gap',header:t('analysis_modules.citation_gap')},{key:'citations_per_pub',header:t('analysis_modules.citations') + '/' + t('analysis_modules.papers')},
+            {key:'recommendation',header:t('analysis_modules.recommendation')}
         ],
         'intl_collab_potential': [
-            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
-            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
-            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
-            {key:'intl_collab_count',header:'국제협력논문수'},{key:'intl_collab_ratio',header:'국제협력비율(%)'},
-            {key:'intl_collab_fwci',header:'국제FWCI'}
+            {key:'name',header:t('analysis_modules.researcher_name')},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:t('analysis_modules.papers')},{key:'citations',header:t('analysis_modules.citations')},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:t('analysis_modules.h_index')},
+            {key:'intl_collab_count',header:t('analysis_modules.intl_collab_count')},{key:'intl_collab_ratio',header:t('analysis_modules.intl_collab_ratio')},
+            {key:'intl_collab_fwci',header:t('analysis_modules.intl_fwci')}
         ],
         'top_journal_no_top_cited': [
-            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
-            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
-            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
-            {key:'top_journal_pct',header:'상위저널(%)'},{key:'top_10_cited_count',header:'Top피인용수'},
-            {key:'recommendation',header:'권고'}
+            {key:'name',header:t('analysis_modules.researcher_name')},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:t('analysis_modules.papers')},{key:'citations',header:t('analysis_modules.citations')},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:t('analysis_modules.h_index')},
+            {key:'top_journal_pct',header:t('analysis_modules.top_journal_pct')},{key:'top_10_cited_count',header:t('analysis_modules.top_10_cited')},
+            {key:'recommendation',header:t('analysis_modules.recommendation')}
         ]
     };
-    const filename = `분석모듈_${typeNames[currentCitationType]}_${getModulePeriodLabel()}.csv`;
+    const filename = `${t('analysis_modules.' + typeKeys[currentCitationType])}_${getModulePeriodLabel()}.csv`;
     triggerCSVDownload(generateCSV(citationData, colDefs[currentCitationType]), filename);
 }
 
 function downloadCollabCSV() {
-    if (!collabData || collabData.length === 0) { alert('다운로드할 데이터가 없습니다.'); return; }
-    const typeNames = { 'no_intl_high_performer': '국제협력지원대상', 'collab_high_citation': '롤모델멘토', 'field_hub': '분야별허브' };
+    if (!collabData || collabData.length === 0) { alert(t('analysis_modules.alert_no_download')); return; }
+    const typeKeys = { 'no_intl_high_performer': 'csv_collab_no_intl', 'collab_high_citation': 'csv_collab_rolemodel', 'field_hub': 'csv_collab_field_hub' };
     const colDefs = {
         'no_intl_high_performer': [
-            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
-            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
-            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
-            {key:'intl_collab_count',header:'국제협력논문수'},{key:'top_journal_pct',header:'상위저널(%)'},
-            {key:'recommendation',header:'권고'}
+            {key:'name',header:t('analysis_modules.researcher_name')},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:t('analysis_modules.papers')},{key:'citations',header:t('analysis_modules.citations')},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:t('analysis_modules.h_index')},
+            {key:'intl_collab_count',header:t('analysis_modules.intl_collab_count')},{key:'top_journal_pct',header:t('analysis_modules.top_journal_pct')},
+            {key:'recommendation',header:t('analysis_modules.recommendation')}
         ],
         'collab_high_citation': [
-            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
-            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
-            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
-            {key:'intl_collab_count',header:'국제협력논문수'},{key:'intl_collab_ratio',header:'국제비율(%)'},
-            {key:'intl_collab_fwci',header:'국제FWCI'}
+            {key:'name',header:t('analysis_modules.researcher_name')},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:t('analysis_modules.papers')},{key:'citations',header:t('analysis_modules.citations')},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:t('analysis_modules.h_index')},
+            {key:'intl_collab_count',header:t('analysis_modules.intl_collab_count')},{key:'intl_collab_ratio',header:t('analysis_modules.intl_ratio')},
+            {key:'intl_collab_fwci',header:t('analysis_modules.intl_fwci')}
         ],
         'field_hub': [
-            {key:'name',header:'연구자명'},{key:'scopus_author_id',header:'Scopus ID'},
-            {key:'scholarly_output',header:'논문수'},{key:'citations',header:'인용수'},
-            {key:'fwci',header:'FWCI'},{key:'h_index',header:'h-index'},
-            {key:'field',header:'분야'},{key:'field_pub_count',header:'분야논문수'},
-            {key:'unique_coauthors',header:'공저자수'}
+            {key:'name',header:t('analysis_modules.researcher_name')},{key:'scopus_author_id',header:'Scopus ID'},
+            {key:'scholarly_output',header:t('analysis_modules.papers')},{key:'citations',header:t('analysis_modules.citations')},
+            {key:'fwci',header:'FWCI'},{key:'h_index',header:t('analysis_modules.h_index')},
+            {key:'field',header:t('analysis_modules.field')},{key:'field_pub_count',header:t('analysis_modules.field_papers')},
+            {key:'unique_coauthors',header:t('analysis_modules.coauthors')}
         ]
     };
-    const filename = `분석모듈_${typeNames[currentCollabType]}_${getModulePeriodLabel()}.csv`;
+    const filename = `${t('analysis_modules.' + typeKeys[currentCollabType])}_${getModulePeriodLabel()}.csv`;
     triggerCSVDownload(generateCSV(collabData, colDefs[currentCollabType]), filename);
 }
 </script>

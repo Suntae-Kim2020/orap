@@ -1,0 +1,807 @@
+{% extends "base.html" %}
+{% block title %}학문분야분석{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2 class="mb-4"><i class="fas fa-layer-group"></i> <span data-i18n="field_analysis.title">학문분야분석</span></h2>
+
+    <p class="text-muted mb-4">
+        <span data-i18n="field_analysis.subtitle">ASJC 분류 기준으로 분야별 연구 현황을 비교 분석합니다</span><br>
+        <small><i class="fas fa-database"></i> <span data-i18n="analysis_modules.data_note">본 분석은 Scopus 등재 논문 및 전북대학교 소속 연구자만을 대상으로 합니다.</span></small>
+    </p>
+
+    <!-- 분야 선택 영역 -->
+    <div class="card mb-3">
+        <div class="card-header bg-dark text-white py-2">
+            <i class="fas fa-search"></i> <span data-i18n="field_analysis.select_fields">분야 선택</span>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8">
+                    <input type="text" class="form-control form-control-sm mb-2" id="fieldSearch" data-i18n-placeholder="field_analysis.search_placeholder" placeholder="분야명 검색 (예: Computer Science, Medicine ...)" oninput="filterFieldList()">
+                    <div id="fieldListContainer" style="max-height: 200px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px;">
+                        <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> <span data-i18n="common.loading">로딩 중...</span></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold mb-1"><i class="fas fa-check-circle"></i> <span data-i18n="field_analysis.selected">선택된 분야</span> <span id="selectedCount" class="badge bg-dark">0</span></label>
+                    <div id="selectedBadges" style="max-height: 200px; overflow-y: auto;">
+                        <span class="text-muted small" data-i18n="field_analysis.select_fields_desc">분야를 선택하세요</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 기간 필터 + 분석 실행 -->
+    <div class="card mb-4">
+        <div class="card-body py-2">
+            <div class="d-flex align-items-center flex-wrap gap-3">
+                <span class="fw-bold"><i class="fas fa-calendar-alt"></i> <span data-i18n="common.analysis_period">분석기간</span></span>
+                <div class="btn-group" id="faYearPresetGroup">
+                    <button type="button" class="btn btn-sm btn-outline-secondary active" onclick="setFaYearPreset('all', this)" data-i18n="common.all">전체</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setFaYearPreset('3y', this)" data-i18n="common.recent_3y">최근 3년</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setFaYearPreset('5y', this)" data-i18n="common.recent_5y">최근 5년</button>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <input type="number" class="form-control form-control-sm" id="faYearFrom" data-i18n-placeholder="common.start_year" placeholder="시작연도" style="width: 100px;" min="1990" max="2030">
+                    <span class="text-muted">~</span>
+                    <input type="number" class="form-control form-control-sm" id="faYearTo" data-i18n-placeholder="common.end_year" placeholder="종료연도" style="width: 100px;" min="1990" max="2030">
+                    <button class="btn btn-sm btn-outline-primary" onclick="applyFaCustomYear()">
+                        <i class="fas fa-check"></i> <span data-i18n="common.apply">적용</span>
+                    </button>
+                </div>
+                <span id="faYearDisplay" class="badge bg-info" style="display: none;"></span>
+                <button class="btn btn-sm btn-primary ms-auto" onclick="runAnalysis()">
+                    <i class="fas fa-play"></i> <span data-i18n="field_analysis.analyze">분석 실행</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 결과 영역 (분석 실행 전 숨김) -->
+    <div id="resultArea" style="display: none;">
+        <!-- 탭 네비게이션 -->
+        <ul class="nav nav-tabs mb-4" id="faTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button">
+                    <i class="fas fa-table"></i> <span data-i18n="field_analysis.overview">종합 현황</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="researchers-tab" data-bs-toggle="tab" data-bs-target="#researchers" type="button">
+                    <i class="fas fa-users"></i> <span data-i18n="field_analysis.researchers">주요 연구자</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="trend-tab" data-bs-toggle="tab" data-bs-target="#trend" type="button">
+                    <i class="fas fa-chart-line"></i> <span data-i18n="field_analysis.trend">연도 추이</span>
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="faTabContent">
+            <!-- 종합 현황 탭 -->
+            <div class="tab-pane fade show active" id="overview" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span id="overviewCount" class="badge bg-dark fs-6"></span>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="downloadOverviewCSV()" title="CSV 다운로드">
+                        <i class="fas fa-download"></i> CSV
+                    </button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-dark" id="overviewHeader"></thead>
+                        <tbody id="overviewBody">
+                            <tr><td colspan="12" class="text-center text-muted py-4" data-i18n="field_analysis.select_run_msg">분야를 선택하고 "분석 실행"을 클릭하세요.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 주요 연구자 탭 -->
+            <div class="tab-pane fade" id="researchers" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <span id="researchersCount" class="badge bg-dark fs-6"></span>
+                        <select class="form-select form-select-sm" id="researcherFieldFilter" style="width: 250px;" onchange="renderResearchersTable()">
+                            <option value="" data-i18n="field_analysis.all_fields">전체 분야</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="downloadResearchersCSV()" title="CSV 다운로드">
+                        <i class="fas fa-download"></i> CSV
+                    </button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-dark" id="researchersHeader"></thead>
+                        <tbody id="researchersBody">
+                            <tr><td colspan="10" class="text-center text-muted py-4" data-i18n="field_analysis.select_run_msg">분야를 선택하고 "분석 실행"을 클릭하세요.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 연도 추이 탭 -->
+            <div class="tab-pane fade" id="trend" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span id="trendCount" class="badge bg-dark fs-6"></span>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="downloadTrendCSV()" title="CSV 다운로드">
+                        <i class="fas fa-download"></i> CSV
+                    </button>
+                </div>
+                <!-- 차트 -->
+                <div class="card mb-3">
+                    <div class="card-header py-2 bg-light">
+                        <div class="d-flex align-items-center gap-3">
+                            <strong><i class="fas fa-chart-bar"></i> <span data-i18n="field_analysis.chart_title_pub">논문수 추이</span></strong>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-secondary active" onclick="setChartMode('pub_count', this)" data-i18n="field_analysis.chart_btn_pub">논문수</button>
+                                <button class="btn btn-outline-secondary" onclick="setChartMode('avg_fwci', this)" data-i18n="field_analysis.chart_btn_fwci">평균 FWCI</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="trendChart" height="300" style="width:100%;"></canvas>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-dark" id="trendHeader"></thead>
+                        <tbody id="trendBody">
+                            <tr><td colspan="10" class="text-center text-muted py-4" data-i18n="field_analysis.select_run_msg">분야를 선택하고 "분석 실행"을 클릭하세요.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ========== 전역 상태 ==========
+let allFields = [];          // 전체 분야 목록
+let selectedFields = [];     // 선택된 분야 배열
+let faYearFrom = null;
+let faYearTo = null;
+
+let overviewData = [];
+let researchersData = [];
+let trendData = null;        // {years: [], trends: []}
+let chartMode = 'pub_count';
+
+let sortStates = {
+    overview: { key: null, asc: true },
+    researchers: { key: null, asc: true }
+};
+
+// ========== 정렬 유틸 ==========
+function sortByKey(data, key, asc) {
+    return [...data].sort((a, b) => {
+        let va = a[key], vb = b[key];
+        if (va == null && vb == null) return 0;
+        if (va == null) return asc ? -1 : 1;
+        if (vb == null) return asc ? 1 : -1;
+        if (typeof va === 'number' && typeof vb === 'number') return asc ? va - vb : vb - va;
+        return asc ? String(va).localeCompare(String(vb), 'ko') : String(vb).localeCompare(String(va), 'ko');
+    });
+}
+
+function sortIcon(tbl, key) {
+    const s = sortStates[tbl];
+    if (s.key === key) return s.asc ? ' ▲' : ' ▼';
+    return '';
+}
+
+function thS(tbl, label, key) {
+    return `<th style="cursor:pointer;user-select:none;white-space:nowrap;" onclick="handleSort('${tbl}','${key}')">${label}<span class="text-muted">${sortIcon(tbl, key)}</span></th>`;
+}
+
+function thP(label) {
+    return `<th>${label}</th>`;
+}
+
+function handleSort(tbl, key) {
+    const s = sortStates[tbl];
+    if (s.key === key) { s.asc = !s.asc; } else { s.key = key; s.asc = true; }
+    if (tbl === 'overview') renderOverviewTable();
+    else if (tbl === 'researchers') renderResearchersTable();
+}
+
+// ========== 분야 목록 로드 ==========
+function loadFieldList() {
+    fetch('/api/field_list')
+        .then(r => r.json())
+        .then(data => {
+            allFields = data.fields || [];
+            renderFieldList(allFields);
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('fieldListContainer').innerHTML = `<div class="text-danger text-center py-2">${i18n.t('field_analysis.load_fail')}</div>`;
+        });
+}
+
+function renderFieldList(fields) {
+    const container = document.getElementById('fieldListContainer');
+    if (fields.length === 0) {
+        container.innerHTML = `<div class="text-muted text-center py-2">${i18n.t('field_analysis.no_result')}</div>`;
+        return;
+    }
+    const unit = i18n.t('field_analysis.papers_unit');
+    let html = '';
+    fields.forEach(f => {
+        const checked = selectedFields.includes(f.name) ? 'checked' : '';
+        html += `<div class="form-check">
+            <input class="form-check-input" type="checkbox" value="${f.name}" id="fc_${f.name.replace(/[^a-zA-Z0-9]/g, '_')}" ${checked} onchange="toggleField('${f.name.replace(/'/g, "\\'")}', this.checked)">
+            <label class="form-check-label small" for="fc_${f.name.replace(/[^a-zA-Z0-9]/g, '_')}">
+                ${f.name} <span class="text-muted">(${f.pub_count}${unit})</span>
+            </label>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+function filterFieldList() {
+    const query = document.getElementById('fieldSearch').value.toLowerCase();
+    if (!query) {
+        renderFieldList(allFields);
+        return;
+    }
+    const filtered = allFields.filter(f => f.name.toLowerCase().includes(query));
+    renderFieldList(filtered);
+}
+
+function toggleField(name, checked) {
+    if (checked) {
+        if (!selectedFields.includes(name)) selectedFields.push(name);
+    } else {
+        selectedFields = selectedFields.filter(f => f !== name);
+    }
+    renderSelectedBadges();
+}
+
+function removeField(name) {
+    selectedFields = selectedFields.filter(f => f !== name);
+    renderSelectedBadges();
+    // 체크박스 해제
+    const checkboxes = document.querySelectorAll('#fieldListContainer input[type="checkbox"]');
+    checkboxes.forEach(cb => {
+        if (cb.value === name) cb.checked = false;
+    });
+}
+
+function renderSelectedBadges() {
+    const container = document.getElementById('selectedBadges');
+    document.getElementById('selectedCount').textContent = selectedFields.length;
+    if (selectedFields.length === 0) {
+        container.innerHTML = `<span class="text-muted small">${i18n.t('field_analysis.select_fields_desc')}</span>`;
+        return;
+    }
+    let html = '';
+    selectedFields.forEach(name => {
+        html += `<span class="badge bg-primary me-1 mb-1" style="cursor:pointer;" onclick="removeField('${name.replace(/'/g, "\\'")}')">${name} <i class="fas fa-times-circle"></i></span>`;
+    });
+    container.innerHTML = html;
+}
+
+// ========== 기간 필터 ==========
+function setFaYearPreset(preset, btn) {
+    document.querySelectorAll('#faYearPresetGroup .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const current = new Date().getFullYear();
+    if (preset === 'all') {
+        faYearFrom = null; faYearTo = null;
+        document.getElementById('faYearFrom').value = '';
+        document.getElementById('faYearTo').value = '';
+        document.getElementById('faYearDisplay').style.display = 'none';
+    } else if (preset === '3y') {
+        faYearFrom = current - 2; faYearTo = current;
+        document.getElementById('faYearFrom').value = faYearFrom;
+        document.getElementById('faYearTo').value = faYearTo;
+        document.getElementById('faYearDisplay').textContent = `${faYearFrom} ~ ${faYearTo}`;
+        document.getElementById('faYearDisplay').style.display = 'inline';
+    } else if (preset === '5y') {
+        faYearFrom = current - 4; faYearTo = current;
+        document.getElementById('faYearFrom').value = faYearFrom;
+        document.getElementById('faYearTo').value = faYearTo;
+        document.getElementById('faYearDisplay').textContent = `${faYearFrom} ~ ${faYearTo}`;
+        document.getElementById('faYearDisplay').style.display = 'inline';
+    }
+}
+
+function applyFaCustomYear() {
+    const yf = parseInt(document.getElementById('faYearFrom').value);
+    const yt = parseInt(document.getElementById('faYearTo').value);
+    if (!yf || !yt) { alert(i18n.t('field_analysis.alert_enter_years')); return; }
+    if (yf > yt) { alert(i18n.t('field_analysis.alert_year_invalid')); return; }
+    faYearFrom = yf; faYearTo = yt;
+    document.querySelectorAll('#faYearPresetGroup .btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('faYearDisplay').textContent = `${yf} ~ ${yt}`;
+    document.getElementById('faYearDisplay').style.display = 'inline';
+}
+
+function getYearParams() {
+    if (faYearFrom && faYearTo) return `&year_from=${faYearFrom}&year_to=${faYearTo}`;
+    return '';
+}
+
+// ========== 분석 실행 ==========
+function runAnalysis() {
+    if (selectedFields.length === 0) {
+        alert(i18n.t('field_analysis.alert_select_field'));
+        return;
+    }
+    document.getElementById('resultArea').style.display = '';
+
+    const fieldsParam = encodeURIComponent(selectedFields.join('|||'));
+    const yearParams = getYearParams();
+    const loadingText = i18n.t('common.loading');
+    const loadFail = i18n.t('field_analysis.data_load_fail');
+    const fieldsUnit = i18n.t('field_analysis.fields_unit');
+    const personsUnit = i18n.t('field_analysis.persons_unit');
+
+    // 로딩 표시
+    document.getElementById('overviewBody').innerHTML = `<tr><td colspan="12" class="text-center"><i class="fas fa-spinner fa-spin"></i> ${loadingText}</td></tr>`;
+    document.getElementById('researchersBody').innerHTML = `<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> ${loadingText}</td></tr>`;
+    document.getElementById('trendBody').innerHTML = `<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> ${loadingText}</td></tr>`;
+
+    // 3개 API 병렬 호출
+    fetch(`/api/field_analysis/overview?fields=${fieldsParam}${yearParams}`)
+        .then(r => r.json())
+        .then(data => {
+            overviewData = data.fields || [];
+            document.getElementById('overviewCount').textContent = `${data.count}${fieldsUnit}`;
+            sortStates.overview = { key: null, asc: true };
+            renderOverviewTable();
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('overviewBody').innerHTML = `<tr><td colspan="12" class="text-center text-danger">${loadFail}</td></tr>`;
+        });
+
+    fetch(`/api/field_analysis/researchers?fields=${fieldsParam}${yearParams}`)
+        .then(r => r.json())
+        .then(data => {
+            researchersData = data.researchers || [];
+            document.getElementById('researchersCount').textContent = `${data.count}${personsUnit}`;
+            sortStates.researchers = { key: null, asc: true };
+            // 분야 필터 옵션 업데이트
+            updateResearcherFieldFilter();
+            renderResearchersTable();
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('researchersBody').innerHTML = `<tr><td colspan="10" class="text-center text-danger">${loadFail}</td></tr>`;
+        });
+
+    fetch(`/api/field_analysis/trend?fields=${fieldsParam}`)
+        .then(r => r.json())
+        .then(data => {
+            trendData = data;
+            document.getElementById('trendCount').textContent = `${data.count}${fieldsUnit}`;
+            renderTrendTable();
+            renderTrendChart();
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('trendBody').innerHTML = `<tr><td colspan="10" class="text-center text-danger">${loadFail}</td></tr>`;
+        });
+}
+
+// ========== 종합 현황 탭 ==========
+function getStrategyLabel(strategy) {
+    const map = {
+        '핵심 강점': i18n.t('field_analysis.strategy_core'),
+        '성장 분야': i18n.t('field_analysis.strategy_growth'),
+        '규모 우위': i18n.t('field_analysis.strategy_scale'),
+        '육성 필요': i18n.t('field_analysis.strategy_nurture'),
+        '데이터 없음': i18n.t('field_analysis.strategy_nodata')
+    };
+    return map[strategy] || strategy;
+}
+
+function renderOverviewTable() {
+    const header = document.getElementById('overviewHeader');
+    const body = document.getElementById('overviewBody');
+
+    let hdr = '<tr>' + thP('#')
+        + thS('overview', i18n.t('field_analysis.field_name'), 'field')
+        + thS('overview', i18n.t('field_analysis.pub_count'), 'pub_count')
+        + thS('overview', i18n.t('field_analysis.total_citations'), 'total_citations')
+        + thS('overview', i18n.t('field_analysis.avg_fwci'), 'avg_fwci')
+        + thS('overview', i18n.t('field_analysis.intl_collab_pct'), 'intl_ratio')
+        + thS('overview', i18n.t('field_analysis.top_journal_pct'), 'top_journal_ratio')
+        + thS('overview', i18n.t('field_analysis.top_cited_pct'), 'top_cited_ratio')
+        + thS('overview', i18n.t('field_analysis.sdg_pct'), 'sdg_ratio')
+        + thS('overview', i18n.t('field_analysis.corp_pct'), 'corp_ratio')
+        + thS('overview', i18n.t('field_analysis.patent_pct'), 'patent_ratio')
+        + thS('overview', i18n.t('field_analysis.strategy_grade'), 'strategy')
+        + '</tr>';
+    header.innerHTML = hdr;
+
+    const ss = sortStates.overview;
+    const sorted = ss.key ? sortByKey(overviewData, ss.key, ss.asc) : overviewData;
+
+    if (sorted.length === 0) {
+        body.innerHTML = `<tr><td colspan="12" class="text-center text-muted py-3">${i18n.t('common.no_data')}</td></tr>`;
+        return;
+    }
+
+    let html = '';
+    sorted.forEach((r, idx) => {
+        const stratClass = r.strategy_class || 'secondary';
+        const stratLabel = getStrategyLabel(r.strategy);
+        html += `<tr>
+            <td>${idx + 1}</td>
+            <td><strong>${r.field}</strong></td>
+            <td>${r.pub_count.toLocaleString()}</td>
+            <td>${r.total_citations.toLocaleString()}</td>
+            <td>${r.avg_fwci}</td>
+            <td>${r.intl_ratio}%</td>
+            <td>${r.top_journal_ratio}%</td>
+            <td>${r.top_cited_ratio}%</td>
+            <td>${r.sdg_ratio}%</td>
+            <td>${r.corp_ratio}%</td>
+            <td>${r.patent_ratio}%</td>
+            <td><span class="badge bg-${stratClass}">${stratLabel}</span></td>
+        </tr>`;
+    });
+    body.innerHTML = html;
+}
+
+// ========== 주요 연구자 탭 ==========
+function updateResearcherFieldFilter() {
+    const select = document.getElementById('researcherFieldFilter');
+    const fieldSet = new Set(researchersData.map(r => r.field));
+    let options = `<option value="">${i18n.t('field_analysis.all_fields')}</option>`;
+    selectedFields.forEach(f => {
+        if (fieldSet.has(f)) {
+            options += `<option value="${f}">${f}</option>`;
+        }
+    });
+    select.innerHTML = options;
+}
+
+function renderResearchersTable() {
+    const header = document.getElementById('researchersHeader');
+    const body = document.getElementById('researchersBody');
+    const unit = i18n.t('field_analysis.papers_unit');
+
+    let hdr = '<tr>' + thP('#')
+        + thS('researchers', i18n.t('field_analysis.researcher_name'), 'name')
+        + thS('researchers', i18n.t('field_analysis.field'), 'field')
+        + thS('researchers', i18n.t('field_analysis.field_pubs'), 'field_pubs')
+        + thS('researchers', i18n.t('field_analysis.field_fwci'), 'field_fwci')
+        + thS('researchers', 'h-index', 'h_index')
+        + thS('researchers', i18n.t('field_analysis.total_pubs'), 'scholarly_output')
+        + thS('researchers', i18n.t('field_analysis.total_citations'), 'citations')
+        + thS('researchers', i18n.t('field_analysis.intl_collab'), 'intl_collabs')
+        + thP(i18n.t('field_analysis.profile'))
+        + '</tr>';
+    header.innerHTML = hdr;
+
+    // 분야 필터
+    const filterField = document.getElementById('researcherFieldFilter').value;
+    let data = researchersData;
+    if (filterField) {
+        data = researchersData.filter(r => r.field === filterField);
+    }
+
+    const ss = sortStates.researchers;
+    const sorted = ss.key ? sortByKey(data, ss.key, ss.asc) : data;
+
+    if (sorted.length === 0) {
+        body.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">${i18n.t('common.no_data')}</td></tr>`;
+        return;
+    }
+
+    let html = '';
+    sorted.forEach((r, idx) => {
+        html += `<tr>
+            <td>${idx + 1}</td>
+            <td><strong>${r.name}</strong></td>
+            <td><span class="badge bg-secondary">${r.field}</span></td>
+            <td>${r.field_pubs}</td>
+            <td>${r.field_fwci}</td>
+            <td>${r.h_index || '-'}</td>
+            <td>${r.scholarly_output}</td>
+            <td>${r.citations?.toLocaleString() || 0}</td>
+            <td>${r.intl_collabs}${unit}</td>
+            <td><a href="${r.profile_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+        </tr>`;
+    });
+    body.innerHTML = html;
+}
+
+// ========== 연도 추이 탭 ==========
+function renderTrendTable() {
+    if (!trendData || !trendData.years || trendData.years.length === 0) {
+        document.getElementById('trendHeader').innerHTML = '';
+        document.getElementById('trendBody').innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3">${i18n.t('common.no_data')}</td></tr>`;
+        return;
+    }
+
+    const years = trendData.years;
+    const header = document.getElementById('trendHeader');
+    const body = document.getElementById('trendBody');
+
+    // 헤더: 분야명 | 지표 | 연도1 | 연도2 | ...
+    let hdr = `<tr><th>${i18n.t('field_analysis.field')}</th><th>${i18n.t('field_analysis.metric')}</th>`;
+    years.forEach(y => { hdr += `<th>${y}</th>`; });
+    hdr += '</tr>';
+    header.innerHTML = hdr;
+
+    const pubLabel = i18n.t('field_analysis.pub_count');
+    const fwciLabel = i18n.t('field_analysis.avg_fwci');
+
+    let html = '';
+    trendData.trends.forEach(t => {
+        // 논문수 행
+        html += `<tr><td rowspan="2"><strong>${t.field}</strong></td><td>${pubLabel}</td>`;
+        t.yearly.forEach(d => { html += `<td>${d.pub_count}</td>`; });
+        html += '</tr>';
+        // FWCI 행
+        html += `<tr><td>${fwciLabel}</td>`;
+        t.yearly.forEach(d => { html += `<td>${d.avg_fwci}</td>`; });
+        html += '</tr>';
+    });
+    body.innerHTML = html;
+}
+
+// ========== 차트 ==========
+const CHART_COLORS = [
+    '#0d6efd', '#198754', '#dc3545', '#ffc107', '#0dcaf0',
+    '#6610f2', '#fd7e14', '#20c997', '#d63384', '#6c757d'
+];
+
+function setChartMode(mode, btn) {
+    chartMode = mode;
+    document.querySelectorAll('#trend .btn-group-sm .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderTrendChart();
+}
+
+function renderTrendChart() {
+    const canvas = document.getElementById('trendChart');
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+
+    // canvas 크기 설정
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = 300 * dpr;
+    canvas.style.height = '300px';
+    ctx.scale(dpr, dpr);
+    const W = rect.width;
+    const H = 300;
+
+    ctx.clearRect(0, 0, W, H);
+
+    if (!trendData || !trendData.years || trendData.years.length === 0 || trendData.trends.length === 0) {
+        ctx.fillStyle = '#999';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(i18n.t('common.no_data'), W / 2, H / 2);
+        return;
+    }
+
+    const years = trendData.years;
+    const trends = trendData.trends;
+    const key = chartMode; // 'pub_count' or 'avg_fwci'
+    const label = key === 'pub_count' ? i18n.t('field_analysis.pub_count') : i18n.t('field_analysis.avg_fwci');
+
+    // 최대값 계산
+    let maxVal = 0;
+    trends.forEach(t => {
+        t.yearly.forEach(d => {
+            const v = key === 'pub_count' ? d.pub_count : d.avg_fwci;
+            if (v > maxVal) maxVal = v;
+        });
+    });
+    if (maxVal === 0) maxVal = 1;
+
+    // 레이아웃
+    const padL = 60, padR = 20, padT = 40, padB = 60;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+    const barGroupWidth = plotW / years.length;
+    const barCount = trends.length;
+    const barWidth = Math.min(barGroupWidth * 0.7 / barCount, 30);
+    const groupOffset = (barGroupWidth - barWidth * barCount) / 2;
+
+    // 격자선
+    ctx.strokeStyle = '#e9ecef';
+    ctx.lineWidth = 1;
+    const gridLines = 5;
+    for (let i = 0; i <= gridLines; i++) {
+        const y = padT + plotH - (plotH / gridLines * i);
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(W - padR, y);
+        ctx.stroke();
+        // Y 라벨
+        ctx.fillStyle = '#666';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'right';
+        const val = (maxVal / gridLines * i);
+        ctx.fillText(key === 'pub_count' ? Math.round(val) : val.toFixed(1), padL - 8, y + 4);
+    }
+
+    // 바 그리기
+    trends.forEach((t, tIdx) => {
+        const color = CHART_COLORS[tIdx % CHART_COLORS.length];
+        t.yearly.forEach((d, yIdx) => {
+            const v = key === 'pub_count' ? d.pub_count : d.avg_fwci;
+            const barH = (v / maxVal) * plotH;
+            const x = padL + barGroupWidth * yIdx + groupOffset + barWidth * tIdx;
+            const y = padT + plotH - barH;
+
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, barWidth - 1, barH);
+        });
+    });
+
+    // X축 라벨 (연도)
+    ctx.fillStyle = '#333';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    years.forEach((y, i) => {
+        const x = padL + barGroupWidth * i + barGroupWidth / 2;
+        ctx.fillText(y, x, H - padB + 16);
+    });
+
+    // 제목
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'left';
+    const chartTitle = key === 'pub_count' ? i18n.t('field_analysis.chart_title_pub') : i18n.t('field_analysis.chart_title_fwci');
+    ctx.fillText(chartTitle, padL, 20);
+
+    // 범례
+    const legendY = H - 15;
+    let legendX = padL;
+    ctx.font = '11px sans-serif';
+    trends.forEach((t, idx) => {
+        const color = CHART_COLORS[idx % CHART_COLORS.length];
+        ctx.fillStyle = color;
+        ctx.fillRect(legendX, legendY - 8, 12, 10);
+        ctx.fillStyle = '#333';
+        const text = t.field.length > 20 ? t.field.substring(0, 18) + '..' : t.field;
+        ctx.fillText(text, legendX + 15, legendY);
+        legendX += ctx.measureText(text).width + 30;
+    });
+}
+
+// ========== CSV 다운로드 ==========
+function generateCSV(data, columns) {
+    let csv = '\uFEFF'; // BOM for Excel Korean support
+    csv += columns.map(c => '"' + c.header.replace(/"/g, '""') + '"').join(',') + '\n';
+    data.forEach(row => {
+        csv += columns.map(c => {
+            let val = row[c.key];
+            if (val == null || val === undefined) val = '';
+            if (Array.isArray(val)) val = val.join('; ');
+            val = String(val);
+            if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+                val = '"' + val.replace(/"/g, '""') + '"';
+            }
+            return val;
+        }).join(',') + '\n';
+    });
+    return csv;
+}
+
+function triggerCSVDownload(csvContent, filename) {
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+function getPeriodLabel() {
+    if (faYearFrom && faYearTo) return `${faYearFrom}-${faYearTo}`;
+    return i18n.t('field_analysis.full_period');
+}
+
+function downloadOverviewCSV() {
+    if (!overviewData || overviewData.length === 0) { alert(i18n.t('field_analysis.alert_no_download')); return; }
+    const cols = [
+        {key:'field', header: i18n.t('field_analysis.field_name')},
+        {key:'pub_count', header: i18n.t('field_analysis.pub_count')},
+        {key:'total_citations', header: i18n.t('field_analysis.total_citations')},
+        {key:'avg_fwci', header: i18n.t('field_analysis.avg_fwci')},
+        {key:'intl_ratio', header: i18n.t('field_analysis.intl_collab_pct')},
+        {key:'top_journal_ratio', header: i18n.t('field_analysis.top_journal_pct')},
+        {key:'top_cited_ratio', header: i18n.t('field_analysis.top_cited_pct')},
+        {key:'sdg_ratio', header: i18n.t('field_analysis.sdg_pct')},
+        {key:'corp_ratio', header: i18n.t('field_analysis.corp_pct')},
+        {key:'patent_ratio', header: i18n.t('field_analysis.patent_pct')},
+        {key:'strategy', header: i18n.t('field_analysis.strategy_grade')}
+    ];
+    triggerCSVDownload(generateCSV(overviewData, cols), `${i18n.t('field_analysis.csv_overview')}_${getPeriodLabel()}.csv`);
+}
+
+function downloadResearchersCSV() {
+    if (!researchersData || researchersData.length === 0) { alert(i18n.t('field_analysis.alert_no_download')); return; }
+    const filterField = document.getElementById('researcherFieldFilter').value;
+    const data = filterField ? researchersData.filter(r => r.field === filterField) : researchersData;
+    const cols = [
+        {key:'name', header: i18n.t('field_analysis.researcher_name')},
+        {key:'scopus_author_id', header:'Scopus ID'},
+        {key:'field', header: i18n.t('field_analysis.field')},
+        {key:'field_pubs', header: i18n.t('field_analysis.field_pubs')},
+        {key:'field_fwci', header: i18n.t('field_analysis.field_fwci')},
+        {key:'h_index', header:'h-index'},
+        {key:'scholarly_output', header: i18n.t('field_analysis.total_pubs')},
+        {key:'citations', header: i18n.t('field_analysis.total_citations')},
+        {key:'intl_collabs', header: i18n.t('field_analysis.intl_collab')}
+    ];
+    triggerCSVDownload(generateCSV(data, cols), `${i18n.t('field_analysis.csv_researchers')}_${getPeriodLabel()}.csv`);
+}
+
+function downloadTrendCSV() {
+    if (!trendData || !trendData.trends || trendData.trends.length === 0) { alert(i18n.t('field_analysis.alert_no_download')); return; }
+    // 플랫 데이터로 변환
+    const rows = [];
+    trendData.trends.forEach(t => {
+        t.yearly.forEach(d => {
+            rows.push({
+                field: t.field,
+                year: d.year,
+                pub_count: d.pub_count,
+                avg_fwci: d.avg_fwci
+            });
+        });
+    });
+    const cols = [
+        {key:'field', header: i18n.t('field_analysis.field_name')},
+        {key:'year', header: i18n.t('common.year')},
+        {key:'pub_count', header: i18n.t('field_analysis.pub_count')},
+        {key:'avg_fwci', header: i18n.t('field_analysis.avg_fwci')}
+    ];
+    triggerCSVDownload(generateCSV(rows, cols), `${i18n.t('field_analysis.csv_trend')}_${getPeriodLabel()}.csv`);
+}
+
+// ========== 초기화 ==========
+function initPage() {
+    loadFieldList();
+
+    // 연도 추이 탭 표시 시 차트 다시 렌더링 (탭이 숨겨진 상태에서는 캔버스 크기가 0)
+    document.getElementById('trend-tab').addEventListener('shown.bs.tab', function() {
+        if (trendData && trendData.trends && trendData.trends.length > 0) {
+            renderTrendChart();
+        }
+    });
+
+    // 언어 변경 시 테이블 다시 렌더링
+    i18n.onLanguageChange(function() {
+        renderFieldList(allFields);
+        renderSelectedBadges();
+        if (overviewData.length > 0) renderOverviewTable();
+        if (researchersData.length > 0) {
+            updateResearcherFieldFilter();
+            renderResearchersTable();
+        }
+        if (trendData && trendData.trends) {
+            renderTrendTable();
+            renderTrendChart();
+        }
+    });
+}
+
+// i18n이 준비되면 초기화
+if (window.i18n && window.i18n.ready) {
+    initPage();
+} else {
+    window.addEventListener('i18nReady', initPage);
+}
+</script>
+{% endblock %}
