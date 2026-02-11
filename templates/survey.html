@@ -1,0 +1,683 @@
+{% extends "base.html" %}
+
+{% block title %}시스템 평가 설문 - JBNU ORAP{% endblock %}
+
+{% block content %}
+<style>
+    .survey-container {
+        max-width: 700px;
+        margin: 0 auto;
+    }
+    .survey-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 10px 10px 0 0;
+        margin-bottom: 0;
+    }
+    .survey-section {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-top: none;
+        padding: 25px 30px;
+        margin-bottom: 0;
+    }
+    .survey-section:last-of-type {
+        border-radius: 0 0 10px 10px;
+        margin-bottom: 20px;
+    }
+    .survey-section h5 {
+        color: #5e35b1;
+        border-bottom: 2px solid #ede7f6;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+    }
+    .question-group {
+        margin-bottom: 25px;
+    }
+    .question-label {
+        font-weight: 500;
+        margin-bottom: 12px;
+        color: #333;
+    }
+    .question-label.required::after {
+        content: " *";
+        color: #d32f2f;
+    }
+    .likert-scale {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #fafafa;
+        padding: 10px 15px;
+        border-radius: 8px;
+        margin-top: 8px;
+    }
+    .likert-scale label {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        cursor: pointer;
+        padding: 5px 10px;
+    }
+    .likert-scale input[type="radio"] {
+        width: 20px;
+        height: 20px;
+        margin-bottom: 5px;
+        cursor: pointer;
+    }
+    .likert-scale span {
+        font-size: 0.75rem;
+        color: #666;
+        text-align: center;
+    }
+    .likert-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        color: #888;
+        margin-top: 5px;
+        padding: 0 10px;
+    }
+    .form-check {
+        padding-left: 2rem;
+        margin-bottom: 8px;
+    }
+    .form-check-input {
+        width: 18px;
+        height: 18px;
+        margin-top: 0.15rem;
+    }
+    .form-check-label {
+        padding-left: 5px;
+    }
+    .thank-you-message {
+        display: none;
+        text-align: center;
+        padding: 60px 30px;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .thank-you-message i {
+        font-size: 80px;
+        color: #4caf50;
+        margin-bottom: 20px;
+    }
+    .consent-section {
+        background: #fff3e0;
+        border-left: 4px solid #ff9800;
+    }
+    .btn-submit-survey {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        padding: 12px 40px;
+        font-size: 1.1rem;
+    }
+    .btn-submit-survey:hover {
+        opacity: 0.9;
+    }
+</style>
+
+<div class="survey-container">
+    <!-- 설문 완료 메시지 -->
+    <div class="thank-you-message" id="thankYouMessage">
+        <i class="fas fa-check-circle"></i>
+        <h2 class="text-success mb-3">설문에 응답해 주셔서 감사합니다!</h2>
+        <p class="text-muted mb-4">소중한 의견은 시스템 개선에 적극 반영하겠습니다.</p>
+        <a href="{{ url_for('researcher_ranking') }}" class="btn btn-primary">
+            <i class="fas fa-home"></i> 메인으로 돌아가기
+        </a>
+    </div>
+
+    <!-- 설문 폼 -->
+    <div id="surveyForm">
+        <!-- 헤더 -->
+        <div class="survey-header">
+            <h3><i class="fas fa-clipboard-list"></i> 시스템 평가 설문지</h3>
+            <p class="mb-0 opacity-75">파일럿용 혼합형 설문</p>
+        </div>
+
+        <!-- 0. 안내문 및 동의 -->
+        <div class="survey-section consent-section">
+            <h5><i class="fas fa-info-circle"></i> 안내문</h5>
+            <p>본 설문은 시범 운영 중인 시스템에 대한 사용 경험과 개선 요구를 파악하기 위한 목적의 파일럿 조사입니다.</p>
+            <p>응답은 <strong>익명으로 처리</strong>되며, 연구/개선 목적 외에는 사용되지 않습니다.</p>
+            <p class="mb-4">소요 시간은 약 <strong>7~10분</strong>입니다.</p>
+
+            <div class="question-group">
+                <div class="question-label required">참여 동의</div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="consent" id="consentYes" value="yes" required>
+                    <label class="form-check-label" for="consentYes">동의함</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="consent" id="consentNo" value="no">
+                    <label class="form-check-label" for="consentNo">동의하지 않음 (설문 종료)</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- 이메일 중복 참여 방지 메시지 -->
+        <div class="survey-section" id="alreadyParticipated" style="display: none;">
+            <div class="alert alert-warning mb-0">
+                <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+                <h5>이미 설문에 참여하셨습니다.</h5>
+                <p class="mb-3">동일한 이메일로는 중복 참여가 불가능합니다.</p>
+                <a href="{{ url_for('researcher_ranking') }}" class="btn btn-primary">
+                    <i class="fas fa-home"></i> 메인으로 돌아가기
+                </a>
+            </div>
+        </div>
+
+        <!-- 1. 기본 정보 -->
+        <div class="survey-section" id="section1">
+            <h5><i class="fas fa-user"></i> 1. 기본 정보</h5>
+
+            <div class="question-group">
+                <div class="question-label required">이메일 주소</div>
+                <input type="email" class="form-control" id="email" name="email" placeholder="example@jbnu.ac.kr" required>
+                <div class="form-text text-muted">중복 참여 방지를 위해 이메일을 수집합니다. 다른 용도로 사용되지 않습니다.</div>
+                <div id="emailError" class="text-danger small mt-1" style="display: none;"></div>
+            </div>
+
+            <div class="question-group">
+                <div class="question-label required">귀하의 역할은 무엇입니까?</div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="role" id="role1" value="faculty" required>
+                    <label class="form-check-label" for="role1">교원(교수/강사)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="role" id="role2" value="researcher">
+                    <label class="form-check-label" for="role2">연구원</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="role" id="role3" value="staff">
+                    <label class="form-check-label" for="role3">직원(행정/기획/산학 등)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="role" id="role4" value="other">
+                    <label class="form-check-label" for="role4">기타</label>
+                    <input type="text" class="form-control form-control-sm d-inline-block ms-2" id="roleOther" placeholder="직접 입력" style="width: 150px;">
+                </div>
+            </div>
+
+            <div class="question-group">
+                <div class="question-label required">해당 시스템 사용 경험은 어느 정도입니까?</div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="experience" id="exp1" value="demo_only" required>
+                    <label class="form-check-label" for="exp1">시연만 봄</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="experience" id="exp2" value="1-2_times">
+                    <label class="form-check-label" for="exp2">1~2회 사용</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="experience" id="exp3" value="sometimes">
+                    <label class="form-check-label" for="exp3">가끔 사용</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="experience" id="exp4" value="frequently">
+                    <label class="form-check-label" for="exp4">자주 사용</label>
+                </div>
+            </div>
+
+            <div class="question-group">
+                <div class="question-label">주로 어떤 업무/목적으로 사용하셨습니까? (복수 선택 가능)</div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="purpose" id="purpose1" value="trend">
+                    <label class="form-check-label" for="purpose1">연구동향/분야 파악</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="purpose" id="purpose2" value="analysis">
+                    <label class="form-check-label" for="purpose2">연구자/성과 분석</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="purpose" id="purpose3" value="strategy">
+                    <label class="form-check-label" for="purpose3">전략/의사결정 참고</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="purpose" id="purpose4" value="report">
+                    <label class="form-check-label" for="purpose4">보고서/회의자료 작성</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="purpose" id="purpose5" value="other">
+                    <label class="form-check-label" for="purpose5">기타</label>
+                    <input type="text" class="form-control form-control-sm d-inline-block ms-2" id="purposeOther" placeholder="직접 입력" style="width: 150px;">
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 양적 문항 (리커트 5점) -->
+        <div class="survey-section" id="section2">
+            <h5><i class="fas fa-star"></i> 2. 시스템 평가</h5>
+            <p class="text-muted small mb-4">아래 문항에 대해 가장 가까운 정도를 선택해 주세요.</p>
+
+            <!-- A. 유용성 -->
+            <div class="mb-4">
+                <h6 class="text-primary"><i class="fas fa-lightbulb"></i> A. 유용성 (업무 기여)</h6>
+
+                <div class="question-group">
+                    <div class="question-label required">이 시스템은 업무(또는 연구) 효율을 높이는 데 도움이 된다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="a1" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="a1" value="2"><span>2</span></label>
+                        <label><input type="radio" name="a1" value="3"><span>3</span></label>
+                        <label><input type="radio" name="a1" value="4"><span>4</span></label>
+                        <label><input type="radio" name="a1" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">이 시스템은 의사결정(우선순위/선정/지원 등)에 참고할 만한 정보를 제공한다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="a2" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="a2" value="2"><span>2</span></label>
+                        <label><input type="radio" name="a2" value="3"><span>3</span></label>
+                        <label><input type="radio" name="a2" value="4"><span>4</span></label>
+                        <label><input type="radio" name="a2" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">이 시스템은 전략 수립(분야 선택/투자 방향 등)에 도움이 된다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="a3" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="a3" value="2"><span>2</span></label>
+                        <label><input type="radio" name="a3" value="3"><span>3</span></label>
+                        <label><input type="radio" name="a3" value="4"><span>4</span></label>
+                        <label><input type="radio" name="a3" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">이 시스템은 내 업무 맥락(역할/부서 업무)에 적합하다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="a4" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="a4" value="2"><span>2</span></label>
+                        <label><input type="radio" name="a4" value="3"><span>3</span></label>
+                        <label><input type="radio" name="a4" value="4"><span>4</span></label>
+                        <label><input type="radio" name="a4" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+            </div>
+
+            <!-- B. 사용성 -->
+            <div class="mb-4">
+                <h6 class="text-success"><i class="fas fa-mouse-pointer"></i> B. 사용성 (학습/조작/흐름)</h6>
+
+                <div class="question-group">
+                    <div class="question-label required">처음 사용했을 때 전반적으로 사용 방법을 이해하기 쉬웠다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="b1" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="b1" value="2"><span>2</span></label>
+                        <label><input type="radio" name="b1" value="3"><span>3</span></label>
+                        <label><input type="radio" name="b1" value="4"><span>4</span></label>
+                        <label><input type="radio" name="b1" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">화면 구성과 메뉴 구조는 직관적이다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="b2" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="b2" value="2"><span>2</span></label>
+                        <label><input type="radio" name="b2" value="3"><span>3</span></label>
+                        <label><input type="radio" name="b2" value="4"><span>4</span></label>
+                        <label><input type="radio" name="b2" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">원하는 기능/정보를 찾는 과정이 어렵지 않았다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="b3" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="b3" value="2"><span>2</span></label>
+                        <label><input type="radio" name="b3" value="3"><span>3</span></label>
+                        <label><input type="radio" name="b3" value="4"><span>4</span></label>
+                        <label><input type="radio" name="b3" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">시스템 사용 흐름(조회→분석→공유/활용)이 자연스럽다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="b4" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="b4" value="2"><span>2</span></label>
+                        <label><input type="radio" name="b4" value="3"><span>3</span></label>
+                        <label><input type="radio" name="b4" value="4"><span>4</span></label>
+                        <label><input type="radio" name="b4" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">도움말/가이드(설명, 튜토리얼)가 충분하다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="b5" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="b5" value="2"><span>2</span></label>
+                        <label><input type="radio" name="b5" value="3"><span>3</span></label>
+                        <label><input type="radio" name="b5" value="4"><span>4</span></label>
+                        <label><input type="radio" name="b5" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+            </div>
+
+            <!-- C. 정보 품질 -->
+            <div class="mb-4">
+                <h6 class="text-info"><i class="fas fa-check-circle"></i> C. 정보 품질 (신뢰/적합/이해)</h6>
+
+                <div class="question-group">
+                    <div class="question-label required">시스템이 제공하는 분석 결과/지표는 신뢰할 수 있다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="c1" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="c1" value="2"><span>2</span></label>
+                        <label><input type="radio" name="c1" value="3"><span>3</span></label>
+                        <label><input type="radio" name="c1" value="4"><span>4</span></label>
+                        <label><input type="radio" name="c1" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">제공되는 정보는 내 목적에 적절하고 관련성이 높다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="c2" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="c2" value="2"><span>2</span></label>
+                        <label><input type="radio" name="c2" value="3"><span>3</span></label>
+                        <label><input type="radio" name="c2" value="4"><span>4</span></label>
+                        <label><input type="radio" name="c2" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">지표/결과의 의미를 이해하기 쉽다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="c3" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="c3" value="2"><span>2</span></label>
+                        <label><input type="radio" name="c3" value="3"><span>3</span></label>
+                        <label><input type="radio" name="c3" value="4"><span>4</span></label>
+                        <label><input type="radio" name="c3" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">결과의 근거(출처/산식/기준)가 충분히 제시된다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="c4" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="c4" value="2"><span>2</span></label>
+                        <label><input type="radio" name="c4" value="3"><span>3</span></label>
+                        <label><input type="radio" name="c4" value="4"><span>4</span></label>
+                        <label><input type="radio" name="c4" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">데이터의 기준 시점/최신성이 명확하다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="c5" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="c5" value="2"><span>2</span></label>
+                        <label><input type="radio" name="c5" value="3"><span>3</span></label>
+                        <label><input type="radio" name="c5" value="4"><span>4</span></label>
+                        <label><input type="radio" name="c5" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+            </div>
+
+            <!-- D. 활용 경험 -->
+            <div class="mb-4">
+                <h6 class="text-warning"><i class="fas fa-clipboard-check"></i> D. 활용 경험 (실제 적용)</h6>
+
+                <div class="question-group">
+                    <div class="question-label required">나는 시스템 결과를 실제 업무 산출물(보고서/회의자료/기획)에 활용했다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="d1" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="d1" value="2"><span>2</span></label>
+                        <label><input type="radio" name="d1" value="3"><span>3</span></label>
+                        <label><input type="radio" name="d1" value="4"><span>4</span></label>
+                        <label><input type="radio" name="d1" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">시스템 결과를 참고하여 업무 방향이나 판단이 달라진 경험이 있다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="d2" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="d2" value="2"><span>2</span></label>
+                        <label><input type="radio" name="d2" value="3"><span>3</span></label>
+                        <label><input type="radio" name="d2" value="4"><span>4</span></label>
+                        <label><input type="radio" name="d2" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+            </div>
+
+            <!-- E. 활용 의향 -->
+            <div class="mb-4">
+                <h6 class="text-danger"><i class="fas fa-heart"></i> E. 활용 의향 (지속/추천)</h6>
+
+                <div class="question-group">
+                    <div class="question-label required">시스템이 정식 도입된다면 지속적으로 사용할 의향이 있다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="e1" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="e1" value="2"><span>2</span></label>
+                        <label><input type="radio" name="e1" value="3"><span>3</span></label>
+                        <label><input type="radio" name="e1" value="4"><span>4</span></label>
+                        <label><input type="radio" name="e1" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+
+                <div class="question-group">
+                    <div class="question-label required">동료(또는 타 부서/연구자)에게 이 시스템을 추천할 의향이 있다.</div>
+                    <div class="likert-scale">
+                        <label><input type="radio" name="e2" value="1" required><span>1</span></label>
+                        <label><input type="radio" name="e2" value="2"><span>2</span></label>
+                        <label><input type="radio" name="e2" value="3"><span>3</span></label>
+                        <label><input type="radio" name="e2" value="4"><span>4</span></label>
+                        <label><input type="radio" name="e2" value="5"><span>5</span></label>
+                    </div>
+                    <div class="likert-labels"><span>전혀 그렇지 않다</span><span>매우 그렇다</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 질적 문항 (서술형) -->
+        <div class="survey-section" id="section3">
+            <h5><i class="fas fa-pen"></i> 3. 자유 의견</h5>
+
+            <div class="question-group">
+                <div class="question-label">이 시스템의 <strong>가장 유용했던 점(또는 강점)</strong>은 무엇입니까?</div>
+                <textarea class="form-control" name="f1" rows="3" placeholder="자유롭게 작성해 주세요"></textarea>
+            </div>
+
+            <div class="question-group">
+                <div class="question-label">사용 중 <strong>불편했거나 어려웠던 점</strong>이 있었다면 구체적으로 적어주세요.</div>
+                <textarea class="form-control" name="f2" rows="3" placeholder="자유롭게 작성해 주세요"></textarea>
+            </div>
+
+            <div class="question-group">
+                <div class="question-label">분석 결과/지표와 관련하여 <strong>신뢰 또는 이해 측면에서 보완이 필요</strong>하다고 느낀 점이 있습니까?</div>
+                <textarea class="form-control" name="f3" rows="3" placeholder="자유롭게 작성해 주세요"></textarea>
+            </div>
+
+            <div class="question-group">
+                <div class="question-label">시스템에 <strong>추가되었으면 하는 기능/개선 사항</strong>을 자유롭게 적어주세요.</div>
+                <textarea class="form-control" name="f4" rows="3" placeholder="자유롭게 작성해 주세요"></textarea>
+            </div>
+
+            <div class="question-group">
+                <div class="question-label">기타 의견 (있다면)</div>
+                <textarea class="form-control" name="f5" rows="3" placeholder="자유롭게 작성해 주세요"></textarea>
+            </div>
+        </div>
+
+        <!-- 제출 버튼 -->
+        <div class="survey-section text-center">
+            <button type="button" class="btn btn-primary btn-lg btn-submit-survey" onclick="submitSurvey()">
+                <i class="fas fa-paper-plane"></i> 설문 제출
+            </button>
+            <p class="text-muted small mt-3">제출 후에는 수정할 수 없습니다.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+// 동의 체크 시 섹션 표시/숨김
+document.querySelectorAll('input[name="consent"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const sections = document.querySelectorAll('#section1, #section2, #section3');
+        const submitSection = document.querySelector('.survey-section.text-center');
+
+        if (this.value === 'no') {
+            sections.forEach(s => s.style.display = 'none');
+            submitSection.style.display = 'none';
+            alert('설문에 참여하지 않으셔도 됩니다. 감사합니다.');
+            window.location.href = '{{ url_for("researcher_ranking") }}';
+        } else {
+            sections.forEach(s => s.style.display = 'block');
+            submitSection.style.display = 'block';
+        }
+    });
+});
+
+// 이메일 중복 체크 (blur 이벤트)
+document.getElementById('email').addEventListener('blur', function() {
+    const email = this.value.trim();
+    const emailError = document.getElementById('emailError');
+
+    if (!email) {
+        emailError.style.display = 'none';
+        return;
+    }
+
+    // 이메일 형식 체크
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        emailError.textContent = '올바른 이메일 형식을 입력해 주세요.';
+        emailError.style.display = 'block';
+        return;
+    }
+
+    // 중복 체크
+    fetch('/api/survey/check_email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email })
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.exists) {
+            emailError.textContent = '이미 설문에 참여하신 이메일입니다.';
+            emailError.style.display = 'block';
+            // 중복 참여 메시지 표시
+            document.getElementById('surveyForm').style.display = 'none';
+            document.getElementById('alreadyParticipated').style.display = 'block';
+        } else {
+            emailError.style.display = 'none';
+        }
+    });
+});
+
+function submitSurvey() {
+    // 동의 확인
+    const consent = document.querySelector('input[name="consent"]:checked');
+    if (!consent || consent.value !== 'yes') {
+        alert('설문 참여에 동의해 주세요.');
+        return;
+    }
+
+    // 이메일 확인
+    const email = document.getElementById('email').value.trim();
+    if (!email) {
+        alert('이메일을 입력해 주세요.');
+        document.getElementById('email').focus();
+        return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        alert('올바른 이메일 형식을 입력해 주세요.');
+        document.getElementById('email').focus();
+        return;
+    }
+
+    // 필수 항목 확인
+    const requiredRadios = ['role', 'experience', 'a1', 'a2', 'a3', 'a4', 'b1', 'b2', 'b3', 'b4', 'b5', 'c1', 'c2', 'c3', 'c4', 'c5', 'd1', 'd2', 'e1', 'e2'];
+    for (const name of requiredRadios) {
+        if (!document.querySelector(`input[name="${name}"]:checked`)) {
+            alert('모든 필수 항목(*)에 응답해 주세요.');
+            document.querySelector(`input[name="${name}"]`).scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+    }
+
+    // 데이터 수집
+    const data = {
+        email: email,
+        role: document.querySelector('input[name="role"]:checked')?.value,
+        role_other: document.getElementById('roleOther')?.value || '',
+        experience: document.querySelector('input[name="experience"]:checked')?.value,
+        purpose: Array.from(document.querySelectorAll('input[name="purpose"]:checked')).map(c => c.value),
+        purpose_other: document.getElementById('purposeOther')?.value || '',
+        a1: parseInt(document.querySelector('input[name="a1"]:checked')?.value),
+        a2: parseInt(document.querySelector('input[name="a2"]:checked')?.value),
+        a3: parseInt(document.querySelector('input[name="a3"]:checked')?.value),
+        a4: parseInt(document.querySelector('input[name="a4"]:checked')?.value),
+        b1: parseInt(document.querySelector('input[name="b1"]:checked')?.value),
+        b2: parseInt(document.querySelector('input[name="b2"]:checked')?.value),
+        b3: parseInt(document.querySelector('input[name="b3"]:checked')?.value),
+        b4: parseInt(document.querySelector('input[name="b4"]:checked')?.value),
+        b5: parseInt(document.querySelector('input[name="b5"]:checked')?.value),
+        c1: parseInt(document.querySelector('input[name="c1"]:checked')?.value),
+        c2: parseInt(document.querySelector('input[name="c2"]:checked')?.value),
+        c3: parseInt(document.querySelector('input[name="c3"]:checked')?.value),
+        c4: parseInt(document.querySelector('input[name="c4"]:checked')?.value),
+        c5: parseInt(document.querySelector('input[name="c5"]:checked')?.value),
+        d1: parseInt(document.querySelector('input[name="d1"]:checked')?.value),
+        d2: parseInt(document.querySelector('input[name="d2"]:checked')?.value),
+        e1: parseInt(document.querySelector('input[name="e1"]:checked')?.value),
+        e2: parseInt(document.querySelector('input[name="e2"]:checked')?.value),
+        f1: document.querySelector('textarea[name="f1"]')?.value || '',
+        f2: document.querySelector('textarea[name="f2"]')?.value || '',
+        f3: document.querySelector('textarea[name="f3"]')?.value || '',
+        f4: document.querySelector('textarea[name="f4"]')?.value || '',
+        f5: document.querySelector('textarea[name="f5"]')?.value || ''
+    };
+
+    // 제출
+    fetch('/api/survey/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            document.getElementById('surveyForm').style.display = 'none';
+            document.getElementById('thankYouMessage').style.display = 'block';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+            alert('설문 저장 중 오류가 발생했습니다: ' + (result.error || ''));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('설문 저장 중 오류가 발생했습니다.');
+    });
+}
+</script>
+{% endblock %}

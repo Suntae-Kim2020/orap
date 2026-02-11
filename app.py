@@ -5334,6 +5334,181 @@ def api_field_analysis_trend():
     })
 
 
+# ==================== 설문 관련 ====================
+
+@app.route('/survey')
+def survey():
+    """설문 페이지"""
+    return render_template('survey.html')
+
+
+@app.route('/api/survey/check_email', methods=['POST'])
+def check_survey_email():
+    """이메일 중복 체크"""
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip().lower()
+
+        if not email:
+            return jsonify({'exists': False})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) FROM survey_response WHERE LOWER(email) = ?", (email,))
+        count = cursor.fetchone()[0]
+        conn.close()
+
+        return jsonify({'exists': count > 0})
+    except Exception as e:
+        return jsonify({'exists': False, 'error': str(e)}), 500
+
+
+@app.route('/api/survey/submit', methods=['POST'])
+def submit_survey():
+    """설문 응답 저장"""
+    try:
+        data = request.get_json()
+
+        email = data.get('email', '').strip().lower()
+
+        if not email:
+            return jsonify({'success': False, 'error': '이메일을 입력해 주세요.'}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 이메일 중복 체크
+        cursor.execute("SELECT COUNT(*) FROM survey_response WHERE LOWER(email) = ?", (email,))
+        if cursor.fetchone()[0] > 0:
+            conn.close()
+            return jsonify({'success': False, 'error': '이미 설문에 참여하셨습니다.'}), 400
+
+        # 클라이언트 IP (프록시 고려)
+        ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
+        if ip_address:
+            ip_address = ip_address.split(',')[0].strip()
+
+        cursor.execute("""
+            INSERT INTO survey_response (
+                email, role, role_other, experience, purpose, purpose_other,
+                a1_efficiency, a2_decision, a3_strategy, a4_context,
+                b1_easy_understand, b2_intuitive, b3_find_info, b4_flow, b5_help,
+                c1_trust, c2_relevance, c3_comprehension, c4_evidence, c5_timeliness,
+                d1_actual_use, d2_changed_decision,
+                e1_continue, e2_recommend,
+                f1_strengths, f2_difficulties, f3_trust_improve, f4_feature_request, f5_other,
+                ip_address
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            email,
+            data.get('role'), data.get('role_other'), data.get('experience'),
+            ','.join(data.get('purpose', [])), data.get('purpose_other'),
+            data.get('a1'), data.get('a2'), data.get('a3'), data.get('a4'),
+            data.get('b1'), data.get('b2'), data.get('b3'), data.get('b4'), data.get('b5'),
+            data.get('c1'), data.get('c2'), data.get('c3'), data.get('c4'), data.get('c5'),
+            data.get('d1'), data.get('d2'),
+            data.get('e1'), data.get('e2'),
+            data.get('f1'), data.get('f2'), data.get('f3'), data.get('f4'), data.get('f5'),
+            ip_address
+        ))
+
+        conn.commit()
+        response_id = cursor.lastrowid
+        conn.close()
+
+        return jsonify({'success': True, 'response_id': response_id})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/survey/results')
+def survey_results():
+    """설문 결과 조회 (관리자용)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 전체 응답 수
+    cursor.execute("SELECT COUNT(*) FROM survey_response")
+    total_count = cursor.fetchone()[0]
+
+    # 역할별 분포
+    cursor.execute("""
+        SELECT role, COUNT(*) as cnt
+        FROM survey_response
+        GROUP BY role
+    """)
+    role_dist = [{'role': r['role'], 'count': r['cnt']} for r in cursor.fetchall()]
+
+    # 리커트 문항 평균
+    cursor.execute("""
+        SELECT
+            AVG(a1_efficiency) as a1, AVG(a2_decision) as a2, AVG(a3_strategy) as a3, AVG(a4_context) as a4,
+            AVG(b1_easy_understand) as b1, AVG(b2_intuitive) as b2, AVG(b3_find_info) as b3, AVG(b4_flow) as b4, AVG(b5_help) as b5,
+            AVG(c1_trust) as c1, AVG(c2_relevance) as c2, AVG(c3_comprehension) as c3, AVG(c4_evidence) as c4, AVG(c5_timeliness) as c5,
+            AVG(d1_actual_use) as d1, AVG(d2_changed_decision) as d2,
+            AVG(e1_continue) as e1, AVG(e2_recommend) as e2
+        FROM survey_response
+    """)
+    avg_row = cursor.fetchone()
+    likert_avg = {
+        'A_유용성': {
+            'a1_업무효율': round(avg_row['a1'] or 0, 2),
+            'a2_의사결정': round(avg_row['a2'] or 0, 2),
+            'a3_전략수립': round(avg_row['a3'] or 0, 2),
+            'a4_맥락적합': round(avg_row['a4'] or 0, 2)
+        },
+        'B_사용성': {
+            'b1_이해용이': round(avg_row['b1'] or 0, 2),
+            'b2_직관성': round(avg_row['b2'] or 0, 2),
+            'b3_정보탐색': round(avg_row['b3'] or 0, 2),
+            'b4_흐름': round(avg_row['b4'] or 0, 2),
+            'b5_도움말': round(avg_row['b5'] or 0, 2)
+        },
+        'C_정보품질': {
+            'c1_신뢰성': round(avg_row['c1'] or 0, 2),
+            'c2_관련성': round(avg_row['c2'] or 0, 2),
+            'c3_이해도': round(avg_row['c3'] or 0, 2),
+            'c4_근거제시': round(avg_row['c4'] or 0, 2),
+            'c5_최신성': round(avg_row['c5'] or 0, 2)
+        },
+        'D_활용경험': {
+            'd1_실제활용': round(avg_row['d1'] or 0, 2),
+            'd2_판단변화': round(avg_row['d2'] or 0, 2)
+        },
+        'E_활용의향': {
+            'e1_지속사용': round(avg_row['e1'] or 0, 2),
+            'e2_추천의향': round(avg_row['e2'] or 0, 2)
+        }
+    }
+
+    # 서술형 응답
+    cursor.execute("""
+        SELECT f1_strengths, f2_difficulties, f3_trust_improve, f4_feature_request, f5_other, submitted_at
+        FROM survey_response
+        ORDER BY submitted_at DESC
+    """)
+    qualitative = []
+    for row in cursor.fetchall():
+        qualitative.append({
+            'strengths': row['f1_strengths'],
+            'difficulties': row['f2_difficulties'],
+            'trust_improve': row['f3_trust_improve'],
+            'feature_request': row['f4_feature_request'],
+            'other': row['f5_other'],
+            'submitted_at': row['submitted_at']
+        })
+
+    conn.close()
+
+    return jsonify({
+        'total_count': total_count,
+        'role_distribution': role_dist,
+        'likert_averages': likert_avg,
+        'qualitative_responses': qualitative
+    })
+
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 57769))
     print(f"Starting Flask app on port {port}")
