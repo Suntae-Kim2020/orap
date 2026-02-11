@@ -578,7 +578,12 @@ document.getElementById('email').addEventListener('blur', function() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json();
+    })
     .then(result => {
         if (result.exists) {
             emailError.textContent = '이미 설문에 참여하신 이메일입니다.';
@@ -589,6 +594,11 @@ document.getElementById('email').addEventListener('blur', function() {
         } else {
             emailError.style.display = 'none';
         }
+    })
+    .catch(error => {
+        console.error('Email check error:', error);
+        // 오류 시에도 폼은 계속 사용 가능하게 유지
+        emailError.style.display = 'none';
     });
 });
 
