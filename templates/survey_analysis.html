@@ -132,21 +132,46 @@
     }
 </style>
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4><i class="fas fa-chart-pie"></i> 설문 결과 분석</h4>
-    <button class="btn btn-outline-secondary" onclick="window.print()">
-        <i class="fas fa-print"></i> 인쇄
-    </button>
+<!-- 암호 입력 화면 -->
+<div id="passwordSection" class="text-center py-5">
+    <div class="card mx-auto" style="max-width: 400px;">
+        <div class="card-body p-4">
+            <div class="mb-4">
+                <i class="fas fa-lock fa-3x text-secondary"></i>
+            </div>
+            <h5 class="card-title mb-3">설문 결과 분석</h5>
+            <p class="text-muted mb-4">결과를 확인하려면 암호를 입력하세요.</p>
+            <div class="mb-3">
+                <input type="password" class="form-control text-center" id="passwordInput"
+                       placeholder="암호 입력" onkeypress="if(event.key==='Enter') checkPassword()">
+            </div>
+            <div id="passwordError" class="text-danger small mb-3" style="display: none;">
+                암호가 올바르지 않습니다.
+            </div>
+            <button class="btn btn-primary w-100" onclick="checkPassword()">
+                <i class="fas fa-unlock"></i> 확인
+            </button>
+        </div>
+    </div>
 </div>
 
-<!-- 로딩 -->
-<div id="loading" class="text-center py-5">
-    <div class="spinner-border text-primary" role="status"></div>
-    <p class="mt-3">데이터를 분석하고 있습니다...</p>
-</div>
+<!-- 메인 컨텐츠 (암호 확인 후 표시) -->
+<div id="mainContent" style="display: none;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4><i class="fas fa-chart-pie"></i> 설문 결과 분석</h4>
+        <button class="btn btn-outline-secondary" onclick="window.print()">
+            <i class="fas fa-print"></i> 인쇄
+        </button>
+    </div>
 
-<!-- 분석 결과 -->
-<div id="analysisContent" style="display: none;">
+    <!-- 로딩 -->
+    <div id="loading" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-3">데이터를 분석하고 있습니다...</p>
+    </div>
+
+    <!-- 분석 결과 -->
+    <div id="analysisContent" style="display: none;">
     <!-- 1. 개요 통계 -->
     <div class="row mb-4">
         <div class="col-md-3">
@@ -291,9 +316,26 @@
             <i class="fas fa-download"></i> CSV 다운로드
         </button>
     </div>
+    </div>
 </div>
 
 <script>
+// 암호 확인 함수
+function checkPassword() {
+    const password = document.getElementById('passwordInput').value;
+    const correctPassword = 'kst123';
+
+    if (password === correctPassword) {
+        document.getElementById('passwordSection').style.display = 'none';
+        document.getElementById('mainContent').style.display = 'block';
+        loadData();
+    } else {
+        document.getElementById('passwordError').style.display = 'block';
+        document.getElementById('passwordInput').value = '';
+        document.getElementById('passwordInput').focus();
+    }
+}
+
 const dimensionNames = {
     'A_유용성': { ko: '유용성', en: 'Usefulness', color: '#28a745' },
     'B_사용성': { ko: '사용성', en: 'Usability', color: '#007bff' },
@@ -699,7 +741,7 @@ function downloadCSV() {
     a.click();
 }
 
-// 페이지 로드 시 데이터 불러오기
-loadData();
+// 암호 입력 필드에 포커스
+document.getElementById('passwordInput').focus();
 </script>
 {% endblock %}
