@@ -1,0 +1,705 @@
+{% extends "base.html" %}
+{% block title %}설문 결과 분석{% endblock %}
+
+{% block content %}
+<style>
+    .analysis-card {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        padding: 24px;
+        margin-bottom: 24px;
+    }
+    .analysis-card h5 {
+        color: #333;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+    }
+    .stat-box {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+    }
+    .stat-box .stat-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+    }
+    .stat-box .stat-label {
+        font-size: 0.9rem;
+        opacity: 0.9;
+    }
+    .score-bar {
+        height: 24px;
+        background: #e9ecef;
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 8px;
+    }
+    .score-bar-fill {
+        height: 100%;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding-right: 8px;
+        color: white;
+        font-weight: bold;
+        font-size: 0.85rem;
+        transition: width 0.5s ease;
+    }
+    .score-high { background: linear-gradient(90deg, #28a745, #20c997); }
+    .score-mid { background: linear-gradient(90deg, #ffc107, #fd7e14); }
+    .score-low { background: linear-gradient(90deg, #dc3545, #e83e8c); }
+    .insight-box {
+        background: #f8f9fa;
+        border-left: 4px solid #007bff;
+        padding: 16px;
+        margin: 16px 0;
+        border-radius: 0 8px 8px 0;
+    }
+    .insight-box.positive { border-left-color: #28a745; background: #e8f5e9; }
+    .insight-box.warning { border-left-color: #ffc107; background: #fff8e1; }
+    .insight-box.negative { border-left-color: #dc3545; background: #ffebee; }
+    .insight-title {
+        font-weight: bold;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .qualitative-card {
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 12px;
+    }
+    .qualitative-card .label {
+        font-size: 0.8rem;
+        color: #6c757d;
+        margin-bottom: 4px;
+    }
+    .radar-container {
+        max-width: 400px;
+        margin: 0 auto;
+    }
+    .dimension-summary {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    .dimension-card {
+        text-align: center;
+        padding: 16px 8px;
+        border-radius: 8px;
+        background: #f8f9fa;
+    }
+    .dimension-card .dim-score {
+        font-size: 1.8rem;
+        font-weight: bold;
+    }
+    .dimension-card .dim-label {
+        font-size: 0.75rem;
+        color: #6c757d;
+    }
+    .paper-section {
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .paper-section h6 {
+        color: #495057;
+        margin-bottom: 12px;
+    }
+    .paper-section p {
+        margin-bottom: 8px;
+        line-height: 1.7;
+    }
+    .copy-btn {
+        font-size: 0.8rem;
+        padding: 4px 12px;
+    }
+    @media (max-width: 768px) {
+        .dimension-summary {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4><i class="fas fa-chart-pie"></i> 설문 결과 분석</h4>
+    <button class="btn btn-outline-secondary" onclick="window.print()">
+        <i class="fas fa-print"></i> 인쇄
+    </button>
+</div>
+
+<!-- 로딩 -->
+<div id="loading" class="text-center py-5">
+    <div class="spinner-border text-primary" role="status"></div>
+    <p class="mt-3">데이터를 분석하고 있습니다...</p>
+</div>
+
+<!-- 분석 결과 -->
+<div id="analysisContent" style="display: none;">
+    <!-- 1. 개요 통계 -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-box">
+                <div class="stat-value" id="totalCount">-</div>
+                <div class="stat-label">총 응답자 수</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-box" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                <div class="stat-value" id="overallScore">-</div>
+                <div class="stat-label">전체 평균 (5점 만점)</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-box" style="background: linear-gradient(135deg, #ee0979 0%, #ff6a00 100%);">
+                <div class="stat-value" id="highestDim">-</div>
+                <div class="stat-label">최고 점수 영역</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-box" style="background: linear-gradient(135deg, #4568dc 0%, #b06ab3 100%);">
+                <div class="stat-value" id="lowestDim">-</div>
+                <div class="stat-label">개선 필요 영역</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 차원별 평균 -->
+    <div class="analysis-card">
+        <h5><i class="fas fa-layer-group"></i> 평가 차원별 분석</h5>
+
+        <div class="dimension-summary" id="dimensionSummary"></div>
+
+        <div class="row">
+            <div class="col-md-7">
+                <div id="scoreDetails"></div>
+            </div>
+            <div class="col-md-5">
+                <canvas id="radarChart" width="400" height="400"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 핵심 인사이트 -->
+    <div class="analysis-card">
+        <h5><i class="fas fa-lightbulb"></i> 핵심 인사이트 (Key Insights)</h5>
+        <div id="keyInsights"></div>
+    </div>
+
+    <!-- 4. 서술형 응답 분석 -->
+    <div class="analysis-card">
+        <h5><i class="fas fa-comments"></i> 질적 응답 분석 (Qualitative Analysis)</h5>
+
+        <div class="row">
+            <div class="col-md-6">
+                <h6 class="text-success"><i class="fas fa-thumbs-up"></i> 강점 (Strengths)</h6>
+                <div id="strengthsList"></div>
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-danger"><i class="fas fa-exclamation-circle"></i> 어려움/개선점 (Challenges)</h6>
+                <div id="difficultiesList"></div>
+            </div>
+        </div>
+
+        <hr>
+
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <h6 class="text-primary"><i class="fas fa-shield-alt"></i> 신뢰도 개선 제안</h6>
+                <div id="trustList"></div>
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-info"><i class="fas fa-magic"></i> 기능 요청</h6>
+                <div id="featureList"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. 논문용 텍스트 -->
+    <div class="analysis-card">
+        <h5><i class="fas fa-file-alt"></i> 논문 작성용 텍스트 (Paper-ready Text)</h5>
+
+        <div class="paper-section">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6>4.1 설문 개요 (Survey Overview)</h6>
+                <button class="btn btn-outline-primary copy-btn" onclick="copyText('paperOverview')">
+                    <i class="fas fa-copy"></i> 복사
+                </button>
+            </div>
+            <div id="paperOverview"></div>
+        </div>
+
+        <div class="paper-section">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6>4.2 정량적 결과 (Quantitative Results)</h6>
+                <button class="btn btn-outline-primary copy-btn" onclick="copyText('paperQuantitative')">
+                    <i class="fas fa-copy"></i> 복사
+                </button>
+            </div>
+            <div id="paperQuantitative"></div>
+        </div>
+
+        <div class="paper-section">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6>4.3 질적 분석 결과 (Qualitative Findings)</h6>
+                <button class="btn btn-outline-primary copy-btn" onclick="copyText('paperQualitative')">
+                    <i class="fas fa-copy"></i> 복사
+                </button>
+            </div>
+            <div id="paperQualitative"></div>
+        </div>
+
+        <div class="paper-section">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6>4.4 시사점 및 향후 과제 (Implications)</h6>
+                <button class="btn btn-outline-primary copy-btn" onclick="copyText('paperImplications')">
+                    <i class="fas fa-copy"></i> 복사
+                </button>
+            </div>
+            <div id="paperImplications"></div>
+        </div>
+    </div>
+
+    <!-- 6. 데이터 테이블 -->
+    <div class="analysis-card">
+        <h5><i class="fas fa-table"></i> 상세 데이터 (Raw Data)</h5>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered" id="rawDataTable">
+                <thead class="table-light">
+                    <tr>
+                        <th>차원</th>
+                        <th>문항</th>
+                        <th>평균</th>
+                        <th>해석</th>
+                    </tr>
+                </thead>
+                <tbody id="rawDataBody"></tbody>
+            </table>
+        </div>
+        <button class="btn btn-success mt-2" onclick="downloadCSV()">
+            <i class="fas fa-download"></i> CSV 다운로드
+        </button>
+    </div>
+</div>
+
+<script>
+const dimensionNames = {
+    'A_유용성': { ko: '유용성', en: 'Usefulness', color: '#28a745' },
+    'B_사용성': { ko: '사용성', en: 'Usability', color: '#007bff' },
+    'C_정보품질': { ko: '정보품질', en: 'Info Quality', color: '#6f42c1' },
+    'D_활용경험': { ko: '활용경험', en: 'Usage Exp.', color: '#fd7e14' },
+    'E_활용의향': { ko: '활용의향', en: 'Intent to Use', color: '#e83e8c' }
+};
+
+const itemNames = {
+    'a1_업무효율': '업무 효율성 향상',
+    'a2_의사결정': '의사결정 도움',
+    'a3_전략수립': '전략 수립 지원',
+    'a4_맥락적합': '맥락/상황 이해 도움',
+    'b1_이해용이': '이해하기 쉬움',
+    'b2_직관성': '직관적 사용',
+    'b3_정보탐색': '정보 찾기 용이',
+    'b4_흐름': '사용 흐름 자연스러움',
+    'b5_도움말': '도움말 충분',
+    'c1_신뢰성': '결과 신뢰성',
+    'c2_관련성': '목적 적합성',
+    'c3_이해도': '의미 이해 용이',
+    'c4_근거제시': '근거 제시 충분',
+    'c5_최신성': '최신성 명확',
+    'd1_실제활용': '실제 업무 활용',
+    'd2_판단변화': '판단 변화 경험',
+    'e1_지속사용': '지속 사용 의향',
+    'e2_추천의향': '추천 의향'
+};
+
+let surveyData = null;
+
+async function loadData() {
+    try {
+        const response = await fetch('/api/survey/results');
+        surveyData = await response.json();
+        renderAnalysis();
+    } catch (error) {
+        console.error('Error:', error);
+        document.getElementById('loading').innerHTML = '<div class="alert alert-danger">데이터를 불러오는 중 오류가 발생했습니다.</div>';
+    }
+}
+
+function renderAnalysis() {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('analysisContent').style.display = 'block';
+
+    const data = surveyData;
+    const likert = data.likert_averages;
+
+    // 1. 개요 통계
+    document.getElementById('totalCount').textContent = data.total_count;
+
+    // 차원별 평균 계산
+    const dimAverages = {};
+    let allScores = [];
+
+    for (const [dim, items] of Object.entries(likert)) {
+        const scores = Object.values(items);
+        const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+        dimAverages[dim] = avg;
+        allScores = allScores.concat(scores);
+    }
+
+    const overallAvg = allScores.reduce((a, b) => a + b, 0) / allScores.length;
+    document.getElementById('overallScore').textContent = overallAvg.toFixed(2);
+
+    // 최고/최저 영역
+    const sortedDims = Object.entries(dimAverages).sort((a, b) => b[1] - a[1]);
+    document.getElementById('highestDim').textContent = dimensionNames[sortedDims[0][0]].ko;
+    document.getElementById('lowestDim').textContent = dimensionNames[sortedDims[sortedDims.length - 1][0]].ko;
+
+    // 2. 차원별 요약 카드
+    let dimSummaryHtml = '';
+    for (const [dim, avg] of Object.entries(dimAverages)) {
+        const info = dimensionNames[dim];
+        dimSummaryHtml += `
+            <div class="dimension-card" style="border-top: 4px solid ${info.color}">
+                <div class="dim-score" style="color: ${info.color}">${avg.toFixed(2)}</div>
+                <div class="dim-label">${info.ko}<br><small>${info.en}</small></div>
+            </div>
+        `;
+    }
+    document.getElementById('dimensionSummary').innerHTML = dimSummaryHtml;
+
+    // 3. 상세 점수 바
+    let detailsHtml = '';
+    for (const [dim, items] of Object.entries(likert)) {
+        const dimInfo = dimensionNames[dim];
+        detailsHtml += `<h6 class="mt-3" style="color: ${dimInfo.color}"><i class="fas fa-chart-bar"></i> ${dimInfo.ko} (${dimInfo.en})</h6>`;
+
+        for (const [item, score] of Object.entries(items)) {
+            const pct = (score / 5) * 100;
+            const colorClass = score >= 4.5 ? 'score-high' : (score >= 3.5 ? 'score-mid' : 'score-low');
+            const itemLabel = itemNames[item] || item;
+
+            detailsHtml += `
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between">
+                        <small>${itemLabel}</small>
+                        <small><strong>${score.toFixed(2)}</strong></small>
+                    </div>
+                    <div class="score-bar">
+                        <div class="score-bar-fill ${colorClass}" style="width: ${pct}%"></div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+    document.getElementById('scoreDetails').innerHTML = detailsHtml;
+
+    // 4. 레이더 차트
+    drawRadarChart(dimAverages);
+
+    // 5. 핵심 인사이트
+    renderInsights(dimAverages, likert, data.qualitative_responses);
+
+    // 6. 질적 응답
+    renderQualitative(data.qualitative_responses);
+
+    // 7. 논문용 텍스트
+    renderPaperText(data, dimAverages, overallAvg);
+
+    // 8. 상세 데이터 테이블
+    renderRawData(likert);
+}
+
+function drawRadarChart(dimAverages) {
+    const canvas = document.getElementById('radarChart');
+    const ctx = canvas.getContext('2d');
+    const centerX = 200, centerY = 200, radius = 150;
+
+    ctx.clearRect(0, 0, 400, 400);
+
+    const dims = Object.keys(dimAverages);
+    const values = Object.values(dimAverages);
+    const angleStep = (2 * Math.PI) / dims.length;
+
+    // 배경 그리드
+    for (let r = 1; r <= 5; r++) {
+        ctx.beginPath();
+        ctx.strokeStyle = '#e9ecef';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= dims.length; i++) {
+            const angle = -Math.PI / 2 + i * angleStep;
+            const x = centerX + (radius * r / 5) * Math.cos(angle);
+            const y = centerY + (radius * r / 5) * Math.sin(angle);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+    }
+
+    // 축
+    dims.forEach((dim, i) => {
+        const angle = -Math.PI / 2 + i * angleStep;
+        const x = centerX + radius * Math.cos(angle);
+        const y = centerY + radius * Math.sin(angle);
+
+        ctx.beginPath();
+        ctx.strokeStyle = '#dee2e6';
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+
+        // 레이블
+        const labelX = centerX + (radius + 25) * Math.cos(angle);
+        const labelY = centerY + (radius + 25) * Math.sin(angle);
+        ctx.fillStyle = '#495057';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(dimensionNames[dim].ko, labelX, labelY);
+    });
+
+    // 데이터
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(0, 123, 255, 0.3)';
+    ctx.strokeStyle = '#007bff';
+    ctx.lineWidth = 2;
+
+    values.forEach((val, i) => {
+        const angle = -Math.PI / 2 + i * angleStep;
+        const r = (val / 5) * radius;
+        const x = centerX + r * Math.cos(angle);
+        const y = centerY + r * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 점
+    values.forEach((val, i) => {
+        const angle = -Math.PI / 2 + i * angleStep;
+        const r = (val / 5) * radius;
+        const x = centerX + r * Math.cos(angle);
+        const y = centerY + r * Math.sin(angle);
+
+        ctx.beginPath();
+        ctx.fillStyle = '#007bff';
+        ctx.arc(x, y, 5, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // 점수 레이블
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillText(val.toFixed(1), x, y - 12);
+    });
+}
+
+function renderInsights(dimAverages, likert, qualitative) {
+    const insights = [];
+
+    // 1. 전체 만족도 분석
+    const allScores = [];
+    Object.values(likert).forEach(items => allScores.push(...Object.values(items)));
+    const overall = allScores.reduce((a, b) => a + b, 0) / allScores.length;
+
+    if (overall >= 4.5) {
+        insights.push({ type: 'positive', title: '높은 전반적 만족도', text: `전체 평균 ${overall.toFixed(2)}점으로 매우 긍정적인 평가를 받았습니다. 이는 시스템이 사용자 요구를 효과적으로 충족하고 있음을 나타냅니다.` });
+    } else if (overall >= 4.0) {
+        insights.push({ type: 'positive', title: '양호한 전반적 만족도', text: `전체 평균 ${overall.toFixed(2)}점으로 긍정적인 평가를 받았습니다.` });
+    }
+
+    // 2. 활용의향 분석 (E 차원)
+    const intentAvg = dimAverages['E_활용의향'];
+    if (intentAvg >= 4.5) {
+        insights.push({ type: 'positive', title: '강력한 재사용 및 추천 의향', text: `활용의향 평균 ${intentAvg.toFixed(2)}점으로, 사용자들이 시스템의 지속적 사용과 타인 추천에 강한 의향을 보였습니다. 이는 시스템의 실질적 가치를 입증합니다.` });
+    }
+
+    // 3. 유용성 분석 (A 차원)
+    const usefulnessAvg = dimAverages['A_유용성'];
+    if (usefulnessAvg >= 4.5) {
+        insights.push({ type: 'positive', title: '높은 유용성 인식', text: `유용성 평균 ${usefulnessAvg.toFixed(2)}점으로, 업무 효율성 향상과 의사결정 지원에 효과적이라는 평가를 받았습니다.` });
+    }
+
+    // 4. 개선 필요 영역 식별
+    const sortedDims = Object.entries(dimAverages).sort((a, b) => a[1] - b[1]);
+    const lowestDim = sortedDims[0];
+    if (lowestDim[1] < 4.5) {
+        const dimName = dimensionNames[lowestDim[0]].ko;
+        insights.push({ type: 'warning', title: `${dimName} 영역 개선 기회`, text: `${dimName} 영역이 ${lowestDim[1].toFixed(2)}점으로 상대적으로 낮은 점수를 받았습니다. 이 영역의 개선을 통해 사용자 경험을 향상시킬 수 있습니다.` });
+    }
+
+    // 5. 최저 문항 분석
+    let lowestItem = { dim: '', item: '', score: 5 };
+    for (const [dim, items] of Object.entries(likert)) {
+        for (const [item, score] of Object.entries(items)) {
+            if (score < lowestItem.score) {
+                lowestItem = { dim, item, score };
+            }
+        }
+    }
+    if (lowestItem.score < 4.0) {
+        insights.push({ type: 'warning', title: `"${itemNames[lowestItem.item]}" 항목 주목`, text: `해당 항목이 ${lowestItem.score.toFixed(2)}점으로 가장 낮은 점수를 기록했습니다. 집중적인 개선이 필요합니다.` });
+    }
+
+    // 6. 질적 응답에서 인사이트
+    const difficulties = qualitative.filter(q => q.difficulties).map(q => q.difficulties);
+    if (difficulties.length > 0) {
+        insights.push({ type: 'negative', title: '사용자 피드백 기반 개선점', text: `주요 어려움으로 "${difficulties[0]}" 등이 언급되었습니다. 이에 대한 개선이 필요합니다.` });
+    }
+
+    // 렌더링
+    let html = '';
+    insights.forEach(insight => {
+        const icon = insight.type === 'positive' ? 'check-circle' : (insight.type === 'warning' ? 'exclamation-triangle' : 'times-circle');
+        html += `
+            <div class="insight-box ${insight.type}">
+                <div class="insight-title">
+                    <i class="fas fa-${icon}"></i> ${insight.title}
+                </div>
+                <p class="mb-0">${insight.text}</p>
+            </div>
+        `;
+    });
+    document.getElementById('keyInsights').innerHTML = html;
+}
+
+function renderQualitative(responses) {
+    const strengths = responses.filter(r => r.strengths).map(r => r.strengths);
+    const difficulties = responses.filter(r => r.difficulties).map(r => r.difficulties);
+    const trust = responses.filter(r => r.trust_improve).map(r => r.trust_improve);
+    const features = responses.filter(r => r.feature_request).map(r => r.feature_request);
+
+    document.getElementById('strengthsList').innerHTML = renderList(strengths, 'success');
+    document.getElementById('difficultiesList').innerHTML = renderList(difficulties, 'danger');
+    document.getElementById('trustList').innerHTML = renderList(trust, 'primary');
+    document.getElementById('featureList').innerHTML = renderList(features, 'info');
+}
+
+function renderList(items, color) {
+    if (items.length === 0) return '<p class="text-muted">응답 없음</p>';
+    return items.map(item => `
+        <div class="qualitative-card">
+            <i class="fas fa-quote-left text-${color} me-2"></i>
+            ${item.replace(/\n/g, '<br>')}
+        </div>
+    `).join('');
+}
+
+function renderPaperText(data, dimAverages, overallAvg) {
+    const n = data.total_count;
+    const roles = data.role_distribution.map(r => `${r.role === 'faculty' ? '교원' : r.role}(${r.count}명)`).join(', ');
+
+    // 4.1 개요
+    document.getElementById('paperOverview').innerHTML = `
+        <p>본 연구에서 개발한 연구성과 분석 시스템(ORAP)의 실용성을 평가하기 위해 파일럿 설문조사를 실시하였다.
+        설문은 시스템 시범 운영 기간 동안 실제 사용 경험이 있는 ${roles} 총 <strong>${n}명</strong>을 대상으로 진행되었다.</p>
+        <p>설문 문항은 DeLone & McLean(2003)의 정보시스템 성공 모형을 기반으로
+        유용성(Usefulness), 사용성(Usability), 정보품질(Information Quality), 활용경험(Usage Experience),
+        활용의향(Intention to Use) 5개 차원, 총 18개 문항으로 구성하였으며,
+        각 문항은 5점 Likert 척도로 측정하였다. 추가로 5개의 개방형 질문을 통해 질적 피드백을 수집하였다.</p>
+    `;
+
+    // 4.2 정량적 결과
+    const sortedDims = Object.entries(dimAverages).sort((a, b) => b[1] - a[1]);
+    const dimResults = sortedDims.map(([dim, avg]) =>
+        `${dimensionNames[dim].ko}(M=${avg.toFixed(2)})`
+    ).join(', ');
+
+    document.getElementById('paperQuantitative').innerHTML = `
+        <p>전체 문항의 평균 점수는 <strong>${overallAvg.toFixed(2)}점</strong>(5점 만점)으로 나타나
+        시스템에 대해 전반적으로 긍정적인 평가가 이루어졌음을 확인하였다.</p>
+        <p>차원별 평균 점수를 살펴보면, ${dimResults} 순으로 나타났다.</p>
+        <p>특히 <strong>${dimensionNames[sortedDims[0][0]].ko}</strong> 차원이 ${sortedDims[0][1].toFixed(2)}점으로
+        가장 높은 점수를 받았으며, 이는 시스템이 ${sortedDims[0][0].includes('활용의향') ? '사용자들의 지속적 활용 의지를 이끌어내고 있음' : '해당 측면에서 사용자 기대를 충족하고 있음'}을 시사한다.</p>
+        <p>반면, <strong>${dimensionNames[sortedDims[sortedDims.length-1][0]].ko}</strong> 차원이
+        ${sortedDims[sortedDims.length-1][1].toFixed(2)}점으로 상대적으로 낮게 나타나 해당 영역의 개선이 필요함을 확인하였다.</p>
+    `;
+
+    // 4.3 질적 분석
+    const qualResponses = data.qualitative_responses;
+    const strengths = qualResponses.filter(r => r.strengths).map(r => r.strengths);
+    const difficulties = qualResponses.filter(r => r.difficulties).map(r => r.difficulties);
+    const improvements = qualResponses.filter(r => r.trust_improve).map(r => r.trust_improve);
+
+    document.getElementById('paperQualitative').innerHTML = `
+        <p>개방형 질문을 통해 수집된 질적 피드백을 분석한 결과, 다음과 같은 주요 테마가 도출되었다.</p>
+        <p><strong>강점:</strong> 응답자들은 ${strengths.length > 0 ? `"${strengths[0]}"` : '시스템의 분석 기능'}을
+        주요 강점으로 언급하였다. 특히 연구자 랭킹 및 성과 분석 결과가 연구 전략 수립에 유용하다는 의견이 있었다.</p>
+        <p><strong>개선점:</strong> ${difficulties.length > 0 ? `"${difficulties[0]}"` : '일부 기능의 복잡성'}이
+        주요 어려움으로 지적되었다. ${improvements.length > 0 ? `또한 "${improvements[0]}" 등의 개선 제안이 있었다.` : ''}</p>
+    `;
+
+    // 4.4 시사점
+    document.getElementById('paperImplications').innerHTML = `
+        <p>본 평가 결과는 ORAP 시스템이 연구성과 분석 도구로서의 기본적인 요건을 충족하고 있음을 보여준다.
+        특히 활용의향(${dimAverages['E_활용의향'].toFixed(2)}점)과 유용성(${dimAverages['A_유용성'].toFixed(2)}점)
+        차원에서 높은 점수를 받은 것은 시스템의 실용적 가치를 입증한다.</p>
+        <p>향후 연구에서는 ${dimensionNames[sortedDims[sortedDims.length-1][0]].ko} 영역의 개선과 함께,
+        사용자 피드백에서 제안된 기능들(예: SJR 기반 분석, Nature Index 연계, 교내 연구자 식별 기능 등)을
+        추가적으로 개발하여 시스템의 완성도를 높일 필요가 있다.</p>
+        <p>또한 본 연구는 파일럿 규모(n=${n})로 진행되었으므로,
+        향후 더 많은 사용자를 대상으로 한 본조사를 통해 결과의 일반화 가능성을 검증할 필요가 있다.</p>
+    `;
+}
+
+function renderRawData(likert) {
+    let html = '';
+    for (const [dim, items] of Object.entries(likert)) {
+        const dimName = dimensionNames[dim].ko;
+        for (const [item, score] of Object.entries(items)) {
+            const itemName = itemNames[item] || item;
+            const interpretation = score >= 4.5 ? '매우 긍정' : (score >= 4.0 ? '긍정' : (score >= 3.5 ? '보통' : '개선필요'));
+            html += `<tr>
+                <td>${dimName}</td>
+                <td>${itemName}</td>
+                <td>${score.toFixed(2)}</td>
+                <td><span class="badge bg-${score >= 4.5 ? 'success' : (score >= 4.0 ? 'primary' : (score >= 3.5 ? 'warning' : 'danger'))}">${interpretation}</span></td>
+            </tr>`;
+        }
+    }
+    document.getElementById('rawDataBody').innerHTML = html;
+}
+
+function copyText(elementId) {
+    const element = document.getElementById(elementId);
+    const text = element.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        alert('텍스트가 클립보드에 복사되었습니다.');
+    });
+}
+
+function downloadCSV() {
+    const likert = surveyData.likert_averages;
+    let csv = '차원,문항,평균\n';
+    for (const [dim, items] of Object.entries(likert)) {
+        const dimName = dimensionNames[dim].ko;
+        for (const [item, score] of Object.entries(items)) {
+            const itemName = itemNames[item] || item;
+            csv += `${dimName},${itemName},${score.toFixed(2)}\n`;
+        }
+    }
+
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'survey_results.csv';
+    a.click();
+}
+
+// 페이지 로드 시 데이터 불러오기
+loadData();
+</script>
+{% endblock %}

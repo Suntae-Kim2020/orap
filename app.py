@@ -5422,6 +5422,12 @@ def submit_survey():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/survey/analysis')
+def survey_analysis():
+    """설문 결과 분석 페이지"""
+    return render_template('survey_analysis.html')
+
+
 @app.route('/api/survey/results')
 def survey_results():
     """설문 결과 조회 (관리자용)"""
