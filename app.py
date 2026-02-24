@@ -8,6 +8,7 @@ import csv
 import json
 import time
 import threading
+from deep_translator import GoogleTranslator
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
@@ -5512,6 +5513,606 @@ def survey_results():
         'role_distribution': role_dist,
         'likert_averages': likert_avg,
         'qualitative_responses': qualitative
+    })
+
+
+@app.route('/api/translate', methods=['POST'])
+def translate_text():
+    """텍스트 번역 API (Google Translate 사용)"""
+    data = request.get_json()
+    texts = data.get('texts', [])
+    source_lang = data.get('source', 'ko')
+    target_lang = data.get('target', 'en')
+
+    if not texts:
+        return jsonify({'translations': []})
+
+    try:
+        translator = GoogleTranslator(source=source_lang, target=target_lang)
+        translations = []
+        for text in texts:
+            if text and text.strip():
+                translated = translator.translate(text)
+                translations.append(translated)
+            else:
+                translations.append(text)
+        return jsonify({'translations': translations})
+    except Exception as e:
+        # 번역 실패 시 원본 텍스트 반환
+        return jsonify({'translations': texts, 'error': str(e)})
+
+
+# ============================================
+# 점수 산출 기준 동적 설정 (Scoring Presets)
+# ============================================
+
+def init_scoring_presets_table():
+    """scoring_presets 테이블 초기화 및 시스템 프리셋 삽입"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 테이블 생성
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scoring_presets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            is_system INTEGER DEFAULT 0,
+            is_default INTEGER DEFAULT 0,
+
+            -- 총점 배분
+            total_core INTEGER DEFAULT 80,
+            total_supplementary INTEGER DEFAULT 10,
+
+            -- 핵심지표 비율 (%)
+            pct_fwci INTEGER DEFAULT 25,
+            pct_top10 INTEGER DEFAULT 25,
+            pct_top_journal INTEGER DEFAULT 25,
+            pct_intl_collab INTEGER DEFAULT 25,
+
+            -- 보조지표 비율 (%)
+            pct_sdg INTEGER DEFAULT 30,
+            pct_oa INTEGER DEFAULT 30,
+            pct_topic INTEGER DEFAULT 40,
+
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # 시스템 프리셋이 없으면 삽입
+    cursor.execute("SELECT COUNT(*) FROM scoring_presets WHERE is_system = 1")
+    if cursor.fetchone()[0] == 0:
+        system_presets = [
+            ('기본 설정', '균형 잡힌 기본 가중치 (권장)', 1, 1, 80, 10, 25, 25, 25, 25, 30, 30, 40),
+            ('인용 중심', 'FWCI와 Top 10% 피인용 강조', 1, 0, 80, 10, 35, 35, 15, 15, 30, 30, 40),
+            ('국제협력 중심', '국제공동연구 성과 강조', 1, 0, 80, 10, 20, 20, 20, 40, 30, 30, 40),
+            ('품질 중심', '상위저널 게재 강조', 1, 0, 80, 10, 30, 20, 35, 15, 30, 30, 40),
+            ('SDG/사회기여 중심', '사회적 기여 강조', 1, 0, 70, 30, 25, 25, 25, 25, 40, 30, 30),
+            ('100점 만점', '100점 스케일 (핵심 85 + 보조 15)', 1, 0, 85, 15, 25, 25, 25, 25, 30, 30, 40),
+        ]
+        cursor.executemany("""
+            INSERT INTO scoring_presets
+            (name, description, is_system, is_default, total_core, total_supplementary,
+             pct_fwci, pct_top10, pct_top_journal, pct_intl_collab, pct_sdg, pct_oa, pct_topic)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, system_presets)
+
+    conn.commit()
+    conn.close()
+
+# 앱 시작 시 테이블 초기화
+try:
+    init_scoring_presets_table()
+except Exception as e:
+    print(f"Warning: Could not initialize scoring_presets table: {e}")
+
+
+@app.route('/api/scoring_presets')
+def api_get_scoring_presets():
+    """모든 프리셋 목록 조회"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM scoring_presets
+        ORDER BY is_default DESC, is_system DESC, name
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+
+    presets = []
+    for row in rows:
+        presets.append({
+            'id': row['id'],
+            'name': row['name'],
+            'description': row['description'],
+            'is_system': row['is_system'] == 1,
+            'is_default': row['is_default'] == 1,
+            'total_core': row['total_core'],
+            'total_supplementary': row['total_supplementary'],
+            'total_score': row['total_core'] + row['total_supplementary'],
+            'pct_fwci': row['pct_fwci'],
+            'pct_top10': row['pct_top10'],
+            'pct_top_journal': row['pct_top_journal'],
+            'pct_intl_collab': row['pct_intl_collab'],
+            'pct_sdg': row['pct_sdg'],
+            'pct_oa': row['pct_oa'],
+            'pct_topic': row['pct_topic']
+        })
+
+    return jsonify({'presets': presets})
+
+
+@app.route('/api/scoring_presets/<int:preset_id>')
+def api_get_scoring_preset(preset_id):
+    """특정 프리셋 조회"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM scoring_presets WHERE id = ?", (preset_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({'error': 'Preset not found'}), 404
+
+    return jsonify({
+        'id': row['id'],
+        'name': row['name'],
+        'description': row['description'],
+        'is_system': row['is_system'] == 1,
+        'is_default': row['is_default'] == 1,
+        'total_core': row['total_core'],
+        'total_supplementary': row['total_supplementary'],
+        'total_score': row['total_core'] + row['total_supplementary'],
+        'pct_fwci': row['pct_fwci'],
+        'pct_top10': row['pct_top10'],
+        'pct_top_journal': row['pct_top_journal'],
+        'pct_intl_collab': row['pct_intl_collab'],
+        'pct_sdg': row['pct_sdg'],
+        'pct_oa': row['pct_oa'],
+        'pct_topic': row['pct_topic']
+    })
+
+
+@app.route('/api/scoring_presets', methods=['POST'])
+def api_create_scoring_preset():
+    """새 프리셋 생성"""
+    data = request.get_json()
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT INTO scoring_presets
+        (name, description, is_system, is_default, total_core, total_supplementary,
+         pct_fwci, pct_top10, pct_top_journal, pct_intl_collab, pct_sdg, pct_oa, pct_topic)
+        VALUES (?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        data.get('name', '사용자 정의'),
+        data.get('description', ''),
+        data.get('total_core', 80),
+        data.get('total_supplementary', 10),
+        data.get('pct_fwci', 25),
+        data.get('pct_top10', 25),
+        data.get('pct_top_journal', 25),
+        data.get('pct_intl_collab', 25),
+        data.get('pct_sdg', 30),
+        data.get('pct_oa', 30),
+        data.get('pct_topic', 40)
+    ))
+
+    new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True, 'id': new_id})
+
+
+@app.route('/api/scoring_presets/<int:preset_id>', methods=['PUT'])
+def api_update_scoring_preset(preset_id):
+    """프리셋 수정 (사용자 정의만 가능)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 시스템 프리셋인지 확인
+    cursor.execute("SELECT is_system FROM scoring_presets WHERE id = ?", (preset_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Preset not found'}), 404
+    if row['is_system'] == 1:
+        conn.close()
+        return jsonify({'error': 'Cannot modify system preset'}), 403
+
+    data = request.get_json()
+    cursor.execute("""
+        UPDATE scoring_presets SET
+            name = ?, description = ?,
+            total_core = ?, total_supplementary = ?,
+            pct_fwci = ?, pct_top10 = ?, pct_top_journal = ?, pct_intl_collab = ?,
+            pct_sdg = ?, pct_oa = ?, pct_topic = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, (
+        data.get('name'),
+        data.get('description', ''),
+        data.get('total_core', 80),
+        data.get('total_supplementary', 10),
+        data.get('pct_fwci', 25),
+        data.get('pct_top10', 25),
+        data.get('pct_top_journal', 25),
+        data.get('pct_intl_collab', 25),
+        data.get('pct_sdg', 30),
+        data.get('pct_oa', 30),
+        data.get('pct_topic', 40),
+        preset_id
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/scoring_presets/<int:preset_id>', methods=['DELETE'])
+def api_delete_scoring_preset(preset_id):
+    """프리셋 삭제 (사용자 정의만 가능)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT is_system FROM scoring_presets WHERE id = ?", (preset_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Preset not found'}), 404
+    if row['is_system'] == 1:
+        conn.close()
+        return jsonify({'error': 'Cannot delete system preset'}), 403
+
+    cursor.execute("DELETE FROM scoring_presets WHERE id = ?", (preset_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+
+def calculate_researcher_scores_with_preset(year_from, year_to, preset):
+    """
+    프리셋 기반 연구자 점수 계산
+    preset: dict with total_core, total_supplementary, pct_fwci, pct_top10, etc.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 프리셋에서 가중치 추출
+    total_core = preset.get('total_core', 80)
+    total_supp = preset.get('total_supplementary', 10)
+
+    # 핵심지표 실제 점수 (비율 * 총점)
+    max_fwci = total_core * preset.get('pct_fwci', 25) / 100
+    max_top10 = total_core * preset.get('pct_top10', 25) / 100
+    max_top_journal = total_core * preset.get('pct_top_journal', 25) / 100
+    max_intl = total_core * preset.get('pct_intl_collab', 25) / 100
+
+    # 보조지표 실제 점수
+    max_sdg = total_supp * preset.get('pct_sdg', 30) / 100
+    max_oa = total_supp * preset.get('pct_oa', 30) / 100
+    max_topic = total_supp * preset.get('pct_topic', 40) / 100
+
+    # 점수 계산 함수들 (0~1 범위로 정규화)
+    def calc_fwci_ratio(fwci):
+        """FWCI를 0~1 비율로 변환"""
+        if fwci is None: return 0.286  # 10/35 기준
+        if fwci >= 10: return 1.0
+        elif fwci >= 8: return 0.857
+        elif fwci >= 6: return 0.714
+        elif fwci >= 4: return 0.571
+        elif fwci >= 2: return 0.429
+        else: return 0.286
+
+    def calc_top_cited_ratio(is_top_10):
+        """Top 10%면 1.0, 아니면 0.5"""
+        return 1.0 if is_top_10 else 0.5
+
+    def calc_top_journal_ratio(snip_pct, citescore_pct, sjr_pct):
+        """Top 10% 저널이면 1.0, 아니면 0.33"""
+        for pct in [snip_pct, citescore_pct, sjr_pct]:
+            if pct:
+                try:
+                    if int(pct) <= 10:
+                        return 1.0
+                except:
+                    pass
+        return 0.33
+
+    def calc_intl_fwci_ratio(fwci):
+        """국제협력 FWCI를 0~1 비율로 변환"""
+        if fwci is None: return 0
+        if fwci >= 2.0: return 1.0
+        elif fwci >= 1.5: return 0.7
+        elif fwci >= 1.0: return 0.4
+        else: return 0.1
+
+    def calc_sdg_ratio(has_sdg):
+        return 1.0 if has_sdg else 0
+
+    def calc_oa_ratio(has_oa):
+        return 1.0 if has_oa else 0
+
+    def calc_prominence_ratio(prominence):
+        if prominence is None: return 0
+        return 1.0 if prominence >= 90 else 0
+
+    def calc_median(values):
+        if not values: return 0
+        sorted_vals = sorted(values)
+        n = len(sorted_vals)
+        mid = n // 2
+        if n % 2 == 0:
+            return (sorted_vals[mid - 1] + sorted_vals[mid]) / 2
+        return sorted_vals[mid]
+
+    def calc_mean(values):
+        if not values: return 0
+        return sum(values) / len(values)
+
+    # 1. 전북대 저자 목록
+    cursor.execute("""
+        SELECT author_id, scopus_author_id, name, scholarly_output, citations,
+               field_weighted_citation_impact, h_index, output_in_top_10_percentile,
+               scopus_author_profile
+        FROM author
+        WHERE primary_affiliation = 'Jeonbuk National University'
+    """)
+    authors = cursor.fetchall()
+
+    # 2. 연도 범위 필터된 논문 데이터
+    if year_from and year_to:
+        cursor.execute("""
+            SELECT scopus_author_ids, field_weighted_citation_impact, is_international, is_10,
+                   snip_percentile_publication_year, citescore_percentile_publication_year,
+                   sjr_percentile_publication_year, sustainable_development_goals_2025,
+                   open_access, topic_prominence_percentile, year,
+                   field_citation_average, citations
+            FROM publication
+            WHERE CAST(year AS INTEGER) BETWEEN ? AND ?
+        """, (year_from, year_to))
+    else:
+        cursor.execute("""
+            SELECT scopus_author_ids, field_weighted_citation_impact, is_international, is_10,
+                   snip_percentile_publication_year, citescore_percentile_publication_year,
+                   sjr_percentile_publication_year, sustainable_development_goals_2025,
+                   open_access, topic_prominence_percentile, year,
+                   field_citation_average, citations
+            FROM publication
+        """)
+    filtered_pubs = cursor.fetchall()
+
+    # 3. 저자별 논문 점수 집계
+    author_pub_scores = {}
+    for pub in filtered_pubs:
+        scopus_ids_str = pub['scopus_author_ids'] or ''
+        scopus_ids = [sid.strip() for sid in scopus_ids_str.replace('|', ' ').split() if sid.strip()]
+
+        fwci_val = None
+        if pub['field_weighted_citation_impact']:
+            try: fwci_val = float(pub['field_weighted_citation_impact'])
+            except: pass
+
+        prominence_val = None
+        if pub['topic_prominence_percentile']:
+            try: prominence_val = float(pub['topic_prominence_percentile'])
+            except: pass
+
+        pub_scores = {
+            'fwci_val': fwci_val,
+            'fwci_ratio': calc_fwci_ratio(fwci_val),
+            'top_cited_ratio': calc_top_cited_ratio(pub['is_10'] == 1),
+            'top_journal_ratio': calc_top_journal_ratio(
+                pub['snip_percentile_publication_year'],
+                pub['citescore_percentile_publication_year'],
+                pub['sjr_percentile_publication_year']
+            ),
+            'is_international': pub['is_international'] == 1,
+            'intl_fwci_ratio': calc_intl_fwci_ratio(fwci_val) if pub['is_international'] == 1 else None,
+            'sdg_ratio': calc_sdg_ratio(bool(pub['sustainable_development_goals_2025'])),
+            'oa_ratio': calc_oa_ratio(bool(pub['open_access'])),
+            'prominence_ratio': calc_prominence_ratio(prominence_val),
+        }
+
+        for scopus_id in scopus_ids:
+            if scopus_id not in author_pub_scores:
+                author_pub_scores[scopus_id] = []
+            author_pub_scores[scopus_id].append(pub_scores)
+
+    conn.close()
+
+    # 4. 각 저자별 점수 계산
+    results = []
+    for author in authors:
+        author_dict = dict(author)
+        scopus_id = author_dict['scopus_author_id']
+        pub_scores_list = author_pub_scores.get(scopus_id, [])
+
+        if not pub_scores_list:
+            continue
+
+        # 비율값들의 평균/중위값 계산
+        fwci_ratios = [p['fwci_ratio'] for p in pub_scores_list]
+        fwci_values = [p['fwci_val'] for p in pub_scores_list if p['fwci_val'] is not None]
+        top_cited_ratios = [p['top_cited_ratio'] for p in pub_scores_list]
+        top_journal_ratios = [p['top_journal_ratio'] for p in pub_scores_list]
+        intl_fwci_ratios = [p['intl_fwci_ratio'] for p in pub_scores_list if p['intl_fwci_ratio'] is not None]
+        sdg_ratios = [p['sdg_ratio'] for p in pub_scores_list]
+        oa_ratios = [p['oa_ratio'] for p in pub_scores_list]
+        prominence_ratios = [p['prominence_ratio'] for p in pub_scores_list]
+
+        # FWCI는 mean/median 선택 가능
+        fwci_mean_ratio = calc_mean(fwci_ratios) if fwci_ratios else 0
+        fwci_median_ratio = calc_median(fwci_ratios) if fwci_ratios else 0
+        fwci_mean_val = calc_mean(fwci_values) if fwci_values else 0
+        fwci_median_val = calc_median(fwci_values) if fwci_values else 0
+
+        # 실제 점수 계산 (비율 * 최대점수)
+        score_fwci_mean = round(fwci_mean_ratio * max_fwci, 2)
+        score_fwci_median = round(fwci_median_ratio * max_fwci, 2)
+        score_top_cited = round(calc_mean(top_cited_ratios) * max_top10, 2)
+        score_top_journal = round(calc_mean(top_journal_ratios) * max_top_journal, 2)
+        score_intl_collab = round(calc_mean(intl_fwci_ratios) * max_intl, 2) if intl_fwci_ratios else 0
+        score_sdg = round(calc_mean(sdg_ratios) * max_sdg, 2)
+        score_oa = round(calc_mean(oa_ratios) * max_oa, 2)
+        score_prominence = round(calc_mean(prominence_ratios) * max_topic, 2)
+
+        score_core_mean = round(score_fwci_mean + score_top_cited + score_top_journal + score_intl_collab, 2)
+        score_core_median = round(score_fwci_median + score_top_cited + score_top_journal + score_intl_collab, 2)
+        score_secondary = round(score_sdg + score_oa + score_prominence, 2)
+        score_total_mean = round(score_core_mean + score_secondary, 2)
+        score_total_median = round(score_core_median + score_secondary, 2)
+
+        intl_count = sum(1 for p in pub_scores_list if p['is_international'])
+        intl_fwci_vals = [p['fwci_val'] for p in pub_scores_list if p['is_international'] and p['fwci_val'] is not None]
+        intl_fwci_avg = calc_mean(intl_fwci_vals) if intl_fwci_vals else None
+        top_journal_count = sum(1 for p in pub_scores_list if p['top_journal_ratio'] == 1.0)
+        top_journal_pct = (top_journal_count / len(pub_scores_list)) * 100 if pub_scores_list else 0
+
+        results.append({
+            'author_id': author_dict['author_id'],
+            'scopus_author_id': scopus_id,
+            'name': author_dict['name'],
+            'scholarly_output': len(pub_scores_list),
+            'scholarly_output_total': author_dict['scholarly_output'],
+            'citations': author_dict['citations'],
+            'fwci': round(fwci_median_val, 2),
+            'fwci_mean': round(fwci_mean_val, 2),
+            'fwci_median': round(fwci_median_val, 2),
+            'h_index': author_dict['h_index'],
+            'top_10_pct_count': author_dict['output_in_top_10_percentile'],
+            'primary_affiliation': 'Jeonbuk National University',
+            'profile_url': author_dict['scopus_author_profile'],
+            'intl_collab_count': intl_count,
+            'intl_collab_fwci': round(intl_fwci_avg, 2) if intl_fwci_avg else None,
+            'top_journal_pct': round(top_journal_pct, 1),
+            'has_sdg': any(p['sdg_ratio'] > 0 for p in pub_scores_list),
+            'has_oa': any(p['oa_ratio'] > 0 for p in pub_scores_list),
+            'avg_topic_prominence': 0,
+            'score_fwci': score_fwci_median,
+            'score_fwci_mean': score_fwci_mean,
+            'score_fwci_median': score_fwci_median,
+            'score_top_cited': score_top_cited,
+            'score_top_journal': score_top_journal,
+            'score_intl_collab': score_intl_collab,
+            'score_core': score_core_median,
+            'score_core_mean': score_core_mean,
+            'score_core_median': score_core_median,
+            'score_sdg': score_sdg,
+            'score_oa': score_oa,
+            'score_prominence': score_prominence,
+            'score_secondary': score_secondary,
+            'score_total': score_total_median,
+            'score_total_mean': score_total_mean,
+            'score_total_median': score_total_median,
+            # 프리셋 정보 (UI에서 만점 표시용)
+            'max_core': total_core,
+            'max_secondary': total_supp,
+            'max_total': total_core + total_supp
+        })
+
+    return results
+
+
+@app.route('/api/researcher_scores_custom')
+def api_researcher_scores_custom():
+    """프리셋 기반 연구자 점수 API"""
+    min_output = request.args.get('min_output', 10, type=int)
+    limit = request.args.get('limit', 100, type=int)
+    fwci_method = request.args.get('fwci_method', 'median')
+    year_from = request.args.get('year_from', type=int)
+    year_to = request.args.get('year_to', type=int)
+    preset_id = request.args.get('preset_id', type=int)
+
+    # 프리셋 로드 (없으면 기본값)
+    if preset_id:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM scoring_presets WHERE id = ?", (preset_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            preset = {
+                'total_core': row['total_core'],
+                'total_supplementary': row['total_supplementary'],
+                'pct_fwci': row['pct_fwci'],
+                'pct_top10': row['pct_top10'],
+                'pct_top_journal': row['pct_top_journal'],
+                'pct_intl_collab': row['pct_intl_collab'],
+                'pct_sdg': row['pct_sdg'],
+                'pct_oa': row['pct_oa'],
+                'pct_topic': row['pct_topic']
+            }
+        else:
+            preset = None
+    else:
+        # URL 파라미터로 직접 전달된 경우
+        preset = {
+            'total_core': request.args.get('total_core', 80, type=int),
+            'total_supplementary': request.args.get('total_supplementary', 10, type=int),
+            'pct_fwci': request.args.get('pct_fwci', 25, type=int),
+            'pct_top10': request.args.get('pct_top10', 25, type=int),
+            'pct_top_journal': request.args.get('pct_top_journal', 25, type=int),
+            'pct_intl_collab': request.args.get('pct_intl_collab', 25, type=int),
+            'pct_sdg': request.args.get('pct_sdg', 30, type=int),
+            'pct_oa': request.args.get('pct_oa', 30, type=int),
+            'pct_topic': request.args.get('pct_topic', 40, type=int)
+        }
+
+    if not preset:
+        preset = {
+            'total_core': 80, 'total_supplementary': 10,
+            'pct_fwci': 25, 'pct_top10': 25, 'pct_top_journal': 25, 'pct_intl_collab': 25,
+            'pct_sdg': 30, 'pct_oa': 30, 'pct_topic': 40
+        }
+
+    # 점수 계산
+    all_results = calculate_researcher_scores_with_preset(year_from, year_to, preset)
+
+    # FWCI 방식에 따라 정렬
+    if fwci_method == 'mean':
+        sort_key = 'score_total_mean'
+    else:
+        sort_key = 'score_total_median'
+
+    # 필터 및 정렬
+    filtered = [r for r in all_results if r['scholarly_output'] >= min_output]
+    filtered.sort(key=lambda x: x[sort_key], reverse=True)
+
+    total_count = len(filtered)
+    if limit > 0:
+        filtered = filtered[:limit]
+
+    # FWCI 방식에 따라 표시값 선택
+    results = []
+    for r in filtered:
+        if fwci_method == 'mean':
+            r['fwci'] = r['fwci_mean']
+            r['score_fwci'] = r['score_fwci_mean']
+            r['score_core'] = r['score_core_mean']
+            r['score_total'] = r['score_total_mean']
+        else:
+            r['fwci'] = r['fwci_median']
+            r['score_fwci'] = r['score_fwci_median']
+            r['score_core'] = r['score_core_median']
+            r['score_total'] = r['score_total_median']
+        results.append(r)
+
+    return jsonify({
+        'total_count': total_count,
+        'returned_count': len(results),
+        'fwci_method': fwci_method,
+        'year_from': year_from,
+        'year_to': year_to,
+        'preset': preset,
+        'researchers': results
     })
 
 
