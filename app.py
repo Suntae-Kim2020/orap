@@ -3167,6 +3167,10 @@ def api_researcher_score_detail(scopus_id):
     # FWCI 방식 파라미터 (기본: median)
     fwci_method = request.args.get('fwci_method', 'median')
 
+    # 연도 범위 파라미터 (리스트 필터와 일치)
+    year_from = request.args.get('year_from', type=int)
+    year_to = request.args.get('year_to', type=int)
+
     # author 테이블에서 기본 정보 조회
     cursor.execute("""
         SELECT
@@ -3195,6 +3199,27 @@ def api_researcher_score_detail(scopus_id):
         return jsonify({'error': 'Author not found'}), 404
 
     author_dict = dict(author)
+
+    # 연도 필터가 있으면 해당 기간의 논문 수 계산
+    period_scholarly_output = None
+    if year_from and year_to:
+        cursor.execute("""
+            SELECT COUNT(*) as count
+            FROM publication
+            WHERE scopus_author_ids LIKE '%' || ? || '%'
+            AND CAST(year AS INTEGER) BETWEEN ? AND ?
+        """, (scopus_id, year_from, year_to))
+        period_result = cursor.fetchone()
+        period_scholarly_output = period_result['count'] if period_result else 0
+    else:
+        # 연도 필터 없이도 publication 테이블 기반 논문수 계산 (리스트와 일관성 유지)
+        cursor.execute("""
+            SELECT COUNT(*) as count
+            FROM publication
+            WHERE scopus_author_ids LIKE '%' || ? || '%'
+        """, (scopus_id,))
+        period_result = cursor.fetchone()
+        period_scholarly_output = period_result['count'] if period_result else 0
 
     # researcher_score 테이블에서 사전 계산된 점수 조회
     cursor.execute("""
@@ -3227,10 +3252,16 @@ def api_researcher_score_detail(scopus_id):
         # 드릴다운에서 센 개수를 사용 (표시값과 논문 목록 일치)
         drilldown_summary = paper_drilldown.get('summary', {})
 
+        # 기간 논문수: 연도 필터가 있으면 해당 기간, 아니면 전체
+        display_scholarly_output = period_scholarly_output if period_scholarly_output is not None else row.get('scholarly_output', 0)
+
         return jsonify({
             'author': author_dict,
+            'year_from': year_from,
+            'year_to': year_to,
             'publication_stats': {
-                'total_publications': row.get('scholarly_output', 0),
+                'total_publications': display_scholarly_output,
+                'total_publications_all': author_dict['scholarly_output'],  # 전체 기간 논문수 (참고용)
                 'international_collab_count': drilldown_summary.get('intl_collab', {}).get('count', 0),
                 'international_collab_fwci': row.get('intl_collab_fwci'),
                 'top_journal_count': drilldown_summary.get('top_journal', {}).get('count', 0),
@@ -3277,8 +3308,15 @@ def api_researcher_score_detail(scopus_id):
         scores = calculate_researcher_score(author_dict, pub_stats)
         conn.close()
 
+        # 기간 논문수: 연도 필터가 있으면 해당 기간, 아니면 전체
+        if period_scholarly_output is not None:
+            pub_stats['total_publications'] = period_scholarly_output
+            pub_stats['total_publications_all'] = author_dict['scholarly_output']
+
         return jsonify({
             'author': author_dict,
+            'year_from': year_from,
+            'year_to': year_to,
             'publication_stats': pub_stats,
             'scores': scores,
             'score_breakdown': {

@@ -322,6 +322,196 @@
     </div>
 </div>
 
+<!-- 점수 산출 기준 설정 -->
+<div class="card mb-4 border-primary">
+    <div class="card-header bg-primary text-white" data-bs-toggle="collapse" data-bs-target="#scoringSettings" style="cursor: pointer;">
+        <i class="fas fa-sliders-h"></i> 점수 산출 기준 설정 <span class="badge bg-light text-primary ms-2" id="currentPresetBadge">기본 설정</span>
+        <i class="fas fa-chevron-down float-end mt-1"></i>
+    </div>
+    <div class="collapse" id="scoringSettings">
+        <div class="card-body">
+            <!-- 설정 방식 선택 -->
+            <div class="mb-3">
+                <div class="btn-group btn-group-sm w-100" role="group">
+                    <input type="radio" class="btn-check" name="scoringMode" id="modePreset" checked onchange="switchScoringMode('preset')">
+                    <label class="btn btn-outline-primary" for="modePreset">
+                        <i class="fas fa-bookmark"></i> 프리셋 사용
+                    </label>
+                    <input type="radio" class="btn-check" name="scoringMode" id="modeCustom" onchange="switchScoringMode('custom')">
+                    <label class="btn btn-outline-primary" for="modeCustom">
+                        <i class="fas fa-sliders-h"></i> 사용자 설정
+                    </label>
+                </div>
+            </div>
+
+            <!-- 프리셋 모드 -->
+            <div id="presetModePanel">
+                <div class="card bg-light">
+                    <div class="card-body py-2">
+                        <div class="row align-items-center">
+                            <div class="col-md-5">
+                                <label class="form-label fw-bold mb-1 small">프리셋 선택</label>
+                                <select class="form-select form-select-sm" id="presetSelect" onchange="onPresetChange()">
+                                    <option value="default">기본 설정 (균형)</option>
+                                    <option value="citation">인용 중심</option>
+                                    <option value="intl">국제협력 중심</option>
+                                    <option value="quality">품질 중심</option>
+                                    <option value="sdg">SDG 중심</option>
+                                </select>
+                            </div>
+                            <div class="col-md-7">
+                                <div class="alert alert-info mb-0 py-2 mt-2 mt-md-0">
+                                    <small id="presetDescription">
+                                        <strong>기본 설정:</strong> 모든 지표를 균등하게 배분 (80점 + 10점 = 90점)
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 프리셋 상세 표시 -->
+                        <div class="row mt-2">
+                            <div class="col-md-6">
+                                <div class="card border-warning">
+                                    <div class="card-header py-1 bg-warning small">
+                                        <strong><i class="fas fa-star"></i> 핵심지표 (80점)</strong>
+                                    </div>
+                                    <div class="card-body py-1">
+                                        <table class="table table-sm mb-0 small">
+                                            <tr><td>FWCI</td><td class="text-end fw-bold" id="presetCoreFwci">20점</td></tr>
+                                            <tr><td>Top 10% 피인용</td><td class="text-end fw-bold" id="presetCoreTop10">20점</td></tr>
+                                            <tr><td>상위저널 게재</td><td class="text-end fw-bold" id="presetCoreJournal">20점</td></tr>
+                                            <tr><td>국제협력 FWCI</td><td class="text-end fw-bold" id="presetCoreIntl">20점</td></tr>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card border-info">
+                                    <div class="card-header py-1 bg-info text-white small">
+                                        <strong><i class="fas fa-plus-circle"></i> 보조지표 (10점)</strong>
+                                    </div>
+                                    <div class="card-body py-1">
+                                        <table class="table table-sm mb-0 small">
+                                            <tr><td>SDG 관련 연구</td><td class="text-end fw-bold" id="presetSuppSdg">3점</td></tr>
+                                            <tr><td>Open Access</td><td class="text-end fw-bold" id="presetSuppOa">3점</td></tr>
+                                            <tr><td>Topic Prominence</td><td class="text-end fw-bold" id="presetSuppTopic">4점</td></tr>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 사용자 설정 모드 -->
+            <div id="customModePanel" style="display: none;">
+                <div class="row">
+                    <!-- 핵심지표 설정 -->
+                    <div class="col-md-6 mb-2">
+                        <div class="card border-warning h-100">
+                            <div class="card-header py-1 bg-warning d-flex justify-content-between align-items-center small">
+                                <strong><i class="fas fa-star"></i> 핵심지표</strong>
+                                <div class="input-group input-group-sm" style="width: 100px;">
+                                    <span class="input-group-text py-0">총점</span>
+                                    <input type="number" class="form-control text-center fw-bold py-0" id="customCoreTotal" value="80" min="0" max="200" onchange="onCustomTotalChange()">
+                                </div>
+                            </div>
+                            <div class="card-body py-1">
+                                <table class="table table-sm mb-0 small">
+                                    <thead class="table-light">
+                                        <tr><th>지표</th><th style="width:70px;" class="text-center">점수</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>FWCI</td>
+                                            <td><input type="number" class="form-control form-control-sm text-center py-0" id="customFwci" value="20" min="0" onchange="onCustomScoreChange('core')"></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Top 10% 피인용</td>
+                                            <td><input type="number" class="form-control form-control-sm text-center py-0" id="customTop10" value="20" min="0" onchange="onCustomScoreChange('core')"></td>
+                                        </tr>
+                                        <tr>
+                                            <td>상위저널 게재</td>
+                                            <td><input type="number" class="form-control form-control-sm text-center py-0" id="customJournal" value="20" min="0" onchange="onCustomScoreChange('core')"></td>
+                                        </tr>
+                                        <tr>
+                                            <td>국제협력 FWCI</td>
+                                            <td><input type="number" class="form-control form-control-sm text-center py-0" id="customIntl" value="20" min="0" onchange="onCustomScoreChange('core')"></td>
+                                        </tr>
+                                        <tr class="table-warning">
+                                            <td><strong>합계</strong></td>
+                                            <td class="text-center">
+                                                <strong id="customCoreSum">80</strong>점
+                                                <span id="customCoreWarning" class="text-danger" style="display:none;"><i class="fas fa-exclamation-triangle"></i></span>
+                                                <span id="customCoreOk" class="text-success"><i class="fas fa-check"></i></span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 보조지표 설정 -->
+                    <div class="col-md-6 mb-2">
+                        <div class="card border-info h-100">
+                            <div class="card-header py-1 bg-info text-white d-flex justify-content-between align-items-center small">
+                                <strong><i class="fas fa-plus-circle"></i> 보조지표</strong>
+                                <div class="input-group input-group-sm" style="width: 100px;">
+                                    <span class="input-group-text py-0">총점</span>
+                                    <input type="number" class="form-control text-center fw-bold py-0" id="customSuppTotal" value="10" min="0" max="200" onchange="onCustomTotalChange()">
+                                </div>
+                            </div>
+                            <div class="card-body py-1">
+                                <table class="table table-sm mb-0 small">
+                                    <thead class="table-light">
+                                        <tr><th>지표</th><th style="width:70px;" class="text-center">점수</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>SDG 관련 연구</td>
+                                            <td><input type="number" class="form-control form-control-sm text-center py-0" id="customSdg" value="3" min="0" onchange="onCustomScoreChange('supp')"></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Open Access</td>
+                                            <td><input type="number" class="form-control form-control-sm text-center py-0" id="customOa" value="3" min="0" onchange="onCustomScoreChange('supp')"></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Topic Prominence</td>
+                                            <td><input type="number" class="form-control form-control-sm text-center py-0" id="customTopic" value="4" min="0" onchange="onCustomScoreChange('supp')"></td>
+                                        </tr>
+                                        <tr class="table-info">
+                                            <td><strong>합계</strong></td>
+                                            <td class="text-center">
+                                                <strong id="customSuppSum">10</strong>점
+                                                <span id="customSuppWarning" class="text-danger" style="display:none;"><i class="fas fa-exclamation-triangle"></i></span>
+                                                <span id="customSuppOk" class="text-success"><i class="fas fa-check"></i></span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 종합 총점 표시 -->
+                <div class="alert alert-primary text-center py-2 mb-0 small">
+                    <strong>종합 총점: <span id="customGrandTotal">90</span>점</strong>
+                    <span class="text-muted">(핵심 <span id="customCoreTotalDisplay">80</span> + 보조 <span id="customSuppTotalDisplay">10</span>)</span>
+                </div>
+            </div>
+
+            <div class="mt-2 text-center">
+                <button class="btn btn-primary" onclick="loadRankingWithPreset()">
+                    <i class="fas fa-check"></i> 이 설정으로 랭킹 조회
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 필터 옵션 -->
 <div class="card mb-4">
     <div class="card-body">
@@ -349,7 +539,7 @@
             </div>
             <div class="col-md-6">
                 <label class="form-label">&nbsp;</label><br>
-                <button class="btn btn-primary" onclick="loadRanking()">
+                <button class="btn btn-primary" onclick="loadRankingWithPreset()">
                     <i class="fas fa-search"></i> <span data-i18n="common.search">조회</span>
                 </button>
                 <button class="btn btn-success" onclick="downloadCSV()">
@@ -458,9 +648,193 @@
 let currentData = [];
 let selectedYearFrom = null;
 let selectedYearTo = null;
+let scoringMode = 'preset'; // 'preset' or 'custom'
 
 // 정렬 상태
 let rankingSortState = { key: null, asc: true };
+
+// 프리셋 정의 (고정: 핵심 80점, 보조 10점)
+const PRESETS = {
+    'default': {
+        name: '기본 설정 (균형)',
+        description: '모든 지표를 균등하게 배분 (80점 + 10점 = 90점)',
+        core: { fwci: 20, top10: 20, journal: 20, intl: 20 },
+        supp: { sdg: 3, oa: 3, topic: 4 }
+    },
+    'citation': {
+        name: '인용 중심',
+        description: 'FWCI와 Top 10% 피인용을 강조 (80점 + 10점 = 90점)',
+        core: { fwci: 28, top10: 28, journal: 12, intl: 12 },
+        supp: { sdg: 3, oa: 3, topic: 4 }
+    },
+    'intl': {
+        name: '국제협력 중심',
+        description: '국제공동연구 성과를 강조 (80점 + 10점 = 90점)',
+        core: { fwci: 16, top10: 16, journal: 16, intl: 32 },
+        supp: { sdg: 3, oa: 3, topic: 4 }
+    },
+    'quality': {
+        name: '품질 중심',
+        description: '상위저널 게재를 강조 (80점 + 10점 = 90점)',
+        core: { fwci: 24, top10: 16, journal: 28, intl: 12 },
+        supp: { sdg: 3, oa: 3, topic: 4 }
+    },
+    'sdg': {
+        name: 'SDG 중심',
+        description: 'SDG 관련 연구를 강조 (80점 + 10점 = 90점)',
+        core: { fwci: 20, top10: 20, journal: 20, intl: 20 },
+        supp: { sdg: 5, oa: 2, topic: 3 }
+    }
+};
+
+// 현재 설정값 (점수 기반)
+let scoringSettings = {
+    totalCore: 80,
+    totalSupp: 10,
+    scoreFwci: 20,
+    scoreTop10: 20,
+    scoreJournal: 20,
+    scoreIntl: 20,
+    scoreSdg: 3,
+    scoreOa: 3,
+    scoreTopic: 4
+};
+
+// 설정 방식 전환
+function switchScoringMode(mode) {
+    scoringMode = mode;
+    document.getElementById('presetModePanel').style.display = mode === 'preset' ? 'block' : 'none';
+    document.getElementById('customModePanel').style.display = mode === 'custom' ? 'block' : 'none';
+
+    if (mode === 'preset') {
+        document.getElementById('currentPresetBadge').textContent = PRESETS[document.getElementById('presetSelect').value].name;
+    } else {
+        document.getElementById('currentPresetBadge').textContent = '사용자 설정';
+    }
+}
+
+// 프리셋 변경
+function onPresetChange() {
+    const presetKey = document.getElementById('presetSelect').value;
+    const preset = PRESETS[presetKey];
+    if (!preset) return;
+
+    // 배지 및 설명 업데이트
+    document.getElementById('currentPresetBadge').textContent = preset.name;
+    document.getElementById('presetDescription').innerHTML = `<strong>${preset.name}:</strong> ${preset.description}`;
+
+    // 프리셋 상세 표시 업데이트
+    document.getElementById('presetCoreFwci').textContent = preset.core.fwci + '점';
+    document.getElementById('presetCoreTop10').textContent = preset.core.top10 + '점';
+    document.getElementById('presetCoreJournal').textContent = preset.core.journal + '점';
+    document.getElementById('presetCoreIntl').textContent = preset.core.intl + '점';
+    document.getElementById('presetSuppSdg').textContent = preset.supp.sdg + '점';
+    document.getElementById('presetSuppOa').textContent = preset.supp.oa + '점';
+    document.getElementById('presetSuppTopic').textContent = preset.supp.topic + '점';
+
+    // 내부 설정값 업데이트
+    scoringSettings.totalCore = 80;
+    scoringSettings.totalSupp = 10;
+    scoringSettings.scoreFwci = preset.core.fwci;
+    scoringSettings.scoreTop10 = preset.core.top10;
+    scoringSettings.scoreJournal = preset.core.journal;
+    scoringSettings.scoreIntl = preset.core.intl;
+    scoringSettings.scoreSdg = preset.supp.sdg;
+    scoringSettings.scoreOa = preset.supp.oa;
+    scoringSettings.scoreTopic = preset.supp.topic;
+}
+
+// 사용자 설정 - 총점 변경
+function onCustomTotalChange() {
+    const coreTotal = parseInt(document.getElementById('customCoreTotal').value) || 0;
+    const suppTotal = parseInt(document.getElementById('customSuppTotal').value) || 0;
+
+    scoringSettings.totalCore = coreTotal;
+    scoringSettings.totalSupp = suppTotal;
+
+    // 종합 총점 표시
+    document.getElementById('customGrandTotal').textContent = coreTotal + suppTotal;
+    document.getElementById('customCoreTotalDisplay').textContent = coreTotal;
+    document.getElementById('customSuppTotalDisplay').textContent = suppTotal;
+
+    // 유효성 검증
+    validateCustomScores();
+}
+
+// 사용자 설정 - 세부 점수 변경
+function onCustomScoreChange(type) {
+    if (type === 'core') {
+        scoringSettings.scoreFwci = parseInt(document.getElementById('customFwci').value) || 0;
+        scoringSettings.scoreTop10 = parseInt(document.getElementById('customTop10').value) || 0;
+        scoringSettings.scoreJournal = parseInt(document.getElementById('customJournal').value) || 0;
+        scoringSettings.scoreIntl = parseInt(document.getElementById('customIntl').value) || 0;
+    } else {
+        scoringSettings.scoreSdg = parseInt(document.getElementById('customSdg').value) || 0;
+        scoringSettings.scoreOa = parseInt(document.getElementById('customOa').value) || 0;
+        scoringSettings.scoreTopic = parseInt(document.getElementById('customTopic').value) || 0;
+    }
+    validateCustomScores();
+}
+
+// 사용자 설정 유효성 검증
+function validateCustomScores() {
+    // 핵심지표 합계 검증
+    const coreSum = scoringSettings.scoreFwci + scoringSettings.scoreTop10 +
+                    scoringSettings.scoreJournal + scoringSettings.scoreIntl;
+    const coreTotal = scoringSettings.totalCore;
+    document.getElementById('customCoreSum').textContent = coreSum;
+
+    const coreValid = coreSum === coreTotal;
+    document.getElementById('customCoreWarning').style.display = coreValid ? 'none' : 'inline';
+    document.getElementById('customCoreOk').style.display = coreValid ? 'inline' : 'none';
+
+    // 보조지표 합계 검증
+    const suppSum = scoringSettings.scoreSdg + scoringSettings.scoreOa + scoringSettings.scoreTopic;
+    const suppTotal = scoringSettings.totalSupp;
+    document.getElementById('customSuppSum').textContent = suppSum;
+
+    const suppValid = suppSum === suppTotal;
+    document.getElementById('customSuppWarning').style.display = suppValid ? 'none' : 'inline';
+    document.getElementById('customSuppOk').style.display = suppValid ? 'inline' : 'none';
+
+    // 종합 총점 업데이트
+    document.getElementById('customGrandTotal').textContent = coreTotal + suppTotal;
+    document.getElementById('customCoreTotalDisplay').textContent = coreTotal;
+    document.getElementById('customSuppTotalDisplay').textContent = suppTotal;
+
+    return coreValid && suppValid;
+}
+
+// 페이지 로드 시 초기화
+function initScoringSettings() {
+    // 기본 프리셋 적용
+    document.getElementById('presetSelect').value = 'default';
+    onPresetChange();
+
+    // 사용자 설정 모드 초기값
+    document.getElementById('customCoreTotal').value = 80;
+    document.getElementById('customSuppTotal').value = 10;
+    document.getElementById('customFwci').value = 20;
+    document.getElementById('customTop10').value = 20;
+    document.getElementById('customJournal').value = 20;
+    document.getElementById('customIntl').value = 20;
+    document.getElementById('customSdg').value = 3;
+    document.getElementById('customOa').value = 3;
+    document.getElementById('customTopic').value = 4;
+    validateCustomScores();
+}
+
+// 설정된 점수로 랭킹 조회
+function loadRankingWithPreset() {
+    // 사용자 설정 모드일 경우 유효성 검증
+    if (scoringMode === 'custom') {
+        if (!validateCustomScores()) {
+            alert('세부 지표 점수의 합계가 총점과 일치하지 않습니다.\n각 카테고리의 합계를 총점에 맞춰주세요.');
+            return;
+        }
+    }
+    loadRanking();
+}
 
 function sortByKey(data, key, asc) {
     return [...data].sort((a, b) => {
@@ -494,6 +868,15 @@ function handleRankingSort(key) {
 }
 
 function renderRankingTable() {
+    // 동적 만점
+    const maxCore = scoringSettings.totalCore;
+    const maxSupp = scoringSettings.totalSupp;
+    const maxTotal = maxCore + maxSupp;
+
+    const coreMaxLabel = `(/${maxCore})`;
+    const suppMaxLabel = `(/${maxSupp})`;
+    const totalMaxLabel = `(/${maxTotal})`;
+
     const headerRow = document.getElementById('rankingHeader');
     headerRow.innerHTML = rkThP(i18n.t('researcher_ranking.table_rank'), 'style="width:50px;"')
         + rkThS(i18n.t('researcher_ranking.table_researcher'), 'name', '')
@@ -501,9 +884,9 @@ function renderRankingTable() {
         + rkThS(i18n.t('researcher_ranking.table_citations'), 'citations', '')
         + rkThS(i18n.t('researcher_ranking.table_fwci'), 'fwci', '')
         + rkThS(i18n.t('researcher_ranking.table_hindex'), 'h_index', '')
-        + rkThS(i18n.t('researcher_ranking.table_core') + '<br>' + i18n.t('researcher_ranking.table_core_max'), 'score_core', 'text-center')
-        + rkThS(i18n.t('researcher_ranking.table_secondary') + '<br>' + i18n.t('researcher_ranking.table_secondary_max'), 'score_secondary', 'text-center')
-        + rkThS('<strong>' + i18n.t('researcher_ranking.table_total') + '<br>' + i18n.t('researcher_ranking.table_total_max') + '</strong>', 'score_total', 'text-center')
+        + rkThS('핵심<br>' + coreMaxLabel, 'score_core', 'text-center')
+        + rkThS('보조<br>' + suppMaxLabel, 'score_secondary', 'text-center')
+        + rkThS('<strong>총점<br>' + totalMaxLabel + '</strong>', 'score_total', 'text-center')
         + rkThP(i18n.t('researcher_ranking.table_detail'));
 
     const sorted = rankingSortState.key
@@ -514,6 +897,11 @@ function renderRankingTable() {
     tbody.innerHTML = '';
 
     sorted.forEach((r, idx) => {
+        // 연구자별 만점 (API 응답에서 가져오거나 기본값 사용)
+        const rMaxCore = r.max_core || maxCore;
+        const rMaxSupp = r.max_secondary || maxSupp;
+        const rMaxTotal = r.max_total || maxTotal;
+
         const row = document.createElement('tr');
         row.innerHTML = `
             <td><strong>${idx + 1}</strong></td>
@@ -523,13 +911,13 @@ function renderRankingTable() {
             <td>${(r.fwci || 0).toFixed(2)}</td>
             <td>${r.h_index || 0}</td>
             <td class="text-center">
-                <span class="badge ${getBadgeClass(r.score_core, 80)}">${r.score_core}</span>
+                <span class="badge ${getBadgeClass(r.score_core, rMaxCore)}">${r.score_core}</span>
             </td>
             <td class="text-center">
-                <span class="badge ${getBadgeClass(r.score_secondary, 10)}">${r.score_secondary}</span>
+                <span class="badge ${getBadgeClass(r.score_secondary, rMaxSupp)}">${r.score_secondary}</span>
             </td>
             <td class="text-center">
-                <strong><span class="badge ${getBadgeClass(r.score_total, 90)} fs-6">${r.score_total}</span></strong>
+                <strong><span class="badge ${getBadgeClass(r.score_total, rMaxTotal)} fs-6">${r.score_total}</span></strong>
             </td>
             <td>
                 <button class="btn btn-sm btn-outline-info" onclick="showDetail('${r.scopus_author_id}')">
@@ -619,7 +1007,22 @@ function loadRanking() {
     document.getElementById('rankingTable').style.display = 'none';
     document.getElementById('resultSummary').style.display = 'none';
 
-    let url = `/api/researcher_scores?min_output=${minOutput}&limit=${limit}&fwci_method=${fwciMethod}`;
+    // 점수 설정 기반 API 호출
+    let url = `/api/researcher_scores_custom?min_output=${minOutput}&limit=${limit}&fwci_method=${fwciMethod}`;
+    url += `&total_core=${scoringSettings.totalCore}`;
+    url += `&total_supplementary=${scoringSettings.totalSupp}`;
+
+    // 점수를 비율로 변환하여 전달 (기존 API 호환)
+    const coreTotal = scoringSettings.totalCore || 80;
+    const suppTotal = scoringSettings.totalSupp || 10;
+    url += `&pct_fwci=${Math.round(scoringSettings.scoreFwci / coreTotal * 100)}`;
+    url += `&pct_top10=${Math.round(scoringSettings.scoreTop10 / coreTotal * 100)}`;
+    url += `&pct_top_journal=${Math.round(scoringSettings.scoreJournal / coreTotal * 100)}`;
+    url += `&pct_intl_collab=${Math.round(scoringSettings.scoreIntl / coreTotal * 100)}`;
+    url += `&pct_sdg=${Math.round(scoringSettings.scoreSdg / suppTotal * 100)}`;
+    url += `&pct_oa=${Math.round(scoringSettings.scoreOa / suppTotal * 100)}`;
+    url += `&pct_topic=${Math.round(scoringSettings.scoreTopic / suppTotal * 100)}`;
+
     if (selectedYearFrom && selectedYearTo) {
         url += `&year_from=${selectedYearFrom}&year_to=${selectedYearTo}`;
     }
@@ -662,7 +1065,12 @@ function getBadgeClass(score, max) {
 
 function showDetail(scopusId) {
     const fwciMethod = document.getElementById('fwciMethod').value;
-    fetch(`/api/researcher_score/${scopusId}?fwci_method=${fwciMethod}`)
+    let url = `/api/researcher_score/${scopusId}?fwci_method=${fwciMethod}`;
+    // 연도 필터가 적용되어 있으면 상세 API에도 전달
+    if (selectedYearFrom && selectedYearTo) {
+        url += `&year_from=${selectedYearFrom}&year_to=${selectedYearTo}`;
+    }
+    fetch(url)
         .then(response => response.json())
         .then(data => {
             displayDetailModal(data);
@@ -678,6 +1086,16 @@ function displayDetailModal(data) {
     const scores = data.scores;
     const breakdown = data.score_breakdown;
     const drilldown = data.paper_drilldown || { papers: {}, summary: {} };
+    const pubStats = data.publication_stats || {};
+
+    // 연도 필터 여부에 따라 논문수 라벨 및 값 결정
+    const yearFrom = data.year_from;
+    const yearTo = data.year_to;
+    const hasPeriodFilter = yearFrom && yearTo;
+    const papersLabel = hasPeriodFilter
+        ? `${i18n.t('researcher_ranking.modal_period_papers')} (${yearFrom}-${yearTo})`
+        : i18n.t('researcher_ranking.modal_total_papers');
+    const papersValue = pubStats.total_publications || author.scholarly_output || 0;
 
     const intlCollabValue = breakdown.core_indicators.intl_collab.value?.toFixed(2) || i18n.t('researcher_ranking.modal_intl_collab_none');
     const sdgStatus = breakdown.secondary_indicators.sdg.value ? i18n.t('researcher_ranking.modal_sdg_yes') : i18n.t('researcher_ranking.modal_sdg_no');
@@ -749,8 +1167,8 @@ function displayDetailModal(data) {
             <div class="col-md-4 text-center">
                 <div class="card bg-light">
                     <div class="card-body">
-                        <h6>${i18n.t('researcher_ranking.modal_total_papers')}</h6>
-                        <h3>${author.scholarly_output || 0}</h3>
+                        <h6>${papersLabel}</h6>
+                        <h3>${papersValue}</h3>
                     </div>
                 </div>
             </div>
@@ -859,6 +1277,10 @@ function recalculateScores() {
 
 // 페이지 초기화 함수
 function initPage() {
+    // 점수 설정 초기화
+    initScoringSettings();
+
+    // 랭킹 로드
     loadRanking();
 
     // Register language change callback

@@ -127,6 +127,7 @@
     "modal_orcid": "ORCID",
     "modal_affiliation": "소속",
     "modal_total_papers": "총 논문수",
+    "modal_period_papers": "논문수",
     "modal_total_citations": "총 인용수",
     "modal_core_score_label": "핵심지표 점수",
     "modal_secondary_score_label": "보조지표 점수",

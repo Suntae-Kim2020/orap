@@ -127,6 +127,7 @@
     "modal_orcid": "ORCID",
     "modal_affiliation": "Affiliation",
     "modal_total_papers": "Total Papers",
+    "modal_period_papers": "Papers",
     "modal_total_citations": "Total Citations",
     "modal_core_score_label": "Core Indicator Score",
     "modal_secondary_score_label": "Secondary Indicator Score",
