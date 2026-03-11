@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response, session
+from functools import wraps
 import sqlite3
 import pandas as pd
 import os
@@ -11,8 +12,46 @@ import threading
 from deep_translator import GoogleTranslator
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'
+app.secret_key = 'orap-secret-key-2024-secure'
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
+
+# 인증 설정
+AUTH_PASSWORD = 'kst123'
+
+# 기관별 데이터베이스 매핑
+INSTITUTION_DB = {
+    'jbnu': 'jbnu.db',
+    'korea': 'korea.db'
+}
+
+INSTITUTION_NAMES = {
+    'jbnu': '전북대학교',
+    'korea': '고려대학교'
+}
+
+INSTITUTION_AFFILIATIONS = {
+    'jbnu': 'Jeonbuk National University',
+    'korea': 'Korea University'
+}
+
+
+def get_institution_affiliation(institution=None):
+    """현재 기관의 영문 소속명 반환"""
+    if institution is None:
+        institution = session.get('institution', 'jbnu')
+    return INSTITUTION_AFFILIATIONS.get(institution, 'Jeonbuk National University')
+
+
+def login_required(f):
+    """로그인 필수 데코레이터"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('authenticated'):
+            return redirect(url_for('login'))
+        if not session.get('institution'):
+            return redirect(url_for('select_institution'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Cloud Run에서는 /tmp 사용, 로컬에서는 uploads 사용
 UPLOAD_FOLDER = '/tmp/uploads' if os.getenv('PORT') else 'uploads'
@@ -38,19 +77,34 @@ def load_column_mapping():
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def get_db_connection():
+def get_db_connection(institution=None):
     import os
     import shutil
-    
-    # Cloud Run에서는 /tmp에 DB를 복사해서 사용
-    if os.getenv('PORT'):  # Cloud Run 환경
-        db_path = '/tmp/jbnu.db'
-        # DB가 없으면 복사
-        if not os.path.exists(db_path):
-            shutil.copy2('jbnu.db', db_path)
-    else:  # 로컬 환경
-        db_path = 'jbnu.db'
-    
+
+    # 기관 결정: 파라미터 > 세션 > 기본값(jbnu)
+    if institution is None:
+        institution = session.get('institution', 'jbnu')
+
+    db_filename = INSTITUTION_DB.get(institution, 'jbnu.db')
+
+    # 앱 디렉토리 기준 경로
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # PythonAnywhere 환경
+    if os.getenv('PYTHONANYWHERE'):
+        db_path = os.path.join(app_dir, db_filename)
+    # Cloud Run 환경
+    elif os.getenv('PORT'):
+        db_path = f'/tmp/{db_filename}'
+        # DB가 없거나 비어있으면 복사
+        if not os.path.exists(db_path) or os.path.getsize(db_path) == 0:
+            src_path = os.path.join(app_dir, db_filename)
+            if os.path.exists(src_path):
+                shutil.copy2(src_path, db_path)
+    # 로컬 환경
+    else:
+        db_path = os.path.join(app_dir, db_filename)
+
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
@@ -208,6 +262,47 @@ def migrate_database():
 
         print(f"Deleted {total_deleted_doi} duplicate DOI records")
 
+    # strategic_field_config 테이블 생성 (연구분야분석용)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS strategic_field_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL,
+            subcategory TEXT NOT NULL,
+            keywords TEXT,
+            display_order INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # 기본 데이터가 없으면 초기화
+    cursor.execute("SELECT COUNT(*) FROM strategic_field_config")
+    if cursor.fetchone()[0] == 0:
+        default_fields = [
+            # 에너지
+            ('에너지', '에너지 생산', '["energy production", "power generation", "solar", "wind power", "photovoltaic", "solar cell"]', 1),
+            ('에너지', '에너지 변환', '["energy conversion", "power conversion", "inverter", "transformer", "power electronics"]', 2),
+            ('에너지', '에너지 저장', '["energy storage", "battery", "ESS", "supercapacitor", "lithium-ion", "secondary battery"]', 3),
+            ('에너지', '수소에너지', '["hydrogen", "fuel cell", "electrolysis", "H2", "PEMFC", "SOFC"]', 4),
+            # 바이오
+            ('바이오', '레드바이오(제약)', '["pharmaceutical", "drug discovery", "therapeutics", "clinical trial", "drug delivery", "biopharmaceutical"]', 1),
+            # 농생명
+            ('농생명', '스마트팜', '["smart farm", "precision agriculture", "vertical farm", "hydroponics", "greenhouse", "IoT agriculture"]', 1),
+            ('농생명', '지능형 농기계', '["agricultural robot", "farm machinery", "tractor", "harvester", "autonomous farming", "agricultural automation"]', 2),
+            # 미래 모빌리티
+            ('미래모빌리티', '자율주행', '["autonomous driving", "self-driving", "ADAS", "driverless", "autonomous vehicle", "lidar"]', 1),
+            ('미래모빌리티', 'UAM', '["urban air mobility", "air taxi", "eVTOL", "flying car", "advanced air mobility", "AAM"]', 2),
+            ('미래모빌리티', '드론', '["drone", "UAV", "unmanned aerial", "quadcopter", "multirotor", "UAS"]', 3),
+            ('미래모빌리티', '항공', '["aerospace", "aviation", "aircraft", "flight", "aerodynamics", "propulsion"]', 4),
+            ('미래모빌리티', '방산(방위산업)', '["defense", "military", "weapon", "missile", "radar", "stealth"]', 5),
+            ('미래모빌리티', '로봇', '["robot", "robotics", "manipulator", "humanoid", "cobot", "industrial robot"]', 6),
+        ]
+        cursor.executemany("""
+            INSERT INTO strategic_field_config (category, subcategory, keywords, display_order)
+            VALUES (?, ?, ?, ?)
+        """, default_fields)
+        print("Initialized strategic_field_config with default data")
+
     conn.commit()
     conn.close()
 
@@ -255,9 +350,68 @@ def safe_remove_file(filepath):
     except:
         pass
 
+# ============================================
+# 인증 및 기관 선택 라우트
+# ============================================
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """로그인 페이지"""
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if password == AUTH_PASSWORD:
+            session['authenticated'] = True
+            return redirect(url_for('select_institution'))
+        else:
+            return render_template('login.html', error='비밀번호가 올바르지 않습니다.')
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    """로그아웃"""
+    session.clear()
+    return redirect(url_for('login'))
+
+
+@app.route('/select_institution')
+def select_institution():
+    """기관 선택 페이지"""
+    if not session.get('authenticated'):
+        return redirect(url_for('login'))
+    return render_template('select_institution.html')
+
+
+@app.route('/select_institution/<institution>')
+def select_institution_action(institution):
+    """기관 선택 처리"""
+    if not session.get('authenticated'):
+        return redirect(url_for('login'))
+
+    if institution in INSTITUTION_DB:
+        session['institution'] = institution
+        session['institution_name'] = INSTITUTION_NAMES.get(institution, institution)
+        return redirect(url_for('researcher_ranking'))
+    else:
+        flash('잘못된 기관 선택입니다.')
+        return redirect(url_for('select_institution'))
+
+
+@app.route('/switch_institution')
+def switch_institution():
+    """기관 전환 (기관 선택 화면으로)"""
+    if 'institution' in session:
+        del session['institution']
+    return redirect(url_for('select_institution'))
+
+
 # 메인 페이지 - 연구자 랭킹으로 리다이렉트
 @app.route('/')
 def index():
+    if not session.get('authenticated'):
+        return redirect(url_for('login'))
+    if not session.get('institution'):
+        return redirect(url_for('select_institution'))
     return redirect(url_for('researcher_ranking'))
 
 @app.route('/room_manager')
@@ -2579,14 +2733,15 @@ def batch_calculate_researcher_scores():
             return 0
         return 5 if prominence >= 90 else 0
 
-    # 1. 전북대 저자 목록 가져오기
+    # 1. 해당 기관 저자 목록 가져오기
+    affiliation = get_institution_affiliation()
     cursor.execute("""
         SELECT author_id, scopus_author_id, name, scholarly_output, citations,
                field_weighted_citation_impact, h_index, output_in_top_10_percentile,
                primary_affiliation, scopus_author_profile
         FROM author
-        WHERE primary_affiliation = 'Jeonbuk National University'
-    """)
+        WHERE primary_affiliation = ?
+    """, (affiliation,))
     authors = cursor.fetchall()
 
     # 2. 논문 데이터를 한 번에 가져와서 메모리에 캐싱
@@ -2837,14 +2992,15 @@ def calculate_researcher_scores_by_year(year_from, year_to):
         if not values: return 0
         return sum(values) / len(values)
 
-    # 1. 전북대 저자 목록
+    # 1. 해당 기관 저자 목록
+    affiliation = get_institution_affiliation()
     cursor.execute("""
         SELECT author_id, scopus_author_id, name, scholarly_output, citations,
                field_weighted_citation_impact, h_index, output_in_top_10_percentile,
                scopus_author_profile
         FROM author
-        WHERE primary_affiliation = 'Jeonbuk National University'
-    """)
+        WHERE primary_affiliation = ?
+    """, (affiliation,))
     authors = cursor.fetchall()
 
     # 2. 연도 범위 필터된 논문 데이터 가져오기
@@ -2971,7 +3127,7 @@ def calculate_researcher_scores_by_year(year_from, year_to):
             'fwci_median': round(fwci_median_val, 2),
             'h_index': author_dict['h_index'],
             'top_10_pct_count': author_dict['output_in_top_10_percentile'],
-            'primary_affiliation': 'Jeonbuk National University',
+            'primary_affiliation': affiliation,
             'profile_url': author_dict['scopus_author_profile'],
             'intl_collab_count': intl_count,
             'intl_collab_fwci': round(intl_fwci_avg, 2) if intl_fwci_avg else None,
@@ -3071,6 +3227,7 @@ def api_researcher_scores():
     # 연도 미지정: 기존 사전 계산 테이블 조회 (빠름)
     conn = get_db_connection()
     cursor = conn.cursor()
+    affiliation = get_institution_affiliation()
 
     if fwci_method == 'mean':
         order_col = 'score_total_mean'
@@ -3128,7 +3285,7 @@ def api_researcher_scores():
             'fwci_median': round(row['fwci_median'], 2) if row['fwci_median'] else 0,
             'h_index': row['h_index'],
             'top_10_pct_count': row['top_10_pct_count'],
-            'primary_affiliation': 'Jeonbuk National University',
+            'primary_affiliation': affiliation,
             'profile_url': row['profile_url'],
             'intl_collab_count': row['intl_collab_count'],
             'intl_collab_fwci': round(row['intl_collab_fwci'], 2) if row['intl_collab_fwci'] else None,
@@ -3448,6 +3605,7 @@ def api_potential_researchers():
     """
     conn = get_db_connection()
     cursor = conn.cursor()
+    affiliation = get_institution_affiliation()
 
     analysis_type = request.args.get('type', 'growth')  # growth, high_fwci_low_output, high_prominence
     limit = request.args.get('limit', 50, type=int)
@@ -3503,7 +3661,7 @@ def api_potential_researchers():
                 if year > 0:
                     author_pub_counts[sid]['total'] += 1
 
-        # 전북대 저자 정보 조회
+        # 해당 기관 저자 정보 조회
         cursor.execute(f"""
             SELECT a.scopus_author_id, a.name, a.scholarly_output, a.citations,
                    a.field_weighted_citation_impact as fwci, a.h_index,
@@ -3512,10 +3670,10 @@ def api_potential_researchers():
                    rs.score_total_median as score_total
             FROM author a
             LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
-            WHERE a.primary_affiliation = 'Jeonbuk National University'
+            WHERE a.primary_affiliation = ?
             AND a.scholarly_output >= 5
             AND a.most_recent_publication >= {recent_cutoff}
-        """)
+        """, (affiliation,))
         authors = cursor.fetchall()
 
         for author in authors:
@@ -3587,15 +3745,15 @@ def api_potential_researchers():
                     if fwci_val is not None:
                         author_stats[sid]['fwci_values'].append(fwci_val)
 
-            # 전북대 저자 정보
+            # 해당 기관 저자 정보
             cursor.execute("""
                 SELECT a.scopus_author_id, a.name, a.citations, a.h_index,
                        a.scopus_author_profile as profile_url,
                        rs.score_total_median as score_total
                 FROM author a
                 LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
-                WHERE a.primary_affiliation = 'Jeonbuk National University'
-            """)
+                WHERE a.primary_affiliation = ?
+            """, (affiliation,))
             for author in cursor.fetchall():
                 ad = dict(author)
                 sid = ad['scopus_author_id']
@@ -3635,12 +3793,12 @@ def api_potential_researchers():
                        rs.fwci_median, rs.score_total_median as score_total
                 FROM author a
                 LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
-                WHERE a.primary_affiliation = 'Jeonbuk National University'
+                WHERE a.primary_affiliation = ?
                 AND a.scholarly_output BETWEEN 5 AND 30
                 AND a.field_weighted_citation_impact >= 1.5
                 ORDER BY a.field_weighted_citation_impact DESC
                 LIMIT ?
-            """, (limit,))
+            """, (affiliation, limit))
             rows = cursor.fetchall()
 
             for row in rows:
@@ -3714,7 +3872,7 @@ def api_potential_researchers():
                 for sid in [s.strip() for s in scopus_ids_str.replace('|', ' ').split() if s.strip()]:
                     prom_period_counts[sid] = prom_period_counts.get(sid, 0) + 1
 
-        # 전북대 연구자 정보와 결합
+        # 해당 기관 연구자 정보와 결합
         for scopus_id, prom_data in author_prominence.items():
             if prom_data['count'] < 2:  # 최소 2편 이상
                 continue
@@ -3727,8 +3885,8 @@ def api_potential_researchers():
                 FROM author a
                 LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
                 WHERE a.scopus_author_id = ?
-                AND a.primary_affiliation = 'Jeonbuk National University'
-            """, (scopus_id,))
+                AND a.primary_affiliation = ?
+            """, (scopus_id, affiliation))
             author = cursor.fetchone()
 
             if author:
@@ -3947,17 +4105,17 @@ def api_high_citation_potential():
             cursor.execute("""
                 SELECT a.output_in_top_10_percentile
                 FROM author a
-                WHERE a.primary_affiliation = 'Jeonbuk National University'
+                WHERE a.primary_affiliation = ?
                 AND (a.output_in_top_10_percentile IS NULL OR a.output_in_top_10_percentile = 0)
-            """)
+            """, (affiliation,))
             no_top_cited_set = set()
-            # 먼저 전북대 저자 중 top 10% 피인용 없는 저자 조회
+            # 먼저 해당 기관 저자 중 top 10% 피인용 없는 저자 조회
             cursor.execute("""
                 SELECT a.scopus_author_id
                 FROM author a
-                WHERE a.primary_affiliation = 'Jeonbuk National University'
+                WHERE a.primary_affiliation = ?
                 AND (a.output_in_top_10_percentile IS NULL OR a.output_in_top_10_percentile = 0)
-            """)
+            """, (affiliation,))
             no_top_cited_set = {row['scopus_author_id'] for row in cursor.fetchall()}
 
             for sid, rs in year_scores_map.items():
@@ -4158,7 +4316,7 @@ def api_collaboration_analysis():
 
     elif analysis_type == 'field_hub':
         # 3. 분야별 협력 허브 연구자
-        # 먼저 전북대 연구자 정보를 한 번에 캐싱
+        # 먼저 해당 기관 연구자 정보를 한 번에 캐싱
         cursor.execute("""
             SELECT a.scopus_author_id, a.name, a.scholarly_output, a.citations,
                    a.field_weighted_citation_impact as fwci, a.h_index,
@@ -4166,8 +4324,8 @@ def api_collaboration_analysis():
                    rs.score_total_median as score_total, rs.intl_collab_count
             FROM author a
             LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
-            WHERE a.primary_affiliation = 'Jeonbuk National University'
-        """)
+            WHERE a.primary_affiliation = ?
+        """, (affiliation,))
         jbnu_authors = {row['scopus_author_id']: dict(row) for row in cursor.fetchall()}
 
         # 연도 필터 시: 해당 기간의 저자별 논문수를 별도 집계
@@ -4308,6 +4466,7 @@ def api_research_trajectory():
     """
     conn = get_db_connection()
     cursor = conn.cursor()
+    affiliation = get_institution_affiliation()
 
     analysis_type = request.args.get('type', 'growth_trajectory')
     limit = request.args.get('limit', 50, type=int)
@@ -4317,14 +4476,14 @@ def api_research_trajectory():
     from datetime import datetime
     current_year = datetime.now().year
 
-    # author 테이블 dict 구축 (전북대 소속만)
+    # author 테이블 dict 구축 (해당 기관 소속만)
     cursor.execute("""
         SELECT scopus_author_id, name, scholarly_output, citations,
                field_weighted_citation_impact, h_index,
                oldest_publication, most_recent_publication, scopus_author_profile
         FROM author
-        WHERE primary_affiliation LIKE '%Jeonbuk%'
-    """)
+        WHERE primary_affiliation = ?
+    """, (affiliation,))
     jbnu_authors = {}
     for row in cursor.fetchall():
         jbnu_authors[row['scopus_author_id']] = {
@@ -4528,6 +4687,7 @@ def api_societal_impact():
     """
     conn = get_db_connection()
     cursor = conn.cursor()
+    affiliation = get_institution_affiliation()
 
     analysis_type = request.args.get('type', 'patent_cited')
     limit = request.args.get('limit', 50, type=int)
@@ -4540,13 +4700,13 @@ def api_societal_impact():
         year_condition = " AND CAST(year AS INTEGER) BETWEEN ? AND ?"
         year_params = [year_from, year_to]
 
-    # author 테이블 dict (전북대 소속만)
+    # author 테이블 dict (해당 기관 소속만)
     cursor.execute("""
         SELECT scopus_author_id, name, scholarly_output, citations,
                field_weighted_citation_impact, h_index, scopus_author_profile
         FROM author
-        WHERE primary_affiliation LIKE '%Jeonbuk%'
-    """)
+        WHERE primary_affiliation = ?
+    """, (affiliation,))
     jbnu_authors = {}
     for row in cursor.fetchall():
         jbnu_authors[row['scopus_author_id']] = {
@@ -4710,6 +4870,7 @@ def api_strategic_portfolio():
     """
     conn = get_db_connection()
     cursor = conn.cursor()
+    affiliation = get_institution_affiliation()
 
     analysis_type = request.args.get('type', 'field_strategy_map')
     limit = request.args.get('limit', 50, type=int)
@@ -4816,14 +4977,14 @@ def api_strategic_portfolio():
                   {year_condition}
         """, year_params)
 
-        # author dict (전북대 소속만)
+        # author dict (해당 기관 소속만)
         cursor2 = conn.cursor()
         cursor2.execute("""
             SELECT scopus_author_id, name, scholarly_output, citations,
                    field_weighted_citation_impact, h_index, scopus_author_profile
             FROM author
-            WHERE primary_affiliation LIKE '%Jeonbuk%'
-        """)
+            WHERE primary_affiliation = ?
+        """, (affiliation,))
         jbnu_authors = {}
         for row in cursor2.fetchall():
             jbnu_authors[row['scopus_author_id']] = {
@@ -4914,14 +5075,14 @@ def api_strategic_portfolio():
                   {year_condition}
         """, year_params)
 
-        # author dict (전북대 소속만)
+        # author dict (해당 기관 소속만)
         cursor2 = conn.cursor()
         cursor2.execute("""
             SELECT scopus_author_id, name, scholarly_output, citations,
                    field_weighted_citation_impact, h_index, scopus_author_profile
             FROM author
-            WHERE primary_affiliation LIKE '%Jeonbuk%'
-        """)
+            WHERE primary_affiliation = ?
+        """, (affiliation,))
         jbnu_authors = {}
         for row in cursor2.fetchall():
             jbnu_authors[row['scopus_author_id']] = {
@@ -5191,6 +5352,7 @@ def api_field_analysis_researchers():
     """
     conn = get_db_connection()
     cursor = conn.cursor()
+    affiliation = get_institution_affiliation()
 
     fields_param = request.args.get('fields', '')
     selected_fields = [f.strip() for f in fields_param.split('|||') if f.strip()]
@@ -5207,13 +5369,13 @@ def api_field_analysis_researchers():
         year_condition = " AND CAST(year AS INTEGER) BETWEEN ? AND ?"
         year_params = [year_from, year_to]
 
-    # 전북대 저자 정보
+    # 해당 기관 저자 정보
     cursor.execute("""
         SELECT scopus_author_id, name, scholarly_output, citations,
                field_weighted_citation_impact, h_index, scopus_author_profile
         FROM author
-        WHERE primary_affiliation LIKE '%Jeonbuk%'
-    """)
+        WHERE primary_affiliation = ?
+    """, (affiliation,))
     jbnu_authors = {}
     for row in cursor.fetchall():
         jbnu_authors[row['scopus_author_id']] = {
@@ -5370,6 +5532,124 @@ def api_field_analysis_trend():
         'count': len(trends),
         'years': years_sorted,
         'trends': trends
+    })
+
+
+@app.route('/api/field_analysis/collaborators')
+def api_field_analysis_collaborators():
+    """
+    분야별 기관 간 공동연구자 API
+    - 전북대와 고려대 연구자 간의 공동 저자 관계를 분석
+    """
+    import sqlite3
+
+    fields_param = request.args.get('fields', '')
+    selected_fields = [f.strip() for f in fields_param.split('|||') if f.strip()]
+    year_from = request.args.get('year_from')
+    year_to = request.args.get('year_to')
+
+    if not selected_fields:
+        return jsonify({'count': 0, 'collaborators': []})
+
+    # 두 DB 모두 열기 (원본 파일 사용)
+    import os
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    jbnu_db_path = os.path.join(base_dir, 'jbnu.db')
+    korea_db_path = os.path.join(base_dir, 'korea.db')
+
+    try:
+        jbnu_conn = sqlite3.connect(jbnu_db_path)
+        jbnu_conn.row_factory = sqlite3.Row
+        jbnu_cursor = jbnu_conn.cursor()
+
+        korea_conn = sqlite3.connect(korea_db_path)
+        korea_conn.row_factory = sqlite3.Row
+        korea_cursor = korea_conn.cursor()
+    except Exception as e:
+        return jsonify({'count': 0, 'collaborators': [], 'error': f'DB 연결 실패: {str(e)}'})
+
+    # 전북대 연구자 목록 (scopus_author_id -> name)
+    jbnu_cursor.execute("SELECT scopus_author_id, name FROM author WHERE scopus_author_id IS NOT NULL")
+    jbnu_authors = {row['scopus_author_id']: row['name'] for row in jbnu_cursor.fetchall()}
+
+    # 고려대 연구자 목록 (scopus_author_id -> name)
+    korea_cursor.execute("SELECT scopus_author_id, name FROM author WHERE scopus_author_id IS NOT NULL AND primary_affiliation = 'Korea University'")
+    korea_authors = {row['scopus_author_id']: row['name'] for row in korea_cursor.fetchall()}
+
+    # 연도 조건
+    year_condition = ""
+    if year_from and year_to:
+        year_condition = f"AND CAST(year AS INTEGER) >= {int(year_from)} AND CAST(year AS INTEGER) <= {int(year_to)}"
+
+    # 전북대 논문에서 공동저자 찾기
+    selected_set = set(selected_fields)
+    collaborations = {}  # (jbnu_id, korea_id, field) -> {pub_count, pubs}
+
+    # 전북대 논문의 저자 정보 조회
+    jbnu_cursor.execute(f"""
+        SELECT eid, all_science_journal_classification_asjc_field_name,
+               scopus_author_ids, title, year
+        FROM publication
+        WHERE all_science_journal_classification_asjc_field_name IS NOT NULL
+              AND scopus_author_ids IS NOT NULL
+              {year_condition}
+    """)
+
+    for pub in jbnu_cursor.fetchall():
+        fields = [f.strip() for f in (pub['all_science_journal_classification_asjc_field_name'] or '').replace('|', ',').split(',') if f.strip()]
+        matched_fields = [f for f in fields if f in selected_set]
+        if not matched_fields:
+            continue
+
+        # 저자 ID 파싱 (파이프 또는 세미콜론으로 구분)
+        raw_ids = (pub['scopus_author_ids'] or '').replace(';', '|')
+        author_ids = [a.strip() for a in raw_ids.split('|') if a.strip()]
+
+        # 전북대 저자와 고려대 저자 식별
+        jbnu_in_pub = [aid for aid in author_ids if aid in jbnu_authors]
+        korea_in_pub = [aid for aid in author_ids if aid in korea_authors]
+
+        # 공동 저자 쌍 기록
+        for jbnu_id in jbnu_in_pub:
+            for korea_id in korea_in_pub:
+                for field in matched_fields:
+                    key = (jbnu_id, korea_id, field)
+                    if key not in collaborations:
+                        collaborations[key] = {
+                            'jbnu_id': jbnu_id,
+                            'jbnu_name': jbnu_authors.get(jbnu_id, 'Unknown'),
+                            'korea_id': korea_id,
+                            'korea_name': korea_authors.get(korea_id, 'Unknown'),
+                            'field': field,
+                            'pub_count': 0,
+                            'eids': set()
+                        }
+                    collaborations[key]['pub_count'] += 1
+                    collaborations[key]['eids'].add(pub['eid'])
+
+    jbnu_conn.close()
+    korea_conn.close()
+
+    # 결과 정리
+    result = []
+    for key, collab in collaborations.items():
+        result.append({
+            'jbnu_id': collab['jbnu_id'],
+            'jbnu_name': collab['jbnu_name'],
+            'korea_id': collab['korea_id'],
+            'korea_name': collab['korea_name'],
+            'field': collab['field'],
+            'pub_count': len(collab['eids']),  # 고유 논문 수
+            'jbnu_profile': f"https://www.scopus.com/authid/detail.uri?authorId={collab['jbnu_id']}",
+            'korea_profile': f"https://www.scopus.com/authid/detail.uri?authorId={collab['korea_id']}"
+        })
+
+    # 논문 수 기준 내림차순 정렬
+    result.sort(key=lambda x: (-x['pub_count'], x['field'], x['jbnu_name']))
+
+    return jsonify({
+        'count': len(result),
+        'collaborators': result
     })
 
 
@@ -5821,6 +6101,7 @@ def calculate_researcher_scores_with_preset(year_from, year_to, preset):
     """
     conn = get_db_connection()
     cursor = conn.cursor()
+    affiliation = get_institution_affiliation()
 
     # 프리셋에서 가중치 추출
     total_core = preset.get('total_core', 80)
@@ -5894,14 +6175,14 @@ def calculate_researcher_scores_with_preset(year_from, year_to, preset):
         if not values: return 0
         return sum(values) / len(values)
 
-    # 1. 전북대 저자 목록
+    # 1. 해당 기관 저자 목록
     cursor.execute("""
         SELECT author_id, scopus_author_id, name, scholarly_output, citations,
                field_weighted_citation_impact, h_index, output_in_top_10_percentile,
                scopus_author_profile
         FROM author
-        WHERE primary_affiliation = 'Jeonbuk National University'
-    """)
+        WHERE primary_affiliation = ?
+    """, (affiliation,))
     authors = cursor.fetchall()
 
     # 2. 연도 범위 필터된 논문 데이터
@@ -6025,7 +6306,7 @@ def calculate_researcher_scores_with_preset(year_from, year_to, preset):
             'fwci_median': round(fwci_median_val, 2),
             'h_index': author_dict['h_index'],
             'top_10_pct_count': author_dict['output_in_top_10_percentile'],
-            'primary_affiliation': 'Jeonbuk National University',
+            'primary_affiliation': affiliation,
             'profile_url': author_dict['scopus_author_profile'],
             'intl_collab_count': intl_count,
             'intl_collab_fwci': round(intl_fwci_avg, 2) if intl_fwci_avg else None,
@@ -6151,6 +6432,873 @@ def api_researcher_scores_custom():
         'year_to': year_to,
         'preset': preset,
         'researchers': results
+    })
+
+
+# ============================================
+# 연구분야분석 (Strategic Field Analysis)
+# ============================================
+
+@app.route('/strategic_field_analysis')
+def strategic_field_analysis():
+    """연구분야분석 페이지"""
+    return render_template('strategic_field_analysis.html')
+
+
+@app.route('/api/strategic_field_config')
+def api_strategic_field_config():
+    """연구분야 키워드 설정 조회"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, category, subcategory, keywords, display_order
+        FROM strategic_field_config
+        ORDER BY category, display_order
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+
+    # 카테고리별로 그룹화
+    config = {}
+    for row in rows:
+        cat = row['category']
+        if cat not in config:
+            config[cat] = []
+        config[cat].append({
+            'id': row['id'],
+            'subcategory': row['subcategory'],
+            'keywords': json.loads(row['keywords']) if row['keywords'] else [],
+            'display_order': row['display_order']
+        })
+
+    return jsonify(config)
+
+
+@app.route('/api/strategic_field_config', methods=['POST'])
+def api_strategic_field_config_save():
+    """연구분야 키워드 설정 저장"""
+    data = request.get_json()
+    action = data.get('action')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        if action == 'add_subcategory':
+            # 새 집중분석 분야 추가
+            category = data.get('category')
+            subcategory = data.get('subcategory')
+            keywords = json.dumps(data.get('keywords', []))
+
+            # display_order 계산
+            cursor.execute("""
+                SELECT COALESCE(MAX(display_order), 0) + 1 FROM strategic_field_config
+                WHERE category = ?
+            """, (category,))
+            display_order = cursor.fetchone()[0]
+
+            cursor.execute("""
+                INSERT INTO strategic_field_config (category, subcategory, keywords, display_order)
+                VALUES (?, ?, ?, ?)
+            """, (category, subcategory, keywords, display_order))
+            new_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            return jsonify({'success': True, 'id': new_id})
+
+        elif action == 'update_keywords':
+            # 키워드 업데이트
+            config_id = data.get('id')
+            keywords = json.dumps(data.get('keywords', []))
+
+            cursor.execute("""
+                UPDATE strategic_field_config
+                SET keywords = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (keywords, config_id))
+            conn.commit()
+            conn.close()
+            return jsonify({'success': True})
+
+        elif action == 'delete_subcategory':
+            # 집중분석 분야 삭제
+            config_id = data.get('id')
+            cursor.execute("DELETE FROM strategic_field_config WHERE id = ?", (config_id,))
+            conn.commit()
+            conn.close()
+            return jsonify({'success': True})
+
+        elif action == 'rename_subcategory':
+            # 집중분석 분야 이름 변경
+            config_id = data.get('id')
+            new_name = data.get('subcategory')
+            cursor.execute("""
+                UPDATE strategic_field_config
+                SET subcategory = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (new_name, config_id))
+            conn.commit()
+            conn.close()
+            return jsonify({'success': True})
+
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Unknown action'}), 400
+
+    except Exception as e:
+        conn.close()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/translate_keyword', methods=['POST'])
+def api_translate_keyword():
+    """한글 키워드를 영어로 번역"""
+    data = request.get_json()
+    keyword = data.get('keyword', '').strip()
+
+    if not keyword:
+        return jsonify({'success': False, 'error': 'No keyword provided'})
+
+    # 한글이 포함되어 있는지 확인
+    import re
+    has_korean = bool(re.search('[가-힣]', keyword))
+
+    if not has_korean:
+        # 영어면 그대로 반환
+        return jsonify({'success': True, 'original': keyword, 'translated': keyword, 'is_korean': False})
+
+    try:
+        translator = GoogleTranslator(source='ko', target='en')
+        translated = translator.translate(keyword)
+        return jsonify({
+            'success': True,
+            'original': keyword,
+            'translated': translated.lower(),
+            'is_korean': True
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/strategic_field_keyword_suggestions')
+def api_strategic_field_keyword_suggestions():
+    """연구분야 키워드 추천 API - 해당 분야 논문에서 핫한 키워드 추출"""
+    category = request.args.get('category')
+    subcategory = request.args.get('subcategory')
+    limit = request.args.get('limit', 10, type=int)
+
+    if not category or not subcategory:
+        return jsonify({'suggestions': [], 'error': 'category and subcategory required'})
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 해당 분야의 기존 키워드 조회
+    cursor.execute("""
+        SELECT keywords FROM strategic_field_config
+        WHERE category = ? AND subcategory = ?
+    """, (category, subcategory))
+    row = cursor.fetchone()
+
+    if not row or not row['keywords']:
+        conn.close()
+        return jsonify({'suggestions': [], 'message': 'No existing keywords'})
+
+    # JSON 배열 또는 쉼표 구분 문자열 처리
+    keywords_raw = row['keywords']
+    if keywords_raw.startswith('['):
+        existing_keywords = [k.lower() for k in json.loads(keywords_raw)]
+    else:
+        existing_keywords = [k.strip().lower() for k in keywords_raw.split(',') if k.strip()]
+
+    # 기존 키워드로 논문 검색 (최근 5년)
+    keyword_conditions = ' OR '.join(['LOWER(title) LIKE ?' for _ in existing_keywords])
+    params = [f'%{kw}%' for kw in existing_keywords]
+
+    cursor.execute(f"""
+        SELECT title FROM publication
+        WHERE ({keyword_conditions})
+        AND CAST(year AS INTEGER) >= 2020
+        LIMIT 1000
+    """, params)
+
+    titles = [row['title'] for row in cursor.fetchall()]
+    conn.close()
+
+    if not titles:
+        return jsonify({'suggestions': [], 'message': 'No papers found'})
+
+    # 불용어 정의
+    stopwords = {
+        'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+        'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been', 'be', 'have', 'has', 'had',
+        'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must',
+        'its', 'it', 'this', 'that', 'these', 'those', 'their', 'them', 'they', 'we', 'our',
+        'i', 'you', 'he', 'she', 'his', 'her', 'my', 'your', 'can', 'into', 'through',
+        'during', 'before', 'after', 'above', 'below', 'between', 'under', 'over', 'up',
+        'down', 'out', 'off', 'about', 'than', 'such', 'only', 'other', 'new', 'used',
+        'using', 'based', 'study', 'analysis', 'effect', 'effects', 'approach', 'method',
+        'methods', 'results', 'research', 'application', 'applications', 'high', 'low',
+        'different', 'various', 'novel', 'enhanced', 'improved', 'efficient', 'proposed',
+        'paper', 'work', 'properties', 'performance', 'system', 'systems', 'development',
+        'via', 'use', 'two', 'one', 'three', 'first', 'second', 'also', 'however', 'both',
+        'each', 'all', 'some', 'any', 'more', 'most', 'very', 'well', 'much', 'many',
+        'no', 'not', 'when', 'where', 'which', 'who', 'how', 'what', 'why', 'if', 'then'
+    }
+
+    # 제목에서 단어 추출 및 빈도 계산
+    import re
+    from collections import Counter
+
+    word_counter = Counter()
+    bigram_counter = Counter()
+
+    for title in titles:
+        # 단어 추출 (영문만, 소문자 변환)
+        words = re.findall(r'[a-zA-Z]{3,}', title.lower())
+        # 불용어 및 기존 키워드 제외
+        filtered_words = [w for w in words if w not in stopwords and w not in existing_keywords]
+        word_counter.update(filtered_words)
+
+        # 바이그램(2단어 조합) 추출
+        for i in range(len(filtered_words) - 1):
+            bigram = f"{filtered_words[i]} {filtered_words[i+1]}"
+            bigram_counter.update([bigram])
+
+    # 단일 키워드 상위 추천
+    top_words = word_counter.most_common(limit * 2)
+    # 바이그램 상위 추천 (빈도 3 이상)
+    top_bigrams = [(bg, cnt) for bg, cnt in bigram_counter.most_common(limit) if cnt >= 3]
+
+    suggestions = []
+
+    # 바이그램 우선 추가
+    for bigram, count in top_bigrams[:limit // 2]:
+        suggestions.append({
+            'keyword': bigram,
+            'count': count,
+            'type': 'phrase'
+        })
+
+    # 단일 키워드 추가
+    for word, count in top_words:
+        if len(suggestions) >= limit:
+            break
+        # 이미 바이그램에 포함된 단어는 제외
+        if not any(word in s['keyword'] for s in suggestions):
+            suggestions.append({
+                'keyword': word,
+                'count': count,
+                'type': 'word'
+            })
+
+    return jsonify({
+        'category': category,
+        'subcategory': subcategory,
+        'total_papers_analyzed': len(titles),
+        'suggestions': suggestions[:limit]
+    })
+
+
+@app.route('/api/strategic_field_analysis')
+def api_strategic_field_analysis():
+    """연구분야 분석 API"""
+    category = request.args.get('category')
+    subcategory = request.args.get('subcategory')
+    year_from = request.args.get('year_from', type=int)
+    year_to = request.args.get('year_to', type=int)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 해당 분야의 키워드 조회
+    if subcategory:
+        cursor.execute("""
+            SELECT keywords FROM strategic_field_config
+            WHERE category = ? AND subcategory = ?
+        """, (category, subcategory))
+    else:
+        cursor.execute("""
+            SELECT keywords FROM strategic_field_config
+            WHERE category = ?
+        """, (category,))
+
+    rows = cursor.fetchall()
+    all_keywords = []
+    for row in rows:
+        if row['keywords']:
+            all_keywords.extend(json.loads(row['keywords']))
+
+    if not all_keywords:
+        conn.close()
+        return jsonify({
+            'category': category,
+            'subcategory': subcategory,
+            'total_papers': 0,
+            'total_citations': 0,
+            'avg_fwci': 0,
+            'researcher_count': 0,
+            'researchers': [],
+            'yearly_trend': []
+        })
+
+    # 키워드로 논문 검색 (title에서 LIKE 검색)
+    keyword_conditions = " OR ".join(["title LIKE ?"] * len(all_keywords))
+    keyword_params = [f"%{kw}%" for kw in all_keywords]
+
+    # 연도 조건
+    year_condition = ""
+    if year_from and year_to:
+        year_condition = f" AND CAST(year AS INTEGER) BETWEEN {year_from} AND {year_to}"
+
+    # 논문 통계
+    query = f"""
+        SELECT
+            COUNT(*) as total_papers,
+            SUM(CAST(citations AS INTEGER)) as total_citations,
+            AVG(CAST(field_weighted_citation_impact AS REAL)) as avg_fwci
+        FROM publication
+        WHERE ({keyword_conditions}) {year_condition}
+    """
+    cursor.execute(query, keyword_params)
+    stats = cursor.fetchone()
+
+    total_papers = stats['total_papers'] or 0
+    total_citations = stats['total_citations'] or 0
+    avg_fwci = round(stats['avg_fwci'] or 0, 2)
+
+    # 연구자별 집계
+    query = f"""
+        SELECT
+            scopus_author_ids,
+            COUNT(*) as paper_count,
+            SUM(CAST(citations AS INTEGER)) as citations,
+            AVG(CAST(field_weighted_citation_impact AS REAL)) as avg_fwci
+        FROM publication
+        WHERE ({keyword_conditions}) {year_condition}
+        AND scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+        GROUP BY scopus_author_ids
+        ORDER BY paper_count DESC
+    """
+    cursor.execute(query, keyword_params)
+    pub_rows = cursor.fetchall()
+
+    # 연구자 정보 수집 (scopus_author_ids가 여러 명일 수 있으므로 분해)
+    # 형식: "57211432707| 55317946600" (파이프와 공백으로 구분)
+    researcher_stats = {}
+    for row in pub_rows:
+        author_ids = row['scopus_author_ids'].split('|') if row['scopus_author_ids'] else []
+        for aid in author_ids:
+            aid = aid.strip()
+            if not aid:
+                continue
+            if aid not in researcher_stats:
+                researcher_stats[aid] = {'paper_count': 0, 'citations': 0, 'fwci_sum': 0, 'fwci_count': 0}
+            researcher_stats[aid]['paper_count'] += 1
+            researcher_stats[aid]['citations'] += row['citations'] or 0
+            if row['avg_fwci']:
+                researcher_stats[aid]['fwci_sum'] += row['avg_fwci']
+                researcher_stats[aid]['fwci_count'] += 1
+
+    # 전북대 소속 연구자만 필터링 (author 테이블에 있는 연구자)
+    all_author_ids = list(researcher_stats.keys())
+    jbnu_author_ids = set()
+    if all_author_ids:
+        # 1000개씩 나누어 조회 (SQLite 변수 제한)
+        for i in range(0, len(all_author_ids), 1000):
+            batch = all_author_ids[i:i+1000]
+            placeholders = ','.join(['?'] * len(batch))
+            cursor.execute(f"SELECT scopus_author_id FROM author WHERE scopus_author_id IN ({placeholders})", batch)
+            jbnu_author_ids.update(r['scopus_author_id'] for r in cursor.fetchall())
+
+    # 전북대 소속 연구자만 남기기
+    jbnu_researcher_stats = {aid: stats for aid, stats in researcher_stats.items() if aid in jbnu_author_ids}
+
+    # 상위 연구자 정보 가져오기
+    top_author_ids = sorted(jbnu_researcher_stats.keys(), key=lambda x: jbnu_researcher_stats[x]['paper_count'], reverse=True)[:50]
+
+    researchers = []
+    if top_author_ids:
+        placeholders = ','.join(['?'] * len(top_author_ids))
+        cursor.execute(f"""
+            SELECT scopus_author_id, name, h_index, scholarly_output, citations as total_citations, orcid
+            FROM author
+            WHERE scopus_author_id IN ({placeholders})
+        """, top_author_ids)
+        author_info = {r['scopus_author_id']: dict(r) for r in cursor.fetchall()}
+
+        for aid in top_author_ids:
+            stats_data = jbnu_researcher_stats[aid]
+            info = author_info.get(aid, {})
+            avg_fwci_val = stats_data['fwci_sum'] / stats_data['fwci_count'] if stats_data['fwci_count'] > 0 else 0
+            researchers.append({
+                'scopus_author_id': aid,
+                'name': info.get('name', 'Unknown'),
+                'paper_count': stats_data['paper_count'],
+                'citations': stats_data['citations'],
+                'avg_fwci': round(avg_fwci_val, 2),
+                'h_index': info.get('h_index', 0),
+                'total_papers': info.get('scholarly_output', 0),
+                'orcid': info.get('orcid', '')
+            })
+
+    # 연도별 추이
+    query = f"""
+        SELECT
+            year,
+            COUNT(*) as paper_count,
+            SUM(CAST(citations AS INTEGER)) as citations,
+            AVG(CAST(field_weighted_citation_impact AS REAL)) as avg_fwci
+        FROM publication
+        WHERE ({keyword_conditions}) {year_condition}
+        AND year IS NOT NULL AND year != ''
+        GROUP BY year
+        ORDER BY year
+    """
+    cursor.execute(query, keyword_params)
+    trend_rows = cursor.fetchall()
+
+    yearly_trend = []
+    for row in trend_rows:
+        try:
+            year_val = int(row['year'])
+            yearly_trend.append({
+                'year': year_val,
+                'paper_count': row['paper_count'],
+                'citations': row['citations'] or 0,
+                'avg_fwci': round(row['avg_fwci'] or 0, 2)
+            })
+        except (ValueError, TypeError):
+            continue
+
+    conn.close()
+
+    return jsonify({
+        'category': category,
+        'subcategory': subcategory,
+        'keywords_used': all_keywords,
+        'total_papers': total_papers,
+        'total_citations': total_citations,
+        'avg_fwci': avg_fwci,
+        'researcher_count': len(jbnu_researcher_stats),
+        'researcher_ids': list(jbnu_researcher_stats.keys()),  # 분야 연구자 ID 목록
+        'researchers': researchers,
+        'yearly_trend': yearly_trend
+    })
+
+
+@app.route('/api/strategic_field_ranking')
+def api_strategic_field_ranking():
+    """연구분야별 연구자 랭킹 API"""
+    researcher_ids = request.args.get('researcher_ids', '')
+    if not researcher_ids:
+        return jsonify({'count': 0, 'researchers': []})
+
+    ids_list = [rid.strip() for rid in researcher_ids.split(',') if rid.strip()]
+    if not ids_list:
+        return jsonify({'count': 0, 'researchers': []})
+
+    fwci_method = request.args.get('fwci_method', 'median')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    placeholders = ','.join(['?'] * len(ids_list))
+
+    if fwci_method == 'mean':
+        order_col = 'COALESCE(rs.score_total_mean, 0)'
+        fwci_col = 'fwci_mean'
+    else:
+        order_col = 'COALESCE(rs.score_total_median, 0)'
+        fwci_col = 'fwci_median'
+
+    # author 테이블 기준 LEFT JOIN으로 모든 연구자 포함
+    cursor.execute(f"""
+        SELECT a.scopus_author_id, a.name, a.orcid, a.scholarly_output, a.citations,
+               a.field_weighted_citation_impact, a.h_index,
+               rs.fwci_mean, rs.fwci_median,
+               rs.score_fwci_mean, rs.score_fwci_median,
+               rs.score_core_mean, rs.score_core_median,
+               rs.score_total_mean, rs.score_total_median,
+               rs.score_top_cited, rs.score_top_journal, rs.score_intl_collab,
+               rs.score_sdg, rs.score_oa, rs.score_prominence, rs.score_secondary,
+               rs.top_journal_pct, rs.has_sdg, rs.has_oa
+        FROM author a
+        LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
+        WHERE a.scopus_author_id IN ({placeholders})
+        ORDER BY {order_col} DESC, a.field_weighted_citation_impact DESC
+    """, ids_list)
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    results = []
+    for idx, row in enumerate(rows):
+        row_dict = dict(row)
+        if fwci_method == 'mean':
+            fwci_val = row_dict.get('fwci_mean') or row_dict.get('field_weighted_citation_impact') or 0
+            score_fwci = row_dict.get('score_fwci_mean', 0) or 0
+            score_core = row_dict.get('score_core_mean', 0) or 0
+            score_total = row_dict.get('score_total_mean', 0) or 0
+        else:
+            fwci_val = row_dict.get('fwci_median') or row_dict.get('field_weighted_citation_impact') or 0
+            score_fwci = row_dict.get('score_fwci_median', 0) or 0
+            score_core = row_dict.get('score_core_median', 0) or 0
+            score_total = row_dict.get('score_total_median', 0) or 0
+
+        results.append({
+            'rank': idx + 1,
+            'scopus_author_id': row_dict['scopus_author_id'],
+            'name': row_dict['name'],
+            'orcid': row_dict.get('orcid', ''),
+            'scholarly_output': row_dict.get('scholarly_output', 0) or 0,
+            'citations': row_dict.get('citations', 0) or 0,
+            'fwci': round(fwci_val, 2),
+            'h_index': row_dict.get('h_index', 0) or 0,
+            'score_fwci': score_fwci,
+            'score_top_cited': row_dict.get('score_top_cited', 0) or 0,
+            'score_top_journal': row_dict.get('score_top_journal', 0) or 0,
+            'score_intl_collab': row_dict.get('score_intl_collab', 0) or 0,
+            'score_core': score_core,
+            'score_sdg': row_dict.get('score_sdg', 0) or 0,
+            'score_oa': row_dict.get('score_oa', 0) or 0,
+            'score_prominence': row_dict.get('score_prominence', 0) or 0,
+            'score_secondary': row_dict.get('score_secondary', 0) or 0,
+            'score_total': score_total,
+            'top_journal_pct': row_dict.get('top_journal_pct', 0) or 0,
+            'has_sdg': row_dict.get('has_sdg', 0) or 0,
+            'has_oa': row_dict.get('has_oa', 0) or 0
+        })
+
+    return jsonify({
+        'count': len(results),
+        'fwci_method': fwci_method,
+        'researchers': results
+    })
+
+
+@app.route('/api/strategic_field_modules')
+def api_strategic_field_modules():
+    """연구분야별 분석 모듈 API (잠재력/고피인용/협력)"""
+    researcher_ids = request.args.get('researcher_ids', '')
+    module_type = request.args.get('module_type', 'potential')  # potential, citation, collaboration
+
+    if not researcher_ids:
+        return jsonify({'count': 0, 'researchers': []})
+
+    ids_list = [rid.strip() for rid in researcher_ids.split(',') if rid.strip()]
+    if not ids_list:
+        return jsonify({'count': 0, 'researchers': []})
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    placeholders = ','.join(['?'] * len(ids_list))
+
+    if module_type == 'potential':
+        # 잠재력 연구자: 최근 3년 논문수 증가, 젊은 연구자
+        cursor.execute(f"""
+            SELECT a.scopus_author_id, a.name, a.orcid, a.scholarly_output, a.citations,
+                   a.field_weighted_citation_impact as fwci, a.h_index,
+                   a.most_recent_publication, a.oldest_publication
+            FROM author a
+            WHERE a.scopus_author_id IN ({placeholders})
+            ORDER BY a.field_weighted_citation_impact DESC
+        """, ids_list)
+
+    elif module_type == 'citation':
+        # 고피인용 잠재력: FWCI 높고 최근 활동적
+        cursor.execute(f"""
+            SELECT a.scopus_author_id, a.name, a.orcid, a.scholarly_output, a.citations,
+                   a.field_weighted_citation_impact as fwci, a.h_index,
+                   a.output_in_top_10_percentile as top_10_pct
+            FROM author a
+            WHERE a.scopus_author_id IN ({placeholders})
+            ORDER BY a.field_weighted_citation_impact DESC
+        """, ids_list)
+
+    else:  # collaboration
+        # 협력 분석: 국제협력 비율
+        cursor.execute(f"""
+            SELECT a.scopus_author_id, a.name, a.orcid, a.scholarly_output, a.citations,
+                   a.field_weighted_citation_impact as fwci, a.h_index,
+                   rs.intl_collab_count, rs.intl_collab_fwci
+            FROM author a
+            LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
+            WHERE a.scopus_author_id IN ({placeholders})
+            ORDER BY rs.intl_collab_count DESC
+        """, ids_list)
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    results = []
+    for row in rows:
+        row_dict = dict(row)
+        result = {
+            'scopus_author_id': row_dict['scopus_author_id'],
+            'name': row_dict['name'],
+            'orcid': row_dict.get('orcid', ''),
+            'scholarly_output': row_dict.get('scholarly_output', 0),
+            'citations': row_dict.get('citations', 0),
+            'fwci': round(row_dict.get('fwci', 0) or 0, 2),
+            'h_index': row_dict.get('h_index', 0)
+        }
+
+        if module_type == 'potential':
+            career_years = (row_dict.get('most_recent_publication', 2025) or 2025) - (row_dict.get('oldest_publication', 2020) or 2020) + 1
+            result['career_years'] = career_years
+        elif module_type == 'citation':
+            result['top_10_pct'] = row_dict.get('top_10_pct', 0)
+        else:
+            intl_count = row_dict.get('intl_collab_count', 0) or 0
+            total = row_dict.get('scholarly_output', 1) or 1
+            result['intl_collab_count'] = intl_count
+            result['intl_collab_ratio'] = round(intl_count / total * 100, 1) if total > 0 else 0
+            result['intl_collab_fwci'] = round(row_dict.get('intl_collab_fwci', 0) or 0, 2)
+
+        results.append(result)
+
+    return jsonify({
+        'count': len(results),
+        'module_type': module_type,
+        'researchers': results
+    })
+
+
+@app.route('/api/strategic_field_strategy')
+def api_strategic_field_strategy():
+    """연구분야별 연구 전략 API (성장궤적/사회적기여/분야전략)"""
+    researcher_ids = request.args.get('researcher_ids', '')
+    strategy_type = request.args.get('strategy_type', 'trajectory')  # trajectory, societal, field
+
+    if not researcher_ids:
+        return jsonify({'count': 0, 'researchers': []})
+
+    ids_list = [rid.strip() for rid in researcher_ids.split(',') if rid.strip()]
+    if not ids_list:
+        return jsonify({'count': 0, 'researchers': []})
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    placeholders = ','.join(['?'] * len(ids_list))
+
+    if strategy_type == 'trajectory':
+        # 성장궤적: 연속 성장 연구자
+        cursor.execute(f"""
+            SELECT a.scopus_author_id, a.name, a.orcid, a.scholarly_output, a.citations,
+                   a.field_weighted_citation_impact as fwci, a.h_index,
+                   a.most_recent_publication, a.oldest_publication
+            FROM author a
+            WHERE a.scopus_author_id IN ({placeholders})
+            ORDER BY a.field_weighted_citation_impact DESC
+        """, ids_list)
+
+    elif strategy_type == 'societal':
+        # 사회적 기여: SDG, OA 비율
+        cursor.execute(f"""
+            SELECT a.scopus_author_id, a.name, a.orcid, a.scholarly_output, a.citations,
+                   a.field_weighted_citation_impact as fwci, a.h_index,
+                   rs.has_sdg, rs.has_oa
+            FROM author a
+            LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
+            WHERE a.scopus_author_id IN ({placeholders})
+            ORDER BY rs.has_sdg DESC, a.field_weighted_citation_impact DESC
+        """, ids_list)
+
+    else:  # field
+        # 분야전략: 상위저널 비율
+        cursor.execute(f"""
+            SELECT a.scopus_author_id, a.name, a.orcid, a.scholarly_output, a.citations,
+                   a.field_weighted_citation_impact as fwci, a.h_index,
+                   rs.top_journal_pct
+            FROM author a
+            LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
+            WHERE a.scopus_author_id IN ({placeholders})
+            ORDER BY rs.top_journal_pct DESC
+        """, ids_list)
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    results = []
+    for row in rows:
+        row_dict = dict(row)
+        result = {
+            'scopus_author_id': row_dict['scopus_author_id'],
+            'name': row_dict['name'],
+            'orcid': row_dict.get('orcid', ''),
+            'scholarly_output': row_dict.get('scholarly_output', 0),
+            'citations': row_dict.get('citations', 0),
+            'fwci': round(row_dict.get('fwci', 0) or 0, 2),
+            'h_index': row_dict.get('h_index', 0)
+        }
+
+        if strategy_type == 'trajectory':
+            career_years = (row_dict.get('most_recent_publication', 2025) or 2025) - (row_dict.get('oldest_publication', 2020) or 2020) + 1
+            result['career_years'] = career_years
+        elif strategy_type == 'societal':
+            result['has_sdg'] = row_dict.get('has_sdg', 0) == 1
+            result['has_oa'] = row_dict.get('has_oa', 0) == 1
+        else:
+            result['top_journal_pct'] = round(row_dict.get('top_journal_pct', 0) or 0, 1)
+
+        results.append(result)
+
+    return jsonify({
+        'count': len(results),
+        'strategy_type': strategy_type,
+        'researchers': results
+    })
+
+
+@app.route('/api/strategic_field_collaborators')
+def api_strategic_field_collaborators():
+    """
+    전략분야별 기관 간 공동연구자 API
+    - 전북대와 고려대 연구자 간의 공동 저자 관계를 분석
+    - 키워드 기반 논문 검색
+    """
+    import sqlite3 as sqlite3_module
+
+    category = request.args.get('category', '')
+    subcategory = request.args.get('subcategory', '')
+    year_from = request.args.get('year_from')
+    year_to = request.args.get('year_to')
+
+    if not category or not subcategory:
+        return jsonify({'count': 0, 'collaborators': []})
+
+    # 두 DB 모두 열기 (원본 파일 사용)
+    import os as os_module
+    import json as json_module
+    base_dir = os_module.path.dirname(os_module.path.abspath(__file__))
+    jbnu_db_path = os_module.path.join(base_dir, 'jbnu.db')
+    korea_db_path = os_module.path.join(base_dir, 'korea.db')
+
+    # 해당 분야의 키워드 조회 (jbnu.db에서 - 설정 테이블이 여기에만 있음)
+    jbnu_config_conn = sqlite3_module.connect(jbnu_db_path)
+    jbnu_config_conn.row_factory = sqlite3_module.Row
+    config_cursor = jbnu_config_conn.cursor()
+
+    config_cursor.execute("""
+        SELECT keywords FROM strategic_field_config
+        WHERE category = ? AND subcategory = ?
+    """, (category, subcategory))
+
+    row = config_cursor.fetchone()
+    jbnu_config_conn.close()
+
+    if not row or not row['keywords']:
+        return jsonify({'count': 0, 'collaborators': [], 'message': '키워드 설정이 없습니다.'})
+
+    # 키워드 파싱 (JSON 배열 또는 쉼표 구분)
+    keywords_str = row['keywords']
+    try:
+        keywords = json_module.loads(keywords_str)
+        if isinstance(keywords, list):
+            keywords = [kw.strip().lower() for kw in keywords if kw.strip()]
+        else:
+            keywords = [keywords_str.strip().lower()]
+    except (json_module.JSONDecodeError, TypeError):
+        keywords = [kw.strip().lower() for kw in keywords_str.split(',') if kw.strip()]
+    if not keywords:
+        return jsonify({'count': 0, 'collaborators': [], 'message': '키워드가 없습니다.'})
+
+    try:
+        jbnu_conn = sqlite3_module.connect(jbnu_db_path)
+        jbnu_conn.row_factory = sqlite3_module.Row
+        jbnu_cursor = jbnu_conn.cursor()
+
+        korea_conn = sqlite3_module.connect(korea_db_path)
+        korea_conn.row_factory = sqlite3_module.Row
+        korea_cursor = korea_conn.cursor()
+    except Exception as e:
+        return jsonify({'count': 0, 'collaborators': [], 'error': f'DB 연결 실패: {str(e)}'})
+
+    # 전북대 연구자 목록 (scopus_author_id -> name)
+    jbnu_cursor.execute("SELECT scopus_author_id, name FROM author WHERE scopus_author_id IS NOT NULL")
+    jbnu_authors = {row['scopus_author_id']: row['name'] for row in jbnu_cursor.fetchall()}
+
+    # 고려대 연구자 목록 (scopus_author_id -> name)
+    korea_cursor.execute("SELECT scopus_author_id, name FROM author WHERE scopus_author_id IS NOT NULL AND primary_affiliation = 'Korea University'")
+    korea_authors = {row['scopus_author_id']: row['name'] for row in korea_cursor.fetchall()}
+
+    # 연도 조건
+    year_condition = ""
+    if year_from and year_to:
+        year_condition = f"AND CAST(year AS INTEGER) >= {int(year_from)} AND CAST(year AS INTEGER) <= {int(year_to)}"
+
+    # 전북대 논문에서 키워드 매칭 후 공동저자 찾기
+    collaborations = {}  # (jbnu_id, korea_id) -> {pub_count, eids}
+
+    jbnu_cursor.execute(f"""
+        SELECT eid, title, scopus_author_ids
+        FROM publication
+        WHERE scopus_author_ids IS NOT NULL
+              AND title IS NOT NULL
+              {year_condition}
+    """)
+
+    for pub in jbnu_cursor.fetchall():
+        title_lower = (pub['title'] or '').lower()
+
+        # 키워드 매칭 확인
+        matched = any(kw in title_lower for kw in keywords)
+        if not matched:
+            continue
+
+        # 저자 ID 파싱 (파이프 또는 세미콜론으로 구분)
+        raw_ids = (pub['scopus_author_ids'] or '').replace(';', '|')
+        author_ids = [a.strip() for a in raw_ids.split('|') if a.strip()]
+
+        # 전북대 저자와 고려대 저자 식별
+        jbnu_in_pub = [aid for aid in author_ids if aid in jbnu_authors]
+        korea_in_pub = [aid for aid in author_ids if aid in korea_authors and aid not in jbnu_authors]
+
+        # 공동 저자 쌍 기록 (같은 사람 제외)
+        for jbnu_id in jbnu_in_pub:
+            for korea_id in korea_in_pub:
+                if jbnu_id == korea_id:
+                    continue
+                key = (jbnu_id, korea_id)
+                if key not in collaborations:
+                    collaborations[key] = {
+                        'jbnu_id': jbnu_id,
+                        'jbnu_name': jbnu_authors.get(jbnu_id, 'Unknown'),
+                        'korea_id': korea_id,
+                        'korea_name': korea_authors.get(korea_id, 'Unknown'),
+                        'eids': set()
+                    }
+                collaborations[key]['eids'].add(pub['eid'])
+
+    jbnu_conn.close()
+    korea_conn.close()
+
+    # 결과 정리
+    result = []
+    for key, collab in collaborations.items():
+        result.append({
+            'jbnu_id': collab['jbnu_id'],
+            'jbnu_name': collab['jbnu_name'],
+            'korea_id': collab['korea_id'],
+            'korea_name': collab['korea_name'],
+            'pub_count': len(collab['eids']),
+            'jbnu_profile': f"https://www.scopus.com/authid/detail.uri?authorId={collab['jbnu_id']}",
+            'korea_profile': f"https://www.scopus.com/authid/detail.uri?authorId={collab['korea_id']}"
+        })
+
+    # 논문 수 기준 내림차순 정렬
+    result.sort(key=lambda x: (-x['pub_count'], x['jbnu_name']))
+
+    return jsonify({
+        'count': len(result),
+        'category': category,
+        'subcategory': subcategory,
+        'keywords': keywords,
+        'collaborators': result
     })
 
 

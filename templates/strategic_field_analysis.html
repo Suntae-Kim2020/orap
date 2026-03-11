@@ -1,0 +1,1519 @@
+{% extends "base.html" %}
+{% block title %}연구분야분석{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2 class="mb-4"><i class="fas fa-bullseye"></i> <span data-i18n="strategic_field.title">연구분야분석</span></h2>
+
+    <p class="text-muted mb-4">
+        <span data-i18n="strategic_field.subtitle">전략 연구분야별 키워드 기반 논문 분석</span><br>
+        <small><i class="fas fa-database"></i> <span data-i18n="analysis_modules.data_note">본 분석은 Scopus 등재 논문 및 전북대학교 소속 연구자만을 대상으로 합니다.</span></small>
+    </p>
+
+    <!-- 대분류 탭 -->
+    <ul class="nav nav-tabs mb-4" id="categoryTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="energy-tab" data-bs-toggle="tab" data-bs-target="#energy" type="button" onclick="switchCategory('에너지')">
+                <i class="fas fa-bolt"></i> <span data-i18n="strategic_field.energy">에너지</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="bio-tab" data-bs-toggle="tab" data-bs-target="#bio" type="button" onclick="switchCategory('바이오')">
+                <i class="fas fa-dna"></i> <span data-i18n="strategic_field.bio">바이오</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="agri-tab" data-bs-toggle="tab" data-bs-target="#agri" type="button" onclick="switchCategory('농생명')">
+                <i class="fas fa-seedling"></i> <span data-i18n="strategic_field.agri">농생명</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="mobility-tab" data-bs-toggle="tab" data-bs-target="#mobility" type="button" onclick="switchCategory('미래모빌리티')">
+                <i class="fas fa-car"></i> <span data-i18n="strategic_field.mobility">미래 모빌리티</span>
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="categoryTabContent">
+        <!-- 각 탭은 동일한 구조 사용 -->
+        <div class="tab-pane fade show active" id="energy" role="tabpanel"></div>
+        <div class="tab-pane fade" id="bio" role="tabpanel"></div>
+        <div class="tab-pane fade" id="agri" role="tabpanel"></div>
+        <div class="tab-pane fade" id="mobility" role="tabpanel"></div>
+    </div>
+</div>
+
+<!-- 키워드 추가 모달 -->
+<div class="modal fade" id="addKeywordModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus"></i> <span data-i18n="strategic_field.add_keyword">키워드 추가</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 추천 키워드 영역 -->
+                <div class="mb-3">
+                    <label class="form-label"><i class="fas fa-fire text-danger"></i> 추천 키워드 (논문 제목 기반)</label>
+                    <div id="keywordSuggestions" class="d-flex flex-wrap gap-2">
+                        <span class="text-muted"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</span>
+                    </div>
+                    <small class="text-muted mt-1 d-block">클릭하면 자동으로 입력됩니다</small>
+                </div>
+                <hr>
+                <div class="mb-3">
+                    <label class="form-label" data-i18n="strategic_field.keyword_input">키워드 입력 (한글 입력 시 자동 번역)</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="newKeywordInput" placeholder="예: 수소연료전지">
+                        <button class="btn btn-outline-secondary" type="button" onclick="translateKeyword()">
+                            <i class="fas fa-language"></i> <span data-i18n="strategic_field.translate">번역</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="translationResult" style="display: none;">
+                    <div class="alert alert-info">
+                        <small><span data-i18n="strategic_field.translation_result">번역 결과</span>:</small><br>
+                        <strong id="translatedKeyword"></strong>
+                    </div>
+                </div>
+                <input type="hidden" id="modalConfigId">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">취소</button>
+                <button type="button" class="btn btn-primary" onclick="confirmAddKeyword()">
+                    <i class="fas fa-plus"></i> <span data-i18n="strategic_field.add">추가</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 분야 추가 모달 -->
+<div class="modal fade" id="addSubcategoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-folder-plus"></i> <span data-i18n="strategic_field.add_subcategory">집중분석 분야 추가</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label" data-i18n="strategic_field.subcategory_name">분야명</label>
+                    <input type="text" class="form-control" id="newSubcategoryName" placeholder="예: 태양광">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" data-i18n="strategic_field.initial_keywords">초기 키워드 (쉼표로 구분)</label>
+                    <input type="text" class="form-control" id="newSubcategoryKeywords" placeholder="예: solar, photovoltaic, PV">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">취소</button>
+                <button type="button" class="btn btn-primary" onclick="confirmAddSubcategory()">
+                    <i class="fas fa-plus"></i> <span data-i18n="strategic_field.add">추가</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// 전역 상태
+let fieldConfig = {};
+let currentCategory = '에너지';
+let currentSubcategory = null;
+let currentAnalysisType = 'overview';  // overview, ranking, modules, strategy
+let currentResearcherIds = [];  // 현재 분야의 연구자 ID 목록
+let analysisResults = {};
+let rankingResults = {};
+let modulesResults = {};
+let strategyResults = {};
+let collaboratorsResults = {};
+let collaboratorsSortKey = 'pub_count';
+let collaboratorsSortAsc = false;  // 기본 내림차순 (논문수 많은 순)
+let trendChart = null;
+let sfYearFrom = null;
+let sfYearTo = null;
+let sfMaxDataYear = null;
+
+// 카테고리 영문 매핑
+const categoryMap = {
+    '에너지': 'energy',
+    '바이오': 'bio',
+    '농생명': 'agri',
+    '미래모빌리티': 'mobility'
+};
+
+// 페이지 로드 시 초기화
+document.addEventListener('DOMContentLoaded', function() {
+    loadConfig();
+});
+
+// 설정 로드
+function loadConfig() {
+    fetch('/api/strategic_field_config')
+        .then(r => r.json())
+        .then(data => {
+            fieldConfig = data;
+            renderCategoryContent(currentCategory);
+
+            // 첫 번째 하위 분야 자동 분석
+            const subcategories = fieldConfig[currentCategory] || [];
+            if (subcategories.length > 0) {
+                currentSubcategory = subcategories[0].subcategory;
+                runAnalysis();
+            }
+        });
+}
+
+// 카테고리 전환
+function switchCategory(category) {
+    currentCategory = category;
+    currentSubcategory = null;
+    renderCategoryContent(category);
+
+    // 첫 번째 하위 분야 자동 분석
+    const subcategories = fieldConfig[category] || [];
+    if (subcategories.length > 0) {
+        currentSubcategory = subcategories[0].subcategory;
+        runAnalysis();
+    }
+}
+
+// 카테고리 내용 렌더링
+function renderCategoryContent(category) {
+    const tabId = categoryMap[category];
+    const container = document.getElementById(tabId);
+    const subcategories = fieldConfig[category] || [];
+
+    let html = `
+        <!-- 키워드 설정 영역 -->
+        <div class="card mb-4">
+            <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-cog"></i> <span data-i18n="strategic_field.keyword_settings">키워드 설정</span></span>
+                <button class="btn btn-sm btn-outline-light" onclick="openAddSubcategoryModal()">
+                    <i class="fas fa-folder-plus"></i> <span data-i18n="strategic_field.add_subcategory">분야 추가</span>
+                </button>
+            </div>
+            <div class="card-body">
+    `;
+
+    if (subcategories.length === 0) {
+        html += `<p class="text-muted" data-i18n="strategic_field.no_subcategories">등록된 집중분석 분야가 없습니다.</p>`;
+    } else {
+        subcategories.forEach(sub => {
+            html += `
+                <div class="mb-3 p-2 border rounded bg-light">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong><i class="fas fa-folder"></i> ${sub.subcategory}</strong>
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary" onclick="openAddKeywordModal(${sub.id})">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteSubcategory(${sub.id}, '${sub.subcategory}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-1" id="keywords-${sub.id}">
+            `;
+            sub.keywords.forEach((kw, idx) => {
+                html += `
+                    <span class="badge bg-secondary">
+                        ${kw}
+                        <i class="fas fa-times ms-1" style="cursor:pointer;" onclick="removeKeyword(${sub.id}, ${idx})"></i>
+                    </span>
+                `;
+            });
+            html += `
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    html += `
+            </div>
+        </div>
+
+        <!-- 분석 기간 및 실행 -->
+        <div class="card mb-4">
+            <div class="card-body py-2">
+                <div class="d-flex align-items-center flex-wrap gap-3">
+                    <span class="fw-bold"><i class="fas fa-calendar-alt"></i> <span data-i18n="common.analysis_period">분석기간</span></span>
+                    <div class="btn-group" id="sfYearPresetGroup-${tabId}">
+                        <button type="button" class="btn btn-sm btn-outline-secondary active" onclick="setSfYearPreset('all', this)" data-i18n="common.all">전체</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setSfYearPreset('3y', this)" data-i18n="common.recent_3y">최근 3년</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setSfYearPreset('5y', this)" data-i18n="common.recent_5y">최근 5년</button>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <input type="number" class="form-control form-control-sm" id="sfYearFrom-${tabId}" placeholder="시작" style="width: 90px;" min="1990" max="2030">
+                        <span>~</span>
+                        <input type="number" class="form-control form-control-sm" id="sfYearTo-${tabId}" placeholder="종료" style="width: 90px;" min="1990" max="2030">
+                        <button class="btn btn-sm btn-outline-primary" onclick="applySfCustomYear('${tabId}')">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
+                    <span id="sfYearDisplay-${tabId}" class="badge bg-info" style="display:none;"></span>
+                    <button class="btn btn-sm btn-primary ms-auto" onclick="runAnalysis()">
+                        <i class="fas fa-play"></i> <span data-i18n="strategic_field.run_analysis">분석 실행</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 집중분석 분야 하위 탭 -->
+        <ul class="nav nav-pills mb-3" id="subcategoryTabs-${tabId}">
+    `;
+
+    subcategories.forEach((sub, idx) => {
+        html += `
+            <li class="nav-item">
+                <button class="nav-link ${idx === 0 ? 'active' : ''}" onclick="selectSubcategory('${sub.subcategory}', this)">
+                    ${sub.subcategory}
+                </button>
+            </li>
+        `;
+    });
+
+    html += `
+        </ul>
+
+        <!-- 분석 유형 탭 -->
+        <ul class="nav nav-tabs mb-3" id="analysisTypeTabs-${tabId}">
+            <li class="nav-item">
+                <button class="nav-link active" onclick="switchAnalysisType('overview', this)" data-i18n="strategic_field.tab_overview">
+                    <i class="fas fa-chart-pie"></i> 개요
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" onclick="switchAnalysisType('ranking', this)" data-i18n="strategic_field.tab_ranking">
+                    <i class="fas fa-trophy"></i> 연구자 랭킹
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" onclick="switchAnalysisType('modules', this)" data-i18n="strategic_field.tab_modules">
+                    <i class="fas fa-microscope"></i> 분석 모듈
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" onclick="switchAnalysisType('strategy', this)" data-i18n="strategic_field.tab_strategy">
+                    <i class="fas fa-chess-knight"></i> 연구 전략
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" onclick="switchAnalysisType('collaborators', this)" data-i18n="strategic_field.tab_collaborators">
+                    <i class="fas fa-handshake"></i> 공동연구자
+                </button>
+            </li>
+        </ul>
+
+        <!-- 분석 결과 영역 -->
+        <div id="analysisResult-${tabId}">
+            <div class="text-center text-muted py-5">
+                <i class="fas fa-chart-bar fa-3x mb-3"></i>
+                <p data-i18n="strategic_field.run_analysis_msg">분석을 실행하면 결과가 여기에 표시됩니다.</p>
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
+
+    // 첫 번째 하위 분야 선택
+    if (subcategories.length > 0) {
+        currentSubcategory = subcategories[0].subcategory;
+    }
+
+    // i18n 적용
+    if (typeof i18n !== 'undefined') {
+        i18n.translatePage();
+    }
+}
+
+// 연도 프리셋 설정
+function setSfYearPreset(preset, btn) {
+    const tabId = categoryMap[currentCategory];
+    document.querySelectorAll(`#sfYearPresetGroup-${tabId} button`).forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const latestYear = sfMaxDataYear || (new Date().getFullYear() - 1);
+
+    if (preset === 'all') {
+        sfYearFrom = null;
+        sfYearTo = null;
+        document.getElementById(`sfYearDisplay-${tabId}`).style.display = 'none';
+    } else if (preset === '3y') {
+        sfYearFrom = latestYear - 2;
+        sfYearTo = latestYear;
+    } else if (preset === '5y') {
+        sfYearFrom = latestYear - 4;
+        sfYearTo = latestYear;
+    }
+
+    if (sfYearFrom && sfYearTo) {
+        document.getElementById(`sfYearDisplay-${tabId}`).textContent = `${sfYearFrom} - ${sfYearTo}`;
+        document.getElementById(`sfYearDisplay-${tabId}`).style.display = 'inline';
+    }
+
+    document.getElementById(`sfYearFrom-${tabId}`).value = sfYearFrom || '';
+    document.getElementById(`sfYearTo-${tabId}`).value = sfYearTo || '';
+}
+
+// 사용자 지정 연도 적용
+function applySfCustomYear(tabId) {
+    const from = parseInt(document.getElementById(`sfYearFrom-${tabId}`).value);
+    const to = parseInt(document.getElementById(`sfYearTo-${tabId}`).value);
+
+    if (from && to && from <= to) {
+        sfYearFrom = from;
+        sfYearTo = to;
+        document.getElementById(`sfYearDisplay-${tabId}`).textContent = `${from} - ${to}`;
+        document.getElementById(`sfYearDisplay-${tabId}`).style.display = 'inline';
+        document.querySelectorAll(`#sfYearPresetGroup-${tabId} button`).forEach(b => b.classList.remove('active'));
+    }
+}
+
+// 하위 분야 선택
+function selectSubcategory(subcategory, btn) {
+    currentSubcategory = subcategory;
+    const tabId = categoryMap[currentCategory];
+    document.querySelectorAll(`#subcategoryTabs-${tabId} button`).forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    // 현재 선택된 분석 유형 유지하면서 해당 분야 데이터 로드
+    const key = `${currentCategory}_${subcategory}`;
+
+    // overview 데이터가 없으면 먼저 기본 분석 실행
+    if (!analysisResults[key]) {
+        runAnalysisKeepType();
+        return;
+    }
+
+    // 현재 선택된 분석 유형에 따라 적절한 내용 표시
+    loadCurrentAnalysisType();
+}
+
+// 현재 분석 유형 유지하면서 분석 실행
+function runAnalysisKeepType() {
+    if (!currentSubcategory) {
+        alert('집중분석 분야를 선택하세요.');
+        return;
+    }
+
+    const tabId = categoryMap[currentCategory];
+    const resultDiv = document.getElementById(`analysisResult-${tabId}`);
+    resultDiv.innerHTML = '<div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i></div>';
+
+    let url = `/api/strategic_field_analysis?category=${encodeURIComponent(currentCategory)}&subcategory=${encodeURIComponent(currentSubcategory)}`;
+    if (sfYearFrom && sfYearTo) {
+        url += `&year_from=${sfYearFrom}&year_to=${sfYearTo}`;
+    }
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            const key = `${currentCategory}_${currentSubcategory}`;
+            analysisResults[key] = data;
+            currentResearcherIds = data.researcher_ids || [];
+
+            // 캐시 초기화
+            rankingResults[key] = null;
+            modulesResults[key] = null;
+            strategyResults[key] = null;
+            collaboratorsResults[key] = null;
+
+            // 현재 분석 유형에 따라 렌더링
+            loadCurrentAnalysisType();
+        })
+        .catch(err => {
+            resultDiv.innerHTML = `<div class="alert alert-danger">분석 오류: ${err.message}</div>`;
+        });
+}
+
+// 현재 선택된 분석 유형에 따라 내용 로드
+function loadCurrentAnalysisType() {
+    if (currentAnalysisType === 'overview') {
+        const key = `${currentCategory}_${currentSubcategory}`;
+        if (analysisResults[key]) {
+            renderAnalysisResult(analysisResults[key]);
+        }
+    } else if (currentAnalysisType === 'ranking') {
+        loadRankingAnalysis();
+    } else if (currentAnalysisType === 'modules') {
+        loadModulesAnalysis();
+    } else if (currentAnalysisType === 'strategy') {
+        loadStrategyAnalysis();
+    } else if (currentAnalysisType === 'collaborators') {
+        loadCollaboratorsAnalysis();
+    }
+}
+
+// 분석 유형 전환
+function switchAnalysisType(type, btn) {
+    currentAnalysisType = type;
+    const tabId = categoryMap[currentCategory];
+
+    // 탭 버튼 활성화 상태 변경
+    document.querySelectorAll(`#analysisTypeTabs-${tabId} button`).forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const key = `${currentCategory}_${currentSubcategory}`;
+
+    // overview 탭은 기존 결과 표시
+    if (type === 'overview') {
+        if (analysisResults[key]) {
+            renderAnalysisResult(analysisResults[key]);
+        }
+        return;
+    }
+
+    // 연구자 ID가 없으면 먼저 분석 실행
+    if (!currentResearcherIds || currentResearcherIds.length === 0) {
+        runAnalysis();
+        return;
+    }
+
+    // 각 분석 유형별 로딩 및 렌더링
+    if (type === 'ranking') {
+        loadRankingAnalysis();
+    } else if (type === 'modules') {
+        loadModulesAnalysis();
+    } else if (type === 'strategy') {
+        loadStrategyAnalysis();
+    } else if (type === 'collaborators') {
+        loadCollaboratorsAnalysis();
+    }
+}
+
+// 분석 실행
+function runAnalysis() {
+    if (!currentSubcategory) {
+        alert('집중분석 분야를 선택하세요.');
+        return;
+    }
+
+    const tabId = categoryMap[currentCategory];
+    const resultDiv = document.getElementById(`analysisResult-${tabId}`);
+    resultDiv.innerHTML = '<div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i></div>';
+
+    // 분석 유형 탭 초기화 (overview 활성화)
+    currentAnalysisType = 'overview';
+    document.querySelectorAll(`#analysisTypeTabs-${tabId} button`).forEach((b, idx) => {
+        b.classList.toggle('active', idx === 0);
+    });
+
+    let url = `/api/strategic_field_analysis?category=${encodeURIComponent(currentCategory)}&subcategory=${encodeURIComponent(currentSubcategory)}`;
+    if (sfYearFrom && sfYearTo) {
+        url += `&year_from=${sfYearFrom}&year_to=${sfYearTo}`;
+    }
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            const key = `${currentCategory}_${currentSubcategory}`;
+            analysisResults[key] = data;
+
+            // 연구자 ID 저장
+            currentResearcherIds = data.researcher_ids || [];
+
+            // 캐시 초기화
+            rankingResults[key] = null;
+            modulesResults[key] = null;
+            strategyResults[key] = null;
+            collaboratorsResults[key] = null;
+
+            renderAnalysisResult(data);
+        })
+        .catch(err => {
+            resultDiv.innerHTML = `<div class="alert alert-danger">분석 오류: ${err.message}</div>`;
+        });
+}
+
+// 분석 결과 렌더링
+function renderAnalysisResult(data) {
+    const tabId = categoryMap[currentCategory];
+    const resultDiv = document.getElementById(`analysisResult-${tabId}`);
+
+    let periodLabel = sfYearFrom && sfYearTo ? `${sfYearFrom}-${sfYearTo}` : '전체 기간';
+
+    let html = `
+        <!-- 핵심 지표 카드 -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card text-center bg-primary text-white">
+                    <div class="card-body">
+                        <h6 data-i18n="strategic_field.total_papers">논문수</h6>
+                        <h2>${data.total_papers.toLocaleString()}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center bg-success text-white">
+                    <div class="card-body">
+                        <h6 data-i18n="strategic_field.total_citations">인용수</h6>
+                        <h2>${data.total_citations.toLocaleString()}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center bg-info text-white">
+                    <div class="card-body">
+                        <h6 data-i18n="strategic_field.avg_fwci">평균 FWCI</h6>
+                        <h2>${data.avg_fwci}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center bg-warning text-dark">
+                    <div class="card-body">
+                        <h6 data-i18n="strategic_field.researcher_count">연구자 수</h6>
+                        <h2>${data.researcher_count.toLocaleString()}</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 사용된 키워드 표시 -->
+        <div class="mb-3">
+            <small class="text-muted"><i class="fas fa-tags"></i> <span data-i18n="strategic_field.keywords_used">검색 키워드</span>:
+                ${data.keywords_used ? data.keywords_used.map(k => `<span class="badge bg-secondary">${k}</span>`).join(' ') : '-'}
+            </small>
+        </div>
+
+        <div class="row">
+            <!-- 주요 연구자 -->
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-users"></i> <span data-i18n="strategic_field.top_researchers">주요 연구자</span></span>
+                        <button class="btn btn-sm btn-outline-light" onclick="downloadResearchersCSV()">
+                            <i class="fas fa-download"></i> CSV
+                        </button>
+                    </div>
+                    <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>#</th>
+                                    <th data-i18n="strategic_field.researcher_name">연구자명</th>
+                                    <th>ORCID</th>
+                                    <th data-i18n="strategic_field.papers">논문</th>
+                                    <th data-i18n="strategic_field.citations">인용</th>
+                                    <th>FWCI</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+    `;
+
+    if (data.researchers && data.researchers.length > 0) {
+        data.researchers.slice(0, 20).forEach((r, idx) => {
+            const orcidLink = r.orcid
+                ? `<a href="https://orcid.org/${r.orcid}" target="_blank" title="${r.orcid}"><i class="fab fa-orcid text-success"></i></a>`
+                : '<span class="text-muted">-</span>';
+            html += `
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td>${r.name}</td>
+                    <td>${orcidLink}</td>
+                    <td>${r.paper_count}</td>
+                    <td>${r.citations.toLocaleString()}</td>
+                    <td>${r.avg_fwci}</td>
+                </tr>
+            `;
+        });
+    } else {
+        html += `<tr><td colspan="6" class="text-center text-muted">데이터 없음</td></tr>`;
+    }
+
+    html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 연도별 추이 차트 -->
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-chart-line"></i> <span data-i18n="strategic_field.yearly_trend">연도별 추이</span></span>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-light active" onclick="setChartMode('papers', this)">논문수</button>
+                            <button class="btn btn-outline-light" onclick="setChartMode('fwci', this)">FWCI</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="trendChart-${tabId}" height="300"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    resultDiv.innerHTML = html;
+
+    // 차트 렌더링
+    renderTrendChart(data.yearly_trend, tabId, 'papers');
+
+    // i18n 적용
+    if (typeof i18n !== 'undefined') {
+        i18n.translatePage();
+    }
+}
+
+// 차트 렌더링
+function renderTrendChart(trendData, tabId, mode) {
+    const ctx = document.getElementById(`trendChart-${tabId}`);
+    if (!ctx) return;
+
+    if (trendChart) {
+        trendChart.destroy();
+    }
+
+    const labels = trendData.map(d => d.year);
+    const values = mode === 'papers' ? trendData.map(d => d.paper_count) : trendData.map(d => d.avg_fwci);
+    const label = mode === 'papers' ? '논문수' : '평균 FWCI';
+    const color = mode === 'papers' ? 'rgba(54, 162, 235, 0.8)' : 'rgba(255, 99, 132, 0.8)';
+
+    trendChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: label,
+                data: values,
+                backgroundColor: color,
+                borderColor: color.replace('0.8', '1'),
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+}
+
+// 차트 모드 변경
+let currentChartMode = 'papers';
+function setChartMode(mode, btn) {
+    currentChartMode = mode;
+    btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const key = `${currentCategory}_${currentSubcategory}`;
+    if (analysisResults[key]) {
+        const tabId = categoryMap[currentCategory];
+        renderTrendChart(analysisResults[key].yearly_trend, tabId, mode);
+    }
+}
+
+// 키워드 추가 모달 열기
+function openAddKeywordModal(configId) {
+    document.getElementById('modalConfigId').value = configId;
+    document.getElementById('newKeywordInput').value = '';
+    document.getElementById('translationResult').style.display = 'none';
+
+    // 추천 키워드 로딩
+    const suggestionsDiv = document.getElementById('keywordSuggestions');
+    suggestionsDiv.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin"></i> 추천 키워드 분석 중...</span>';
+
+    new bootstrap.Modal(document.getElementById('addKeywordModal')).show();
+
+    // 추천 키워드 API 호출
+    fetch(`/api/strategic_field_keyword_suggestions?category=${encodeURIComponent(currentCategory)}&subcategory=${encodeURIComponent(currentSubcategory)}&limit=15`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.suggestions && data.suggestions.length > 0) {
+                let html = '';
+                data.suggestions.forEach(s => {
+                    const badgeClass = s.type === 'phrase' ? 'bg-primary' : 'bg-success';
+                    const icon = s.type === 'phrase' ? 'fa-link' : 'fa-tag';
+                    html += `
+                        <span class="badge ${badgeClass}" style="cursor: pointer; font-size: 0.9rem;"
+                              onclick="selectSuggestedKeyword('${s.keyword}')" title="논문 ${s.count}건에서 발견">
+                            <i class="fas ${icon}"></i> ${s.keyword} <small>(${s.count})</small>
+                        </span>
+                    `;
+                });
+                html += `<br><small class="text-muted w-100 mt-2">분석된 논문: ${data.total_papers_analyzed}건</small>`;
+                suggestionsDiv.innerHTML = html;
+            } else {
+                suggestionsDiv.innerHTML = '<span class="text-muted">추천할 키워드가 없습니다. 먼저 기본 키워드로 분석을 실행하세요.</span>';
+            }
+        })
+        .catch(err => {
+            suggestionsDiv.innerHTML = '<span class="text-danger">추천 키워드 로딩 실패</span>';
+        });
+}
+
+// 추천 키워드 선택
+function selectSuggestedKeyword(keyword) {
+    document.getElementById('newKeywordInput').value = keyword;
+    document.getElementById('translationResult').style.display = 'none';
+}
+
+// 키워드 번역
+function translateKeyword() {
+    const keyword = document.getElementById('newKeywordInput').value.trim();
+    if (!keyword) return;
+
+    fetch('/api/translate_keyword', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: keyword })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('translatedKeyword').textContent = data.translated;
+            document.getElementById('translationResult').style.display = 'block';
+        } else {
+            alert('번역 오류: ' + data.error);
+        }
+    });
+}
+
+// 키워드 추가 확정
+function confirmAddKeyword() {
+    const configId = document.getElementById('modalConfigId').value;
+    let keyword = document.getElementById('newKeywordInput').value.trim();
+
+    // 번역된 키워드가 있으면 사용
+    const translatedEl = document.getElementById('translatedKeyword');
+    if (translatedEl.textContent && document.getElementById('translationResult').style.display !== 'none') {
+        keyword = translatedEl.textContent;
+    }
+
+    if (!keyword) {
+        alert('키워드를 입력하세요.');
+        return;
+    }
+
+    // 현재 키워드 목록 찾기
+    const sub = fieldConfig[currentCategory].find(s => s.id == configId);
+    if (!sub) return;
+
+    const newKeywords = [...sub.keywords, keyword.toLowerCase()];
+
+    fetch('/api/strategic_field_config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'update_keywords',
+            id: configId,
+            keywords: newKeywords
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('addKeywordModal')).hide();
+            loadConfig();
+        }
+    });
+}
+
+// 키워드 삭제
+function removeKeyword(configId, keywordIndex) {
+    const sub = fieldConfig[currentCategory].find(s => s.id == configId);
+    if (!sub) return;
+
+    const newKeywords = sub.keywords.filter((_, idx) => idx !== keywordIndex);
+
+    fetch('/api/strategic_field_config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'update_keywords',
+            id: configId,
+            keywords: newKeywords
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            loadConfig();
+        }
+    });
+}
+
+// 분야 추가 모달 열기
+function openAddSubcategoryModal() {
+    document.getElementById('newSubcategoryName').value = '';
+    document.getElementById('newSubcategoryKeywords').value = '';
+    new bootstrap.Modal(document.getElementById('addSubcategoryModal')).show();
+}
+
+// 분야 추가 확정
+function confirmAddSubcategory() {
+    const name = document.getElementById('newSubcategoryName').value.trim();
+    const keywordsStr = document.getElementById('newSubcategoryKeywords').value.trim();
+
+    if (!name) {
+        alert('분야명을 입력하세요.');
+        return;
+    }
+
+    const keywords = keywordsStr ? keywordsStr.split(',').map(k => k.trim().toLowerCase()).filter(k => k) : [];
+
+    fetch('/api/strategic_field_config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'add_subcategory',
+            category: currentCategory,
+            subcategory: name,
+            keywords: keywords
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('addSubcategoryModal')).hide();
+            loadConfig();
+        }
+    });
+}
+
+// 분야 삭제
+function deleteSubcategory(configId, name) {
+    if (!confirm(`'${name}' 분야를 삭제하시겠습니까?`)) return;
+
+    fetch('/api/strategic_field_config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'delete_subcategory',
+            id: configId
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            loadConfig();
+        }
+    });
+}
+
+// 랭킹 분석 로드
+function loadRankingAnalysis() {
+    const tabId = categoryMap[currentCategory];
+    const resultDiv = document.getElementById(`analysisResult-${tabId}`);
+    const key = `${currentCategory}_${currentSubcategory}`;
+
+    // 캐시된 결과 확인
+    if (rankingResults[key]) {
+        renderRankingResult(rankingResults[key]);
+        return;
+    }
+
+    resultDiv.innerHTML = '<div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">연구자 랭킹 분석 중...</p></div>';
+
+    const idsParam = currentResearcherIds.join(',');
+    fetch(`/api/strategic_field_ranking?researcher_ids=${encodeURIComponent(idsParam)}`)
+        .then(r => r.json())
+        .then(data => {
+            rankingResults[key] = data;
+            renderRankingResult(data);
+        })
+        .catch(err => {
+            resultDiv.innerHTML = `<div class="alert alert-danger">랭킹 분석 오류: ${err.message}</div>`;
+        });
+}
+
+// 랭킹 결과 렌더링
+function renderRankingResult(data) {
+    const tabId = categoryMap[currentCategory];
+    const resultDiv = document.getElementById(`analysisResult-${tabId}`);
+
+    let html = `
+        <div class="card">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-trophy"></i> 연구자 랭킹 (${data.count}명)</span>
+                <button class="btn btn-sm btn-outline-light" onclick="downloadRankingCSV()">
+                    <i class="fas fa-download"></i> CSV
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>순위</th>
+                                <th>연구자명</th>
+                                <th>ORCID</th>
+                                <th>논문수</th>
+                                <th>인용수</th>
+                                <th>FWCI</th>
+                                <th>h-index</th>
+                                <th>총점</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+    `;
+
+    if (data.researchers && data.researchers.length > 0) {
+        data.researchers.forEach(r => {
+            const orcidLink = r.orcid
+                ? `<a href="https://orcid.org/${r.orcid}" target="_blank" title="${r.orcid}"><i class="fab fa-orcid text-success"></i></a>`
+                : '<span class="text-muted">-</span>';
+            html += `
+                <tr>
+                    <td><span class="badge ${r.rank <= 3 ? 'bg-warning text-dark' : 'bg-secondary'}">${r.rank}</span></td>
+                    <td>${r.name}</td>
+                    <td>${orcidLink}</td>
+                    <td>${r.scholarly_output}</td>
+                    <td>${r.citations.toLocaleString()}</td>
+                    <td>${r.fwci}</td>
+                    <td>${r.h_index}</td>
+                    <td><strong>${r.score_total.toFixed(1)}</strong></td>
+                </tr>
+            `;
+        });
+    } else {
+        html += '<tr><td colspan="8" class="text-center text-muted">데이터 없음</td></tr>';
+    }
+
+    html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+
+    resultDiv.innerHTML = html;
+}
+
+// 모듈 분석 로드
+let currentModuleType = 'potential';
+function loadModulesAnalysis(moduleType) {
+    if (moduleType) currentModuleType = moduleType;
+
+    const tabId = categoryMap[currentCategory];
+    const resultDiv = document.getElementById(`analysisResult-${tabId}`);
+    const key = `${currentCategory}_${currentSubcategory}_${currentModuleType}`;
+
+    // 캐시된 결과 확인
+    if (modulesResults[key]) {
+        renderModulesResult(modulesResults[key], currentModuleType);
+        return;
+    }
+
+    resultDiv.innerHTML = '<div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">분석 모듈 로드 중...</p></div>';
+
+    const idsParam = currentResearcherIds.join(',');
+    fetch(`/api/strategic_field_modules?researcher_ids=${encodeURIComponent(idsParam)}&module_type=${currentModuleType}`)
+        .then(r => r.json())
+        .then(data => {
+            modulesResults[key] = data;
+            renderModulesResult(data, currentModuleType);
+        })
+        .catch(err => {
+            resultDiv.innerHTML = `<div class="alert alert-danger">모듈 분석 오류: ${err.message}</div>`;
+        });
+}
+
+// 모듈 결과 렌더링
+function renderModulesResult(data, moduleType) {
+    const tabId = categoryMap[currentCategory];
+    const resultDiv = document.getElementById(`analysisResult-${tabId}`);
+
+    const moduleNames = {
+        'potential': '잠재력 연구자',
+        'citation': '고피인용 연구자',
+        'collaboration': '국제협력 연구자'
+    };
+
+    let html = `
+        <!-- 모듈 선택 버튼 -->
+        <div class="mb-3">
+            <div class="btn-group">
+                <button class="btn ${moduleType === 'potential' ? 'btn-primary' : 'btn-outline-primary'}" onclick="loadModulesAnalysis('potential')">
+                    <i class="fas fa-rocket"></i> 잠재력
+                </button>
+                <button class="btn ${moduleType === 'citation' ? 'btn-primary' : 'btn-outline-primary'}" onclick="loadModulesAnalysis('citation')">
+                    <i class="fas fa-quote-right"></i> 고피인용
+                </button>
+                <button class="btn ${moduleType === 'collaboration' ? 'btn-primary' : 'btn-outline-primary'}" onclick="loadModulesAnalysis('collaboration')">
+                    <i class="fas fa-globe"></i> 국제협력
+                </button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-microscope"></i> ${moduleNames[moduleType]} (${data.count}명)</span>
+                <button class="btn btn-sm btn-outline-light" onclick="downloadModulesCSV('${moduleType}')">
+                    <i class="fas fa-download"></i> CSV
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>#</th>
+                                <th>연구자명</th>
+                                <th>논문수</th>
+                                <th>인용수</th>
+                                <th>FWCI</th>
+                                <th>h-index</th>
+    `;
+
+    if (moduleType === 'potential') {
+        html += '<th>경력(년)</th>';
+    } else if (moduleType === 'citation') {
+        html += '<th>Top 10%</th>';
+    } else {
+        html += '<th>국제협력</th><th>협력비율</th><th>협력FWCI</th>';
+    }
+
+    html += `
+                            </tr>
+                        </thead>
+                        <tbody>
+    `;
+
+    if (data.researchers && data.researchers.length > 0) {
+        data.researchers.forEach((r, idx) => {
+            html += `
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td>${r.name}</td>
+                    <td>${r.scholarly_output}</td>
+                    <td>${r.citations.toLocaleString()}</td>
+                    <td>${r.fwci}</td>
+                    <td>${r.h_index}</td>
+            `;
+
+            if (moduleType === 'potential') {
+                html += `<td>${r.career_years}년</td>`;
+            } else if (moduleType === 'citation') {
+                html += `<td>${r.top_10_pct || 0}</td>`;
+            } else {
+                html += `<td>${r.intl_collab_count || 0}</td>`;
+                html += `<td>${r.intl_collab_ratio || 0}%</td>`;
+                html += `<td>${r.intl_collab_fwci || 0}</td>`;
+            }
+
+            html += '</tr>';
+        });
+    } else {
+        const colSpan = moduleType === 'collaboration' ? 9 : 7;
+        html += `<tr><td colspan="${colSpan}" class="text-center text-muted">데이터 없음</td></tr>`;
+    }
+
+    html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+
+    resultDiv.innerHTML = html;
+}
+
+// 전략 분석 로드
+let currentStrategyType = 'trajectory';
+function loadStrategyAnalysis(strategyType) {
+    if (strategyType) currentStrategyType = strategyType;
+
+    const tabId = categoryMap[currentCategory];
+    const resultDiv = document.getElementById(`analysisResult-${tabId}`);
+    const key = `${currentCategory}_${currentSubcategory}_${currentStrategyType}`;
+
+    // 캐시된 결과 확인
+    if (strategyResults[key]) {
+        renderStrategyResult(strategyResults[key], currentStrategyType);
+        return;
+    }
+
+    resultDiv.innerHTML = '<div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">전략 분석 로드 중...</p></div>';
+
+    const idsParam = currentResearcherIds.join(',');
+    fetch(`/api/strategic_field_strategy?researcher_ids=${encodeURIComponent(idsParam)}&strategy_type=${currentStrategyType}`)
+        .then(r => r.json())
+        .then(data => {
+            strategyResults[key] = data;
+            renderStrategyResult(data, currentStrategyType);
+        })
+        .catch(err => {
+            resultDiv.innerHTML = `<div class="alert alert-danger">전략 분석 오류: ${err.message}</div>`;
+        });
+}
+
+// 전략 결과 렌더링
+function renderStrategyResult(data, strategyType) {
+    const tabId = categoryMap[currentCategory];
+    const resultDiv = document.getElementById(`analysisResult-${tabId}`);
+
+    const strategyNames = {
+        'trajectory': '성장궤적 분석',
+        'societal': '사회적 기여도',
+        'field': '분야전략 분석'
+    };
+
+    let html = `
+        <!-- 전략 유형 선택 버튼 -->
+        <div class="mb-3">
+            <div class="btn-group">
+                <button class="btn ${strategyType === 'trajectory' ? 'btn-success' : 'btn-outline-success'}" onclick="loadStrategyAnalysis('trajectory')">
+                    <i class="fas fa-chart-line"></i> 성장궤적
+                </button>
+                <button class="btn ${strategyType === 'societal' ? 'btn-success' : 'btn-outline-success'}" onclick="loadStrategyAnalysis('societal')">
+                    <i class="fas fa-hands-helping"></i> 사회적 기여
+                </button>
+                <button class="btn ${strategyType === 'field' ? 'btn-success' : 'btn-outline-success'}" onclick="loadStrategyAnalysis('field')">
+                    <i class="fas fa-bullseye"></i> 분야전략
+                </button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-chess-knight"></i> ${strategyNames[strategyType]} (${data.count}명)</span>
+                <button class="btn btn-sm btn-outline-light" onclick="downloadStrategyCSV('${strategyType}')">
+                    <i class="fas fa-download"></i> CSV
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>#</th>
+                                <th>연구자명</th>
+                                <th>논문수</th>
+                                <th>인용수</th>
+                                <th>FWCI</th>
+                                <th>h-index</th>
+    `;
+
+    if (strategyType === 'trajectory') {
+        html += '<th>경력(년)</th>';
+    } else if (strategyType === 'societal') {
+        html += '<th>SDG</th><th>OA</th>';
+    } else {
+        html += '<th>Top저널%</th>';
+    }
+
+    html += `
+                            </tr>
+                        </thead>
+                        <tbody>
+    `;
+
+    if (data.researchers && data.researchers.length > 0) {
+        data.researchers.forEach((r, idx) => {
+            html += `
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td>${r.name}</td>
+                    <td>${r.scholarly_output}</td>
+                    <td>${r.citations.toLocaleString()}</td>
+                    <td>${r.fwci}</td>
+                    <td>${r.h_index}</td>
+            `;
+
+            if (strategyType === 'trajectory') {
+                html += `<td>${r.career_years}년</td>`;
+            } else if (strategyType === 'societal') {
+                const sdgBadge = r.has_sdg ? '<span class="badge bg-success">O</span>' : '<span class="badge bg-secondary">X</span>';
+                const oaBadge = r.has_oa ? '<span class="badge bg-success">O</span>' : '<span class="badge bg-secondary">X</span>';
+                html += `<td>${sdgBadge}</td><td>${oaBadge}</td>`;
+            } else {
+                html += `<td><strong>${r.top_journal_pct}%</strong></td>`;
+            }
+
+            html += '</tr>';
+        });
+    } else {
+        const colSpan = strategyType === 'societal' ? 8 : 7;
+        html += `<tr><td colspan="${colSpan}" class="text-center text-muted">데이터 없음</td></tr>`;
+    }
+
+    html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+
+    resultDiv.innerHTML = html;
+}
+
+// 랭킹 CSV 다운로드
+function downloadRankingCSV() {
+    const key = `${currentCategory}_${currentSubcategory}`;
+    const data = rankingResults[key];
+    if (!data || !data.researchers) return;
+
+    let csv = '\uFEFF';
+    csv += '순위,연구자명,ORCID,Scopus ID,논문수,인용수,FWCI,h-index,총점\n';
+
+    data.researchers.forEach(r => {
+        csv += `${r.rank},"${r.name}",${r.orcid || ''},${r.scopus_author_id},${r.scholarly_output},${r.citations},${r.fwci},${r.h_index},${r.score_total.toFixed(1)}\n`;
+    });
+
+    const filename = `연구자랭킹_${currentCategory}_${currentSubcategory}.csv`;
+    downloadCSVFile(csv, filename);
+}
+
+// 모듈 CSV 다운로드
+function downloadModulesCSV(moduleType) {
+    const key = `${currentCategory}_${currentSubcategory}_${moduleType}`;
+    const data = modulesResults[key];
+    if (!data || !data.researchers) return;
+
+    const moduleNames = { 'potential': '잠재력', 'citation': '고피인용', 'collaboration': '국제협력' };
+
+    let csv = '\uFEFF';
+
+    if (moduleType === 'potential') {
+        csv += '순위,연구자명,Scopus ID,논문수,인용수,FWCI,h-index,경력(년)\n';
+        data.researchers.forEach((r, idx) => {
+            csv += `${idx + 1},"${r.name}",${r.scopus_author_id},${r.scholarly_output},${r.citations},${r.fwci},${r.h_index},${r.career_years}\n`;
+        });
+    } else if (moduleType === 'citation') {
+        csv += '순위,연구자명,Scopus ID,논문수,인용수,FWCI,h-index,Top 10%\n';
+        data.researchers.forEach((r, idx) => {
+            csv += `${idx + 1},"${r.name}",${r.scopus_author_id},${r.scholarly_output},${r.citations},${r.fwci},${r.h_index},${r.top_10_pct || 0}\n`;
+        });
+    } else {
+        csv += '순위,연구자명,Scopus ID,논문수,인용수,FWCI,h-index,국제협력수,협력비율(%),협력FWCI\n';
+        data.researchers.forEach((r, idx) => {
+            csv += `${idx + 1},"${r.name}",${r.scopus_author_id},${r.scholarly_output},${r.citations},${r.fwci},${r.h_index},${r.intl_collab_count || 0},${r.intl_collab_ratio || 0},${r.intl_collab_fwci || 0}\n`;
+        });
+    }
+
+    const filename = `분석모듈_${moduleNames[moduleType]}_${currentCategory}_${currentSubcategory}.csv`;
+    downloadCSVFile(csv, filename);
+}
+
+// 전략 CSV 다운로드
+function downloadStrategyCSV(strategyType) {
+    const key = `${currentCategory}_${currentSubcategory}_${strategyType}`;
+    const data = strategyResults[key];
+    if (!data || !data.researchers) return;
+
+    const strategyNames = { 'trajectory': '성장궤적', 'societal': '사회적기여', 'field': '분야전략' };
+
+    let csv = '\uFEFF';
+
+    if (strategyType === 'trajectory') {
+        csv += '순위,연구자명,Scopus ID,논문수,인용수,FWCI,h-index,경력(년)\n';
+        data.researchers.forEach((r, idx) => {
+            csv += `${idx + 1},"${r.name}",${r.scopus_author_id},${r.scholarly_output},${r.citations},${r.fwci},${r.h_index},${r.career_years}\n`;
+        });
+    } else if (strategyType === 'societal') {
+        csv += '순위,연구자명,Scopus ID,논문수,인용수,FWCI,h-index,SDG,OA\n';
+        data.researchers.forEach((r, idx) => {
+            csv += `${idx + 1},"${r.name}",${r.scopus_author_id},${r.scholarly_output},${r.citations},${r.fwci},${r.h_index},${r.has_sdg ? 'O' : 'X'},${r.has_oa ? 'O' : 'X'}\n`;
+        });
+    } else {
+        csv += '순위,연구자명,Scopus ID,논문수,인용수,FWCI,h-index,Top저널%\n';
+        data.researchers.forEach((r, idx) => {
+            csv += `${idx + 1},"${r.name}",${r.scopus_author_id},${r.scholarly_output},${r.citations},${r.fwci},${r.h_index},${r.top_journal_pct}\n`;
+        });
+    }
+
+    const filename = `연구전략_${strategyNames[strategyType]}_${currentCategory}_${currentSubcategory}.csv`;
+    downloadCSVFile(csv, filename);
+}
+
+// CSV 파일 다운로드 헬퍼
+function downloadCSVFile(csv, filename) {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+}
+
+// 공동연구자 분석 로드
+function loadCollaboratorsAnalysis() {
+    const tabId = categoryMap[currentCategory];
+    const resultDiv = document.getElementById(`analysisResult-${tabId}`);
+    const key = `${currentCategory}_${currentSubcategory}`;
+
+    // 캐시된 결과 확인
+    if (collaboratorsResults[key]) {
+        renderCollaboratorsResult(collaboratorsResults[key]);
+        return;
+    }
+
+    resultDiv.innerHTML = '<div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">공동연구자 분석 로드 중...</p></div>';
+
+    let url = `/api/strategic_field_collaborators?category=${encodeURIComponent(currentCategory)}&subcategory=${encodeURIComponent(currentSubcategory)}`;
+    if (sfYearFrom && sfYearTo) {
+        url += `&year_from=${sfYearFrom}&year_to=${sfYearTo}`;
+    }
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            collaboratorsResults[key] = data;
+            renderCollaboratorsResult(data);
+        })
+        .catch(err => {
+            resultDiv.innerHTML = `<div class="alert alert-danger">공동연구자 분석 오류: ${err.message}</div>`;
+        });
+}
+
+// 공동연구자 결과 렌더링
+function renderCollaboratorsResult(data) {
+    const tabId = categoryMap[currentCategory];
+    const resultDiv = document.getElementById(`analysisResult-${tabId}`);
+
+    // 정렬 아이콘 생성 함수
+    function sortIcon(key) {
+        if (collaboratorsSortKey === key) {
+            return collaboratorsSortAsc ? ' ▲' : ' ▼';
+        }
+        return '';
+    }
+
+    // 정렬 가능한 헤더 생성
+    function sortableHeader(label, key) {
+        return `<th style="cursor:pointer;user-select:none;white-space:nowrap;" onclick="sortCollaborators('${key}')">${label}<span class="text-muted">${sortIcon(key)}</span></th>`;
+    }
+
+    // 데이터 정렬
+    let sortedData = [];
+    if (data.collaborators && data.collaborators.length > 0) {
+        sortedData = [...data.collaborators].sort((a, b) => {
+            let va = a[collaboratorsSortKey];
+            let vb = b[collaboratorsSortKey];
+            if (va == null) va = '';
+            if (vb == null) vb = '';
+
+            if (typeof va === 'number' && typeof vb === 'number') {
+                return collaboratorsSortAsc ? va - vb : vb - va;
+            }
+            return collaboratorsSortAsc
+                ? String(va).localeCompare(String(vb), 'ko')
+                : String(vb).localeCompare(String(va), 'ko');
+        });
+    }
+
+    let html = `
+        <div class="alert alert-info mb-3">
+            <i class="fas fa-info-circle"></i>
+            <strong>전북대학교 - 고려대학교</strong> 연구자 간의 공동연구 현황입니다.
+            <br><small>선택된 분야의 키워드가 포함된 논문에서 두 기관 연구자가 함께 저자로 참여한 경우를 분석합니다.</small>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-handshake"></i> 공동연구자 (${data.count}건)</span>
+                <button class="btn btn-sm btn-outline-light" onclick="downloadCollaboratorsCSV()">
+                    <i class="fas fa-download"></i> CSV
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>#</th>
+                                ${sortableHeader('전북대 연구자', 'jbnu_name')}
+                                ${sortableHeader('고려대 연구자', 'korea_name')}
+                                ${sortableHeader('공동 논문수', 'pub_count')}
+                                <th>전북대 프로필</th>
+                                <th>고려대 프로필</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+    `;
+
+    if (sortedData.length > 0) {
+        sortedData.forEach((c, idx) => {
+            html += `
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td><strong>${c.jbnu_name}</strong></td>
+                    <td><strong>${c.korea_name}</strong></td>
+                    <td><span class="badge bg-primary">${c.pub_count}편</span></td>
+                    <td><a href="${c.jbnu_profile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+                    <td><a href="${c.korea_profile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+                </tr>
+            `;
+        });
+    } else {
+        html += '<tr><td colspan="6" class="text-center text-muted py-4">공동연구 데이터가 없습니다.</td></tr>';
+    }
+
+    html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+
+    resultDiv.innerHTML = html;
+}
+
+// 공동연구자 정렬
+function sortCollaborators(key) {
+    if (collaboratorsSortKey === key) {
+        collaboratorsSortAsc = !collaboratorsSortAsc;
+    } else {
+        collaboratorsSortKey = key;
+        collaboratorsSortAsc = (key === 'pub_count') ? false : true;  // 논문수는 기본 내림차순
+    }
+
+    const cacheKey = `${currentCategory}_${currentSubcategory}`;
+    if (collaboratorsResults[cacheKey]) {
+        renderCollaboratorsResult(collaboratorsResults[cacheKey]);
+    }
+}
+
+// 공동연구자 CSV 다운로드
+function downloadCollaboratorsCSV() {
+    const key = `${currentCategory}_${currentSubcategory}`;
+    const data = collaboratorsResults[key];
+    if (!data || !data.collaborators) return;
+
+    let csv = '\uFEFF';
+    csv += '순위,전북대 연구자,전북대 Scopus ID,고려대 연구자,고려대 Scopus ID,공동 논문수\n';
+
+    data.collaborators.forEach((c, idx) => {
+        csv += `${idx + 1},"${c.jbnu_name}",${c.jbnu_id},"${c.korea_name}",${c.korea_id},${c.pub_count}\n`;
+    });
+
+    const filename = `공동연구자_${currentCategory}_${currentSubcategory}.csv`;
+    downloadCSVFile(csv, filename);
+}
+
+// CSV 다운로드
+function downloadResearchersCSV() {
+    const key = `${currentCategory}_${currentSubcategory}`;
+    const data = analysisResults[key];
+    if (!data || !data.researchers) return;
+
+    let csv = '\uFEFF';  // BOM for Excel
+    csv += '순위,연구자명,ORCID,Scopus ID,논문수,인용수,평균 FWCI,h-index\n';
+
+    data.researchers.forEach((r, idx) => {
+        csv += `${idx + 1},"${r.name}",${r.orcid || ''},${r.scopus_author_id},${r.paper_count},${r.citations},${r.avg_fwci},${r.h_index || 0}\n`;
+    });
+
+    const period = sfYearFrom && sfYearTo ? `${sfYearFrom}-${sfYearTo}` : '전체';
+    const filename = `연구분야분석_${currentCategory}_${currentSubcategory}_${period}.csv`;
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+}
+</script>
+{% endblock %}

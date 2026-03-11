@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORAP - 기관 선택</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .selection-container {
+            text-align: center;
+            max-width: 800px;
+            width: 100%;
+            padding: 20px;
+        }
+        .selection-header {
+            color: white;
+            margin-bottom: 40px;
+        }
+        .selection-header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .selection-header p {
+            font-size: 1.1rem;
+            opacity: 0.8;
+        }
+        .institution-cards {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .institution-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 40px 30px;
+            width: 300px;
+            text-decoration: none;
+            color: inherit;
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+        }
+        .institution-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            color: inherit;
+            text-decoration: none;
+        }
+        .institution-card .icon {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 2.5rem;
+        }
+        .institution-card.jbnu .icon {
+            background: linear-gradient(135deg, #1e5631, #2e7d32);
+            color: white;
+        }
+        .institution-card.korea .icon {
+            background: linear-gradient(135deg, #8b0000, #c62828);
+            color: white;
+        }
+        .institution-card h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .institution-card .stats {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        .institution-card .stats span {
+            display: block;
+            margin: 5px 0;
+        }
+        .logout-link {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .logout-link:hover {
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <a href="{{ url_for('logout') }}" class="logout-link">
+        <i class="fas fa-sign-out-alt"></i> 로그아웃
+    </a>
+
+    <div class="selection-container">
+        <div class="selection-header">
+            <h1><i class="fas fa-graduation-cap"></i> ORAP</h1>
+            <p>분석할 기관을 선택하세요</p>
+        </div>
+
+        <div class="institution-cards">
+            <a href="{{ url_for('select_institution_action', institution='jbnu') }}" class="institution-card jbnu">
+                <div class="icon">
+                    <i class="fas fa-university"></i>
+                </div>
+                <h3>전북대학교</h3>
+                <p>Jeonbuk National University</p>
+                <div class="stats">
+                    <span><i class="fas fa-users"></i> 연구자 9,391명</span>
+                    <span><i class="fas fa-file-alt"></i> 논문 24,566건</span>
+                    <span><i class="fas fa-calendar"></i> 2015-2024</span>
+                </div>
+            </a>
+
+            <a href="{{ url_for('select_institution_action', institution='korea') }}" class="institution-card korea">
+                <div class="icon">
+                    <i class="fas fa-university"></i>
+                </div>
+                <h3>고려대학교</h3>
+                <p>Korea University</p>
+                <div class="stats">
+                    <span><i class="fas fa-users"></i> 연구자 26,749명</span>
+                    <span><i class="fas fa-file-alt"></i> 논문 61,541건</span>
+                    <span><i class="fas fa-calendar"></i> 2015-2024</span>
+                </div>
+            </a>
+        </div>
+    </div>
+</body>
+</html>

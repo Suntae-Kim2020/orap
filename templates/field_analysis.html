@@ -78,6 +78,11 @@
                     <i class="fas fa-chart-line"></i> <span data-i18n="field_analysis.trend">연도 추이</span>
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="collaborators-tab" data-bs-toggle="tab" data-bs-target="#collaborators" type="button">
+                    <i class="fas fa-handshake"></i> <span data-i18n="field_analysis.collaborators">공동연구자</span>
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content" id="faTabContent">
@@ -154,6 +159,33 @@
                     </table>
                 </div>
             </div>
+
+            <!-- 공동연구자 탭 -->
+            <div class="tab-pane fade" id="collaborators" role="tabpanel">
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    <span data-i18n="field_analysis.collab_desc">전북대학교와 고려대학교 연구자 간의 공동연구 현황을 보여줍니다.</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <span id="collaboratorsCount" class="badge bg-dark fs-6"></span>
+                        <select class="form-select form-select-sm" id="collaboratorFieldFilter" style="width: 250px;" onchange="renderCollaboratorsTable()">
+                            <option value="" data-i18n="field_analysis.all_fields">전체 분야</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="downloadCollaboratorsCSV()" title="CSV 다운로드">
+                        <i class="fas fa-download"></i> CSV
+                    </button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-dark" id="collaboratorsHeader"></thead>
+                        <tbody id="collaboratorsBody">
+                            <tr><td colspan="10" class="text-center text-muted py-4" data-i18n="field_analysis.select_run_msg">분야를 선택하고 "분석 실행"을 클릭하세요.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -170,11 +202,13 @@ let faYearTo = null;
 let overviewData = [];
 let researchersData = [];
 let trendData = null;        // {years: [], trends: []}
+let collaboratorsData = [];  // 공동연구자 데이터
 let chartMode = 'pub_count';
 
 let sortStates = {
     overview: { key: null, asc: true },
-    researchers: { key: null, asc: true }
+    researchers: { key: null, asc: true },
+    collaborators: { key: null, asc: true }
 };
 
 // ========== 정렬 유틸 ==========
@@ -208,6 +242,7 @@ function handleSort(tbl, key) {
     if (s.key === key) { s.asc = !s.asc; } else { s.key = key; s.asc = true; }
     if (tbl === 'overview') renderOverviewTable();
     else if (tbl === 'researchers') renderResearchersTable();
+    else if (tbl === 'collaborators') renderCollaboratorsTable();
 }
 
 // ========== 분야 목록 로드 ==========
@@ -347,6 +382,7 @@ function runAnalysis() {
     document.getElementById('overviewBody').innerHTML = `<tr><td colspan="12" class="text-center"><i class="fas fa-spinner fa-spin"></i> ${loadingText}</td></tr>`;
     document.getElementById('researchersBody').innerHTML = `<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> ${loadingText}</td></tr>`;
     document.getElementById('trendBody').innerHTML = `<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> ${loadingText}</td></tr>`;
+    document.getElementById('collaboratorsBody').innerHTML = `<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> ${loadingText}</td></tr>`;
 
     // 3개 API 병렬 호출
     fetch(`/api/field_analysis/overview?fields=${fieldsParam}${yearParams}`)
@@ -388,6 +424,22 @@ function runAnalysis() {
         .catch(err => {
             console.error(err);
             document.getElementById('trendBody').innerHTML = `<tr><td colspan="10" class="text-center text-danger">${loadFail}</td></tr>`;
+        });
+
+    // 공동연구자 API 호출
+    const pairsUnit = i18n.t('field_analysis.pairs_unit') || '건';
+    fetch(`/api/field_analysis/collaborators?fields=${fieldsParam}${yearParams}`)
+        .then(r => r.json())
+        .then(data => {
+            collaboratorsData = data.collaborators || [];
+            document.getElementById('collaboratorsCount').textContent = `${data.count}${pairsUnit}`;
+            sortStates.collaborators = { key: null, asc: true };
+            updateCollaboratorFieldFilter();
+            renderCollaboratorsTable();
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('collaboratorsBody').innerHTML = `<tr><td colspan="10" class="text-center text-danger">${loadFail}</td></tr>`;
         });
 }
 
@@ -770,6 +822,79 @@ function downloadTrendCSV() {
     triggerCSVDownload(generateCSV(rows, cols), `${i18n.t('field_analysis.csv_trend')}_${getPeriodLabel()}.csv`);
 }
 
+// ========== 공동연구자 탭 ==========
+function updateCollaboratorFieldFilter() {
+    const select = document.getElementById('collaboratorFieldFilter');
+    const fieldSet = new Set(collaboratorsData.map(c => c.field));
+    let options = `<option value="">${i18n.t('field_analysis.all_fields')}</option>`;
+    selectedFields.forEach(f => {
+        if (fieldSet.has(f)) {
+            options += `<option value="${f}">${f}</option>`;
+        }
+    });
+    select.innerHTML = options;
+}
+
+function renderCollaboratorsTable() {
+    const header = document.getElementById('collaboratorsHeader');
+    const body = document.getElementById('collaboratorsBody');
+    const unit = i18n.t('field_analysis.papers_unit');
+
+    let hdr = '<tr>' + thP('#')
+        + thS('collaborators', i18n.t('field_analysis.jbnu_researcher') || '전북대 연구자', 'jbnu_name')
+        + thS('collaborators', i18n.t('field_analysis.korea_researcher') || '고려대 연구자', 'korea_name')
+        + thS('collaborators', i18n.t('field_analysis.field'), 'field')
+        + thS('collaborators', i18n.t('field_analysis.collab_pubs') || '공동 논문수', 'pub_count')
+        + thP(i18n.t('field_analysis.jbnu_profile') || '전북대 프로필')
+        + thP(i18n.t('field_analysis.korea_profile') || '고려대 프로필')
+        + '</tr>';
+    header.innerHTML = hdr;
+
+    // 분야 필터
+    const filterField = document.getElementById('collaboratorFieldFilter').value;
+    let data = collaboratorsData;
+    if (filterField) {
+        data = collaboratorsData.filter(c => c.field === filterField);
+    }
+
+    const ss = sortStates.collaborators;
+    const sorted = ss.key ? sortByKey(data, ss.key, ss.asc) : data;
+
+    if (sorted.length === 0) {
+        body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">${i18n.t('field_analysis.no_collaborators') || '공동연구 데이터가 없습니다.'}</td></tr>`;
+        return;
+    }
+
+    let html = '';
+    sorted.forEach((c, idx) => {
+        html += `<tr>
+            <td>${idx + 1}</td>
+            <td><strong>${c.jbnu_name}</strong></td>
+            <td><strong>${c.korea_name}</strong></td>
+            <td><span class="badge bg-secondary">${c.field}</span></td>
+            <td><span class="badge bg-primary">${c.pub_count}${unit}</span></td>
+            <td><a href="${c.jbnu_profile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+            <td><a href="${c.korea_profile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+        </tr>`;
+    });
+    body.innerHTML = html;
+}
+
+function downloadCollaboratorsCSV() {
+    if (!collaboratorsData || collaboratorsData.length === 0) { alert(i18n.t('field_analysis.alert_no_download')); return; }
+    const filterField = document.getElementById('collaboratorFieldFilter').value;
+    const data = filterField ? collaboratorsData.filter(c => c.field === filterField) : collaboratorsData;
+    const cols = [
+        {key:'jbnu_name', header: i18n.t('field_analysis.jbnu_researcher') || '전북대 연구자'},
+        {key:'jbnu_id', header: 'JBNU Scopus ID'},
+        {key:'korea_name', header: i18n.t('field_analysis.korea_researcher') || '고려대 연구자'},
+        {key:'korea_id', header: 'Korea Univ Scopus ID'},
+        {key:'field', header: i18n.t('field_analysis.field')},
+        {key:'pub_count', header: i18n.t('field_analysis.collab_pubs') || '공동 논문수'}
+    ];
+    triggerCSVDownload(generateCSV(data, cols), `${i18n.t('field_analysis.csv_collaborators') || '공동연구자'}_${getPeriodLabel()}.csv`);
+}
+
 // ========== 초기화 ==========
 function initPage() {
     loadFieldList();
@@ -793,6 +918,10 @@ function initPage() {
         if (trendData && trendData.trends) {
             renderTrendTable();
             renderTrendChart();
+        }
+        if (collaboratorsData.length > 0) {
+            updateCollaboratorFieldFilter();
+            renderCollaboratorsTable();
         }
     });
 }

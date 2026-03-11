@@ -29,7 +29,8 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('researcher_ranking') }}">
-                <i class="fas fa-graduation-cap"></i> <span data-i18n="nav.brand">JBNU ORAP</span>
+                <i class="fas fa-graduation-cap"></i>
+                <span>{{ session.get('institution_name', 'ORAP') }}</span>
             </a>
             <div class="navbar-nav me-auto">
                 <!-- 숨김 처리: 홈, 분석방관리, 분석, 도움말 메뉴
@@ -55,6 +56,9 @@
                 <a class="nav-link" href="{{ url_for('field_analysis') }}">
                     <i class="fas fa-layer-group"></i> <span data-i18n="nav.field_analysis">학문분야분석</span>
                 </a>
+                <a class="nav-link" href="{{ url_for('strategic_field_analysis') }}">
+                    <i class="fas fa-bullseye"></i> <span data-i18n="nav.strategic_field">연구분야분석</span>
+                </a>
                 <a class="nav-link" href="{{ url_for('survey') }}">
                     <i class="fas fa-clipboard-list"></i> <span data-i18n="nav.survey">설문참여</span>
                 </a>
@@ -77,13 +81,21 @@
                 </div>
                 -->
             </div>
-            <!-- 언어 선택 -->
-            <div class="d-flex align-items-center">
-                <i class="fas fa-globe text-light me-2"></i>
-                <select id="language-selector" class="lang-selector" onchange="i18n.setLanguage(this.value)">
-                    <option value="ko">한국어</option>
-                    <option value="en">English</option>
-                </select>
+            <!-- 기관 전환 및 로그아웃 -->
+            <div class="d-flex align-items-center gap-3">
+                <a href="{{ url_for('switch_institution') }}" class="btn btn-sm btn-outline-light" title="기관 전환">
+                    <i class="fas fa-exchange-alt"></i> 기관전환
+                </a>
+                <div>
+                    <i class="fas fa-globe text-light me-2"></i>
+                    <select id="language-selector" class="lang-selector" onchange="i18n.setLanguage(this.value)">
+                        <option value="ko">한국어</option>
+                        <option value="en">English</option>
+                    </select>
+                </div>
+                <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-danger" title="로그아웃">
+                    <i class="fas fa-sign-out-alt"></i>
+                </a>
             </div>
         </div>
     </nav>
