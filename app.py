@@ -16,7 +16,7 @@ app.secret_key = 'orap-secret-key-2024-secure'
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
 
 # 인증 설정
-AUTH_PASSWORD = 'kst123'
+AUTH_PASSWORD = 'kst123!'
 
 # 기관별 데이터베이스 매핑
 INSTITUTION_DB = {
@@ -49,7 +49,9 @@ def login_required(f):
         if not session.get('authenticated'):
             return redirect(url_for('login'))
         if not session.get('institution'):
-            return redirect(url_for('select_institution'))
+            # 단일 기관 모드가 아닌 경우에만 기관 선택 페이지로
+            if not session.get('single_institution'):
+                return redirect(url_for('select_institution'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -359,8 +361,24 @@ def login():
     """로그인 페이지"""
     if request.method == 'POST':
         password = request.form.get('password', '')
-        if password == AUTH_PASSWORD:
+
+        # 기관별 전용 비밀번호 처리
+        if password == 'kst123':
+            # 전북대학교 전용
             session['authenticated'] = True
+            session['institution'] = 'jbnu'
+            session['single_institution'] = True
+            return redirect(url_for('researcher_ranking'))
+        elif password == 'jjpark123':
+            # 고려대학교 전용
+            session['authenticated'] = True
+            session['institution'] = 'korea'
+            session['single_institution'] = True
+            return redirect(url_for('researcher_ranking'))
+        elif password == AUTH_PASSWORD:
+            # 일반 접속 (기관 선택 가능)
+            session['authenticated'] = True
+            session['single_institution'] = False
             return redirect(url_for('select_institution'))
         else:
             return render_template('login.html', error='비밀번호가 올바르지 않습니다.')
@@ -3175,144 +3193,151 @@ def researcher_ranking():
 @app.route('/api/researcher_scores')
 def api_researcher_scores():
     """연구자 점수 API (사전 계산 테이블 또는 연도 범위 실시간 계산)"""
-    # 검색 조건
-    min_output = request.args.get('min_output', 10, type=int)
-    limit = request.args.get('limit', 100, type=int)
-    fwci_method = request.args.get('fwci_method', 'median')
-    year_from = request.args.get('year_from', type=int)
-    year_to = request.args.get('year_to', type=int)
+    try:
+        # 검색 조건
+        min_output = request.args.get('min_output', 10, type=int)
+        limit = request.args.get('limit', 100, type=int)
+        fwci_method = request.args.get('fwci_method', 'median')
+        year_from = request.args.get('year_from', type=int)
+        year_to = request.args.get('year_to', type=int)
 
-    # 연도 범위 지정 시: 실시간 계산
-    if year_from and year_to:
-        all_results = calculate_researcher_scores_by_year(year_from, year_to)
+        # 연도 범위 지정 시: 실시간 계산
+        if year_from and year_to:
+            all_results = calculate_researcher_scores_by_year(year_from, year_to)
 
-        # FWCI 방식에 따라 정렬
-        if fwci_method == 'mean':
-            sort_key = 'score_total_mean'
-        else:
-            sort_key = 'score_total_median'
-
-        # 최소 논문 수 필터 및 정렬
-        filtered = [r for r in all_results if r['scholarly_output'] >= min_output]
-        filtered.sort(key=lambda x: x[sort_key], reverse=True)
-
-        total_count = len(filtered)
-        if limit > 0:
-            filtered = filtered[:limit]
-
-        # FWCI 방식에 따라 표시값 선택
-        results = []
-        for r in filtered:
+            # FWCI 방식에 따라 정렬
             if fwci_method == 'mean':
-                r['fwci'] = r['fwci_mean']
-                r['score_fwci'] = r['score_fwci_mean']
-                r['score_core'] = r['score_core_mean']
-                r['score_total'] = r['score_total_mean']
+                sort_key = 'score_total_mean'
             else:
-                r['fwci'] = r['fwci_median']
-                r['score_fwci'] = r['score_fwci_median']
-                r['score_core'] = r['score_core_median']
-                r['score_total'] = r['score_total_median']
-            results.append(r)
+                sort_key = 'score_total_median'
 
-        return jsonify({
-            'total_count': total_count,
-            'returned_count': len(results),
-            'fwci_method': fwci_method,
-            'year_from': year_from,
-            'year_to': year_to,
-            'researchers': results
-        })
+            # 최소 논문 수 필터 및 정렬
+            filtered = [r for r in all_results if r['scholarly_output'] >= min_output]
+            filtered.sort(key=lambda x: x[sort_key], reverse=True)
 
-    # 연도 미지정: 기존 사전 계산 테이블 조회 (빠름)
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    affiliation = get_institution_affiliation()
+            total_count = len(filtered)
+            if limit > 0:
+                filtered = filtered[:limit]
 
-    if fwci_method == 'mean':
-        order_col = 'score_total_mean'
-        fwci_col = 'fwci_mean'
-    else:
-        order_col = 'score_total_median'
-        fwci_col = 'fwci_median'
+            # FWCI 방식에 따라 표시값 선택
+            results = []
+            for r in filtered:
+                if fwci_method == 'mean':
+                    r['fwci'] = r['fwci_mean']
+                    r['score_fwci'] = r['score_fwci_mean']
+                    r['score_core'] = r['score_core_mean']
+                    r['score_total'] = r['score_total_mean']
+                else:
+                    r['fwci'] = r['fwci_median']
+                    r['score_fwci'] = r['score_fwci_median']
+                    r['score_core'] = r['score_core_median']
+                    r['score_total'] = r['score_total_median']
+                results.append(r)
 
-    cursor.execute(f"""
-        SELECT * FROM researcher_score
-        WHERE scholarly_output >= ?
-        ORDER BY {order_col} DESC, {fwci_col} DESC
-        LIMIT ?
-    """, (min_output, limit))
+            return jsonify({
+                'total_count': total_count,
+                'returned_count': len(results),
+                'fwci_method': fwci_method,
+                'year_from': year_from,
+                'year_to': year_to,
+                'researchers': results
+            })
 
-    rows = cursor.fetchall()
-
-    if not rows:
-        conn.close()
-        batch_calculate_researcher_scores()
+        # 연도 미지정: 기존 사전 계산 테이블 조회 (빠름)
         conn = get_db_connection()
         cursor = conn.cursor()
+        affiliation = get_institution_affiliation()
+
+        if fwci_method == 'mean':
+            order_col = 'score_total_mean'
+            fwci_col = 'fwci_mean'
+        else:
+            order_col = 'score_total_median'
+            fwci_col = 'fwci_median'
+
         cursor.execute(f"""
             SELECT * FROM researcher_score
             WHERE scholarly_output >= ?
             ORDER BY {order_col} DESC, {fwci_col} DESC
             LIMIT ?
         """, (min_output, limit))
+
         rows = cursor.fetchall()
 
-    cursor.execute("SELECT COUNT(*) FROM researcher_score WHERE scholarly_output >= ?", (min_output,))
-    total_count = cursor.fetchone()[0]
+        if not rows:
+            conn.close()
+            batch_calculate_researcher_scores()
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(f"""
+                SELECT * FROM researcher_score
+                WHERE scholarly_output >= ?
+                ORDER BY {order_col} DESC, {fwci_col} DESC
+                LIMIT ?
+            """, (min_output, limit))
+            rows = cursor.fetchall()
 
-    results = []
-    for row in rows:
-        if fwci_method == 'mean':
-            fwci_val = row['fwci_mean']
-            score_fwci = row['score_fwci_mean']
-            score_core = row['score_core_mean']
-            score_total = row['score_total_mean']
-        else:
-            fwci_val = row['fwci_median']
-            score_fwci = row['score_fwci_median']
-            score_core = row['score_core_median']
-            score_total = row['score_total_median']
+        cursor.execute("SELECT COUNT(*) FROM researcher_score WHERE scholarly_output >= ?", (min_output,))
+        total_count = cursor.fetchone()[0]
 
-        results.append({
-            'author_id': row['author_id'],
-            'scopus_author_id': row['scopus_author_id'],
-            'name': row['name'],
-            'scholarly_output': row['scholarly_output'],
-            'citations': row['citations'],
-            'fwci': round(fwci_val, 2) if fwci_val else 0,
-            'fwci_mean': round(row['fwci_mean'], 2) if row['fwci_mean'] else 0,
-            'fwci_median': round(row['fwci_median'], 2) if row['fwci_median'] else 0,
-            'h_index': row['h_index'],
-            'top_10_pct_count': row['top_10_pct_count'],
-            'primary_affiliation': affiliation,
-            'profile_url': row['profile_url'],
-            'intl_collab_count': row['intl_collab_count'],
-            'intl_collab_fwci': round(row['intl_collab_fwci'], 2) if row['intl_collab_fwci'] else None,
-            'top_journal_pct': round(row['top_journal_pct'], 1) if row['top_journal_pct'] else 0,
-            'has_sdg': row['has_sdg'] == 1,
-            'has_oa': row['has_oa'] == 1,
-            'avg_topic_prominence': round(row['avg_topic_prominence'], 1) if row['avg_topic_prominence'] else 0,
-            'score_fwci': score_fwci,
-            'score_top_cited': row['score_top_cited'],
-            'score_top_journal': row['score_top_journal'],
-            'score_intl_collab': row['score_intl_collab'],
-            'score_core': score_core,
-            'score_sdg': row['score_sdg'],
-            'score_oa': row['score_oa'],
-            'score_prominence': row['score_prominence'],
-            'score_secondary': row['score_secondary'],
-            'score_total': score_total
+        results = []
+        for row in rows:
+            if fwci_method == 'mean':
+                fwci_val = row['fwci_mean']
+                score_fwci = row['score_fwci_mean']
+                score_core = row['score_core_mean']
+                score_total = row['score_total_mean']
+            else:
+                fwci_val = row['fwci_median']
+                score_fwci = row['score_fwci_median']
+                score_core = row['score_core_median']
+                score_total = row['score_total_median']
+
+            results.append({
+                'author_id': row['author_id'],
+                'scopus_author_id': row['scopus_author_id'],
+                'name': row['name'],
+                'scholarly_output': row['scholarly_output'],
+                'citations': row['citations'],
+                'fwci': round(fwci_val, 2) if fwci_val else 0,
+                'fwci_mean': round(row['fwci_mean'], 2) if row['fwci_mean'] else 0,
+                'fwci_median': round(row['fwci_median'], 2) if row['fwci_median'] else 0,
+                'h_index': row['h_index'],
+                'top_10_pct_count': row['top_10_pct_count'],
+                'primary_affiliation': affiliation,
+                'profile_url': row['profile_url'],
+                'intl_collab_count': row['intl_collab_count'],
+                'intl_collab_fwci': round(row['intl_collab_fwci'], 2) if row['intl_collab_fwci'] else None,
+                'top_journal_pct': round(row['top_journal_pct'], 1) if row['top_journal_pct'] else 0,
+                'has_sdg': row['has_sdg'] == 1,
+                'has_oa': row['has_oa'] == 1,
+                'avg_topic_prominence': round(row['avg_topic_prominence'], 1) if row['avg_topic_prominence'] else 0,
+                'score_fwci': score_fwci,
+                'score_top_cited': row['score_top_cited'],
+                'score_top_journal': row['score_top_journal'],
+                'score_intl_collab': row['score_intl_collab'],
+                'score_core': score_core,
+                'score_sdg': row['score_sdg'],
+                'score_oa': row['score_oa'],
+                'score_prominence': row['score_prominence'],
+                'score_secondary': row['score_secondary'],
+                'score_total': score_total
+            })
+
+        conn.close()
+
+        return jsonify({
+            'total_count': total_count,
+            'returned_count': len(results),
+            'fwci_method': fwci_method,
+            'researchers': results
         })
-
-    conn.close()
-
-    return jsonify({
-        'total_count': total_count,
-        'returned_count': len(results),
-        'fwci_method': fwci_method,
-        'researchers': results
-    })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
 
 @app.route('/api/researcher_score/<scopus_id>')
@@ -4191,6 +4216,7 @@ def api_collaboration_analysis():
     """
     conn = get_db_connection()
     cursor = conn.cursor()
+    affiliation = get_institution_affiliation()
 
     analysis_type = request.args.get('type', 'no_intl_high_performer')
     limit = request.args.get('limit', 50, type=int)
@@ -6342,97 +6368,104 @@ def calculate_researcher_scores_with_preset(year_from, year_to, preset):
 @app.route('/api/researcher_scores_custom')
 def api_researcher_scores_custom():
     """프리셋 기반 연구자 점수 API"""
-    min_output = request.args.get('min_output', 10, type=int)
-    limit = request.args.get('limit', 100, type=int)
-    fwci_method = request.args.get('fwci_method', 'median')
-    year_from = request.args.get('year_from', type=int)
-    year_to = request.args.get('year_to', type=int)
-    preset_id = request.args.get('preset_id', type=int)
+    try:
+        min_output = request.args.get('min_output', 10, type=int)
+        limit = request.args.get('limit', 100, type=int)
+        fwci_method = request.args.get('fwci_method', 'median')
+        year_from = request.args.get('year_from', type=int)
+        year_to = request.args.get('year_to', type=int)
+        preset_id = request.args.get('preset_id', type=int)
 
-    # 프리셋 로드 (없으면 기본값)
-    if preset_id:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM scoring_presets WHERE id = ?", (preset_id,))
-        row = cursor.fetchone()
-        conn.close()
+        # 프리셋 로드 (없으면 기본값)
+        if preset_id:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM scoring_presets WHERE id = ?", (preset_id,))
+            row = cursor.fetchone()
+            conn.close()
 
-        if row:
+            if row:
+                preset = {
+                    'total_core': row['total_core'],
+                    'total_supplementary': row['total_supplementary'],
+                    'pct_fwci': row['pct_fwci'],
+                    'pct_top10': row['pct_top10'],
+                    'pct_top_journal': row['pct_top_journal'],
+                    'pct_intl_collab': row['pct_intl_collab'],
+                    'pct_sdg': row['pct_sdg'],
+                    'pct_oa': row['pct_oa'],
+                    'pct_topic': row['pct_topic']
+                }
+            else:
+                preset = None
+        else:
+            # URL 파라미터로 직접 전달된 경우
             preset = {
-                'total_core': row['total_core'],
-                'total_supplementary': row['total_supplementary'],
-                'pct_fwci': row['pct_fwci'],
-                'pct_top10': row['pct_top10'],
-                'pct_top_journal': row['pct_top_journal'],
-                'pct_intl_collab': row['pct_intl_collab'],
-                'pct_sdg': row['pct_sdg'],
-                'pct_oa': row['pct_oa'],
-                'pct_topic': row['pct_topic']
+                'total_core': request.args.get('total_core', 80, type=int),
+                'total_supplementary': request.args.get('total_supplementary', 10, type=int),
+                'pct_fwci': request.args.get('pct_fwci', 25, type=int),
+                'pct_top10': request.args.get('pct_top10', 25, type=int),
+                'pct_top_journal': request.args.get('pct_top_journal', 25, type=int),
+                'pct_intl_collab': request.args.get('pct_intl_collab', 25, type=int),
+                'pct_sdg': request.args.get('pct_sdg', 30, type=int),
+                'pct_oa': request.args.get('pct_oa', 30, type=int),
+                'pct_topic': request.args.get('pct_topic', 40, type=int)
             }
-        else:
-            preset = None
-    else:
-        # URL 파라미터로 직접 전달된 경우
-        preset = {
-            'total_core': request.args.get('total_core', 80, type=int),
-            'total_supplementary': request.args.get('total_supplementary', 10, type=int),
-            'pct_fwci': request.args.get('pct_fwci', 25, type=int),
-            'pct_top10': request.args.get('pct_top10', 25, type=int),
-            'pct_top_journal': request.args.get('pct_top_journal', 25, type=int),
-            'pct_intl_collab': request.args.get('pct_intl_collab', 25, type=int),
-            'pct_sdg': request.args.get('pct_sdg', 30, type=int),
-            'pct_oa': request.args.get('pct_oa', 30, type=int),
-            'pct_topic': request.args.get('pct_topic', 40, type=int)
-        }
 
-    if not preset:
-        preset = {
-            'total_core': 80, 'total_supplementary': 10,
-            'pct_fwci': 25, 'pct_top10': 25, 'pct_top_journal': 25, 'pct_intl_collab': 25,
-            'pct_sdg': 30, 'pct_oa': 30, 'pct_topic': 40
-        }
+        if not preset:
+            preset = {
+                'total_core': 80, 'total_supplementary': 10,
+                'pct_fwci': 25, 'pct_top10': 25, 'pct_top_journal': 25, 'pct_intl_collab': 25,
+                'pct_sdg': 30, 'pct_oa': 30, 'pct_topic': 40
+            }
 
-    # 점수 계산
-    all_results = calculate_researcher_scores_with_preset(year_from, year_to, preset)
+        # 점수 계산
+        all_results = calculate_researcher_scores_with_preset(year_from, year_to, preset)
 
-    # FWCI 방식에 따라 정렬
-    if fwci_method == 'mean':
-        sort_key = 'score_total_mean'
-    else:
-        sort_key = 'score_total_median'
-
-    # 필터 및 정렬
-    filtered = [r for r in all_results if r['scholarly_output'] >= min_output]
-    filtered.sort(key=lambda x: x[sort_key], reverse=True)
-
-    total_count = len(filtered)
-    if limit > 0:
-        filtered = filtered[:limit]
-
-    # FWCI 방식에 따라 표시값 선택
-    results = []
-    for r in filtered:
+        # FWCI 방식에 따라 정렬
         if fwci_method == 'mean':
-            r['fwci'] = r['fwci_mean']
-            r['score_fwci'] = r['score_fwci_mean']
-            r['score_core'] = r['score_core_mean']
-            r['score_total'] = r['score_total_mean']
+            sort_key = 'score_total_mean'
         else:
-            r['fwci'] = r['fwci_median']
-            r['score_fwci'] = r['score_fwci_median']
-            r['score_core'] = r['score_core_median']
-            r['score_total'] = r['score_total_median']
-        results.append(r)
+            sort_key = 'score_total_median'
 
-    return jsonify({
-        'total_count': total_count,
-        'returned_count': len(results),
-        'fwci_method': fwci_method,
-        'year_from': year_from,
-        'year_to': year_to,
-        'preset': preset,
-        'researchers': results
-    })
+        # 필터 및 정렬
+        filtered = [r for r in all_results if r['scholarly_output'] >= min_output]
+        filtered.sort(key=lambda x: x[sort_key], reverse=True)
+
+        total_count = len(filtered)
+        if limit > 0:
+            filtered = filtered[:limit]
+
+        # FWCI 방식에 따라 표시값 선택
+        results = []
+        for r in filtered:
+            if fwci_method == 'mean':
+                r['fwci'] = r['fwci_mean']
+                r['score_fwci'] = r['score_fwci_mean']
+                r['score_core'] = r['score_core_mean']
+                r['score_total'] = r['score_total_mean']
+            else:
+                r['fwci'] = r['fwci_median']
+                r['score_fwci'] = r['score_fwci_median']
+                r['score_core'] = r['score_core_median']
+                r['score_total'] = r['score_total_median']
+            results.append(r)
+
+        return jsonify({
+            'total_count': total_count,
+            'returned_count': len(results),
+            'fwci_method': fwci_method,
+            'year_from': year_from,
+            'year_to': year_to,
+            'preset': preset,
+            'researchers': results
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
 
 # ============================================
@@ -6888,10 +6921,16 @@ def api_strategic_field_analysis():
     })
 
 
-@app.route('/api/strategic_field_ranking')
+@app.route('/api/strategic_field_ranking', methods=['GET', 'POST'])
 def api_strategic_field_ranking():
     """연구분야별 연구자 랭킹 API"""
-    researcher_ids = request.args.get('researcher_ids', '')
+    # POST 요청 시 JSON body에서, GET 요청 시 query params에서 데이터 읽기
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        researcher_ids = data.get('researcher_ids', '')
+    else:
+        researcher_ids = request.args.get('researcher_ids', '')
+
     if not researcher_ids:
         return jsonify({'count': 0, 'researchers': []})
 
@@ -6978,11 +7017,17 @@ def api_strategic_field_ranking():
     })
 
 
-@app.route('/api/strategic_field_modules')
+@app.route('/api/strategic_field_modules', methods=['GET', 'POST'])
 def api_strategic_field_modules():
     """연구분야별 분석 모듈 API (잠재력/고피인용/협력)"""
-    researcher_ids = request.args.get('researcher_ids', '')
-    module_type = request.args.get('module_type', 'potential')  # potential, citation, collaboration
+    # POST 요청 시 JSON body에서, GET 요청 시 query params에서 데이터 읽기
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        researcher_ids = data.get('researcher_ids', '')
+        module_type = data.get('module_type', 'potential')
+    else:
+        researcher_ids = request.args.get('researcher_ids', '')
+        module_type = request.args.get('module_type', 'potential')
 
     if not researcher_ids:
         return jsonify({'count': 0, 'researchers': []})
@@ -7067,11 +7112,17 @@ def api_strategic_field_modules():
     })
 
 
-@app.route('/api/strategic_field_strategy')
+@app.route('/api/strategic_field_strategy', methods=['GET', 'POST'])
 def api_strategic_field_strategy():
     """연구분야별 연구 전략 API (성장궤적/사회적기여/분야전략)"""
-    researcher_ids = request.args.get('researcher_ids', '')
-    strategy_type = request.args.get('strategy_type', 'trajectory')  # trajectory, societal, field
+    # POST 요청 시 JSON body에서, GET 요청 시 query params에서 데이터 읽기
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        researcher_ids = data.get('researcher_ids', '')
+        strategy_type = data.get('strategy_type', 'trajectory')
+    else:
+        researcher_ids = request.args.get('researcher_ids', '')
+        strategy_type = request.args.get('strategy_type', 'trajectory')
 
     if not researcher_ids:
         return jsonify({'count': 0, 'researchers': []})

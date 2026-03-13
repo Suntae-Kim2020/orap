@@ -1030,6 +1030,12 @@ function loadRanking() {
     fetch(url)
         .then(response => response.json())
         .then(data => {
+            if (data.error) {
+                console.error('Server Error:', data.error);
+                console.error('Traceback:', data.traceback);
+                alert('서버 오류: ' + data.error + '\n\n상세 내용은 콘솔을 확인하세요.');
+                return;
+            }
             displayResults(data);
         })
         .catch(error => {

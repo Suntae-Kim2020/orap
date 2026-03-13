@@ -122,6 +122,7 @@
 let fieldConfig = {};
 let currentCategory = '에너지';
 let currentSubcategory = null;
+const currentInstitution = '{{ session.get("institution", "jbnu") }}';  // 로그인한 기관
 let currentAnalysisType = 'overview';  // overview, ranking, modules, strategy
 let currentResearcherIds = [];  // 현재 분야의 연구자 ID 목록
 let analysisResults = {};
@@ -269,7 +270,7 @@ function renderCategoryContent(category) {
     subcategories.forEach((sub, idx) => {
         html += `
             <li class="nav-item">
-                <button class="nav-link ${idx === 0 ? 'active' : ''}" onclick="selectSubcategory('${sub.subcategory}', this)">
+                <button type="button" class="nav-link ${idx === 0 ? 'active' : ''}" onclick="selectSubcategory('${sub.subcategory}', this, event)">
                     ${sub.subcategory}
                 </button>
             </li>
@@ -282,27 +283,27 @@ function renderCategoryContent(category) {
         <!-- 분석 유형 탭 -->
         <ul class="nav nav-tabs mb-3" id="analysisTypeTabs-${tabId}">
             <li class="nav-item">
-                <button class="nav-link active" onclick="switchAnalysisType('overview', this)" data-i18n="strategic_field.tab_overview">
+                <button type="button" class="nav-link active" onclick="switchAnalysisType('overview', this, event)" data-i18n="strategic_field.tab_overview">
                     <i class="fas fa-chart-pie"></i> 개요
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" onclick="switchAnalysisType('ranking', this)" data-i18n="strategic_field.tab_ranking">
+                <button type="button" class="nav-link" onclick="switchAnalysisType('ranking', this, event)" data-i18n="strategic_field.tab_ranking">
                     <i class="fas fa-trophy"></i> 연구자 랭킹
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" onclick="switchAnalysisType('modules', this)" data-i18n="strategic_field.tab_modules">
+                <button type="button" class="nav-link" onclick="switchAnalysisType('modules', this, event)" data-i18n="strategic_field.tab_modules">
                     <i class="fas fa-microscope"></i> 분석 모듈
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" onclick="switchAnalysisType('strategy', this)" data-i18n="strategic_field.tab_strategy">
+                <button type="button" class="nav-link" onclick="switchAnalysisType('strategy', this, event)" data-i18n="strategic_field.tab_strategy">
                     <i class="fas fa-chess-knight"></i> 연구 전략
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" onclick="switchAnalysisType('collaborators', this)" data-i18n="strategic_field.tab_collaborators">
+                <button type="button" class="nav-link" onclick="switchAnalysisType('collaborators', this, event)" data-i18n="strategic_field.tab_collaborators">
                     <i class="fas fa-handshake"></i> 공동연구자
                 </button>
             </li>
@@ -374,7 +375,13 @@ function applySfCustomYear(tabId) {
 }
 
 // 하위 분야 선택
-function selectSubcategory(subcategory, btn) {
+function selectSubcategory(subcategory, btn, event) {
+    // 스크롤 방지
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
     currentSubcategory = subcategory;
     const tabId = categoryMap[currentCategory];
     document.querySelectorAll(`#subcategoryTabs-${tabId} button`).forEach(b => b.classList.remove('active'));
@@ -424,6 +431,11 @@ function runAnalysisKeepType() {
 
             // 현재 분석 유형에 따라 렌더링
             loadCurrentAnalysisType();
+
+            // 백그라운드에서 나머지 탭 데이터 미리 로드
+            if (currentResearcherIds.length > 0) {
+                preloadAnalysisData(key, currentResearcherIds);
+            }
         })
         .catch(err => {
             resultDiv.innerHTML = `<div class="alert alert-danger">분석 오류: ${err.message}</div>`;
@@ -449,7 +461,13 @@ function loadCurrentAnalysisType() {
 }
 
 // 분석 유형 전환
-function switchAnalysisType(type, btn) {
+function switchAnalysisType(type, btn, event) {
+    // 스크롤 방지
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
     currentAnalysisType = type;
     const tabId = categoryMap[currentCategory];
 
@@ -523,10 +541,56 @@ function runAnalysis() {
             collaboratorsResults[key] = null;
 
             renderAnalysisResult(data);
+
+            // 백그라운드에서 나머지 탭 데이터 미리 로드
+            if (currentResearcherIds.length > 0) {
+                preloadAnalysisData(key, currentResearcherIds);
+            }
         })
         .catch(err => {
             resultDiv.innerHTML = `<div class="alert alert-danger">분석 오류: ${err.message}</div>`;
         });
+}
+
+// 백그라운드 데이터 미리 로드
+function preloadAnalysisData(key, researcherIds) {
+    const idsParam = researcherIds.join(',');
+
+    // 연구자 랭킹 미리 로드
+    fetch('/api/strategic_field_ranking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ researcher_ids: idsParam })
+    })
+        .then(r => r.json())
+        .then(data => { rankingResults[key] = data; })
+        .catch(() => {});
+
+    // 분석 모듈 (잠재력) 미리 로드
+    fetch('/api/strategic_field_modules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ researcher_ids: idsParam, module_type: 'potential' })
+    })
+        .then(r => r.json())
+        .then(data => { modulesResults[`${key}_potential`] = data; })
+        .catch(() => {});
+
+    // 연구 전략 (성장궤적) 미리 로드
+    fetch('/api/strategic_field_strategy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ researcher_ids: idsParam, strategy_type: 'trajectory' })
+    })
+        .then(r => r.json())
+        .then(data => { strategyResults[`${key}_trajectory`] = data; })
+        .catch(() => {});
+
+    // 공동연구자 미리 로드
+    fetch(`/api/strategic_field_collaborators?category=${encodeURIComponent(currentCategory)}&subcategory=${encodeURIComponent(currentSubcategory)}`)
+        .then(r => r.json())
+        .then(data => { collaboratorsResults[key] = data; })
+        .catch(() => {});
 }
 
 // 분석 결과 렌더링
@@ -914,7 +978,11 @@ function loadRankingAnalysis() {
     resultDiv.innerHTML = '<div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">연구자 랭킹 분석 중...</p></div>';
 
     const idsParam = currentResearcherIds.join(',');
-    fetch(`/api/strategic_field_ranking?researcher_ids=${encodeURIComponent(idsParam)}`)
+    fetch('/api/strategic_field_ranking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ researcher_ids: idsParam })
+    })
         .then(r => r.json())
         .then(data => {
             rankingResults[key] = data;
@@ -991,7 +1059,13 @@ function renderRankingResult(data) {
 
 // 모듈 분석 로드
 let currentModuleType = 'potential';
-function loadModulesAnalysis(moduleType) {
+function loadModulesAnalysis(moduleType, event) {
+    // 스크롤 방지
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
     if (moduleType) currentModuleType = moduleType;
 
     const tabId = categoryMap[currentCategory];
@@ -1007,7 +1081,14 @@ function loadModulesAnalysis(moduleType) {
     resultDiv.innerHTML = '<div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">분석 모듈 로드 중...</p></div>';
 
     const idsParam = currentResearcherIds.join(',');
-    fetch(`/api/strategic_field_modules?researcher_ids=${encodeURIComponent(idsParam)}&module_type=${currentModuleType}`)
+    fetch('/api/strategic_field_modules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            researcher_ids: idsParam,
+            module_type: currentModuleType
+        })
+    })
         .then(r => r.json())
         .then(data => {
             modulesResults[key] = data;
@@ -1033,13 +1114,13 @@ function renderModulesResult(data, moduleType) {
         <!-- 모듈 선택 버튼 -->
         <div class="mb-3">
             <div class="btn-group">
-                <button class="btn ${moduleType === 'potential' ? 'btn-primary' : 'btn-outline-primary'}" onclick="loadModulesAnalysis('potential')">
+                <button type="button" class="btn ${moduleType === 'potential' ? 'btn-primary' : 'btn-outline-primary'}" onclick="loadModulesAnalysis('potential', event)">
                     <i class="fas fa-rocket"></i> 잠재력
                 </button>
-                <button class="btn ${moduleType === 'citation' ? 'btn-primary' : 'btn-outline-primary'}" onclick="loadModulesAnalysis('citation')">
+                <button type="button" class="btn ${moduleType === 'citation' ? 'btn-primary' : 'btn-outline-primary'}" onclick="loadModulesAnalysis('citation', event)">
                     <i class="fas fa-quote-right"></i> 고피인용
                 </button>
-                <button class="btn ${moduleType === 'collaboration' ? 'btn-primary' : 'btn-outline-primary'}" onclick="loadModulesAnalysis('collaboration')">
+                <button type="button" class="btn ${moduleType === 'collaboration' ? 'btn-primary' : 'btn-outline-primary'}" onclick="loadModulesAnalysis('collaboration', event)">
                     <i class="fas fa-globe"></i> 국제협력
                 </button>
             </div>
@@ -1121,7 +1202,13 @@ function renderModulesResult(data, moduleType) {
 
 // 전략 분석 로드
 let currentStrategyType = 'trajectory';
-function loadStrategyAnalysis(strategyType) {
+function loadStrategyAnalysis(strategyType, event) {
+    // 스크롤 방지
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
     if (strategyType) currentStrategyType = strategyType;
 
     const tabId = categoryMap[currentCategory];
@@ -1137,7 +1224,14 @@ function loadStrategyAnalysis(strategyType) {
     resultDiv.innerHTML = '<div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">전략 분석 로드 중...</p></div>';
 
     const idsParam = currentResearcherIds.join(',');
-    fetch(`/api/strategic_field_strategy?researcher_ids=${encodeURIComponent(idsParam)}&strategy_type=${currentStrategyType}`)
+    fetch('/api/strategic_field_strategy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            researcher_ids: idsParam,
+            strategy_type: currentStrategyType
+        })
+    })
         .then(r => r.json())
         .then(data => {
             strategyResults[key] = data;
@@ -1163,13 +1257,13 @@ function renderStrategyResult(data, strategyType) {
         <!-- 전략 유형 선택 버튼 -->
         <div class="mb-3">
             <div class="btn-group">
-                <button class="btn ${strategyType === 'trajectory' ? 'btn-success' : 'btn-outline-success'}" onclick="loadStrategyAnalysis('trajectory')">
+                <button type="button" class="btn ${strategyType === 'trajectory' ? 'btn-success' : 'btn-outline-success'}" onclick="loadStrategyAnalysis('trajectory', event)">
                     <i class="fas fa-chart-line"></i> 성장궤적
                 </button>
-                <button class="btn ${strategyType === 'societal' ? 'btn-success' : 'btn-outline-success'}" onclick="loadStrategyAnalysis('societal')">
+                <button type="button" class="btn ${strategyType === 'societal' ? 'btn-success' : 'btn-outline-success'}" onclick="loadStrategyAnalysis('societal', event)">
                     <i class="fas fa-hands-helping"></i> 사회적 기여
                 </button>
-                <button class="btn ${strategyType === 'field' ? 'btn-success' : 'btn-outline-success'}" onclick="loadStrategyAnalysis('field')">
+                <button type="button" class="btn ${strategyType === 'field' ? 'btn-success' : 'btn-outline-success'}" onclick="loadStrategyAnalysis('field', event)">
                     <i class="fas fa-bullseye"></i> 분야전략
                 </button>
             </div>
@@ -1403,10 +1497,17 @@ function renderCollaboratorsResult(data) {
         });
     }
 
+    // 로그인한 기관에 따라 컬럼 순서 결정
+    const isKorea = currentInstitution === 'korea';
+    const myInst = isKorea ? '고려대' : '전북대';
+    const otherInst = isKorea ? '전북대' : '고려대';
+    const myNameKey = isKorea ? 'korea_name' : 'jbnu_name';
+    const otherNameKey = isKorea ? 'jbnu_name' : 'korea_name';
+
     let html = `
         <div class="alert alert-info mb-3">
             <i class="fas fa-info-circle"></i>
-            <strong>전북대학교 - 고려대학교</strong> 연구자 간의 공동연구 현황입니다.
+            <strong>${myInst}학교 - ${otherInst}학교</strong> 연구자 간의 공동연구 현황입니다.
             <br><small>선택된 분야의 키워드가 포함된 논문에서 두 기관 연구자가 함께 저자로 참여한 경우를 분석합니다.</small>
         </div>
 
@@ -1423,11 +1524,11 @@ function renderCollaboratorsResult(data) {
                         <thead class="table-light sticky-top">
                             <tr>
                                 <th>#</th>
-                                ${sortableHeader('전북대 연구자', 'jbnu_name')}
-                                ${sortableHeader('고려대 연구자', 'korea_name')}
+                                ${sortableHeader(myInst + ' 연구자', myNameKey)}
+                                ${sortableHeader(otherInst + ' 연구자', otherNameKey)}
                                 ${sortableHeader('공동 논문수', 'pub_count')}
-                                <th>전북대 프로필</th>
-                                <th>고려대 프로필</th>
+                                <th>${myInst} 프로필</th>
+                                <th>${otherInst} 프로필</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1435,14 +1536,19 @@ function renderCollaboratorsResult(data) {
 
     if (sortedData.length > 0) {
         sortedData.forEach((c, idx) => {
+            const myName = isKorea ? c.korea_name : c.jbnu_name;
+            const otherName = isKorea ? c.jbnu_name : c.korea_name;
+            const myProfile = isKorea ? c.korea_profile : c.jbnu_profile;
+            const otherProfile = isKorea ? c.jbnu_profile : c.korea_profile;
+
             html += `
                 <tr>
                     <td>${idx + 1}</td>
-                    <td><strong>${c.jbnu_name}</strong></td>
-                    <td><strong>${c.korea_name}</strong></td>
+                    <td><strong>${myName}</strong></td>
+                    <td><strong>${otherName}</strong></td>
                     <td><span class="badge bg-primary">${c.pub_count}편</span></td>
-                    <td><a href="${c.jbnu_profile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
-                    <td><a href="${c.korea_profile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+                    <td><a href="${myProfile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+                    <td><a href="${otherProfile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
                 </tr>
             `;
         });
