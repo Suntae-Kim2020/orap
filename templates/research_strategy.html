@@ -813,6 +813,8 @@ function triggerCSVDownload(csvContent, filename) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    // 다운로드 로깅
+    logDownload(filename, '연구 전략');
 }
 
 function getPeriodLabel() {
@@ -920,5 +922,8 @@ function downloadPortfolioCSV() {
     const filename = `${t('research_strategy.csv_trajectory')}_${typeNames[currentPortfolioType]}_${getPeriodLabel()}.csv`;
     triggerCSVDownload(generateCSV(portfolioData, colDefs[currentPortfolioType]), filename);
 }
+
+// 탭 로깅 설정
+setupTabLogging('연구 전략');
 </script>
 {% endblock %}

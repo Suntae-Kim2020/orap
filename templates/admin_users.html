@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+
+{% block title %}사용자 관리 - ORAP{% endblock %}
+
+{% block content %}
+<style>
+    .sortable {
+        cursor: pointer;
+        user-select: none;
+    }
+    .sortable:hover {
+        background-color: rgba(255,255,255,0.1);
+    }
+    .sortable::after {
+        content: ' \f0dc';
+        font-family: 'Font Awesome 6 Free';
+        font-weight: 900;
+        opacity: 0.3;
+        margin-left: 5px;
+    }
+    .sortable.asc::after {
+        content: ' \f0de';
+        opacity: 1;
+    }
+    .sortable.desc::after {
+        content: ' \f0dd';
+        opacity: 1;
+    }
+    .table td {
+        vertical-align: middle;
+    }
+</style>
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-users-cog"></i> <span data-i18n="admin.user_management">사용자 관리</span></h2>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+            <i class="fas fa-user-plus"></i> <span data-i18n="admin.add_user">사용자 추가</span>
+        </button>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="userTable">
+                    <thead class="table-dark">
+                        <tr>
+                            <th class="sortable" data-col="0" data-type="number">ID</th>
+                            <th class="sortable" data-col="1" data-type="string" data-i18n="admin.username">아이디</th>
+                            <th class="sortable" data-col="2" data-type="string" data-i18n="admin.name">이름</th>
+                            <th class="sortable" data-col="3" data-type="string" data-i18n="admin.department">소속부서</th>
+                            <th class="sortable" data-col="4" data-type="string" data-i18n="admin.job_description">업무내용</th>
+                            <th class="sortable" data-col="5" data-type="string" data-i18n="admin.institution">소속기관</th>
+                            <th class="sortable" data-col="6" data-type="string" data-i18n="admin.role">권한</th>
+                            <th class="sortable" data-col="7" data-type="string" data-i18n="admin.created_at">생성일</th>
+                            <th data-i18n="admin.manage">관리</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td data-value="{{ user.id }}">{{ user.id }}</td>
+                            <td data-value="{{ user.username }}"><strong>{{ user.username }}</strong></td>
+                            <td data-value="{{ user.name or '' }}">{{ user.name or '-' }}</td>
+                            <td data-value="{{ user.department or '' }}">{{ user.department or '-' }}</td>
+                            <td data-value="{{ user.job_description or '' }}">{{ user.job_description or '-' }}</td>
+                            <td data-value="{{ institutions.get(user.institution, '') if user.institution else '' }}">
+                                {% if user.institution %}
+                                    <span class="badge bg-info">{{ institutions.get(user.institution, user.institution) }}</span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td data-value="{{ user.role }}">
+                                {% if user.role == 'admin' %}
+                                    <span class="badge bg-danger" data-i18n="admin.super_admin">슈퍼관리자</span>
+                                {% elif user.role == 'institution_admin' %}
+                                    <span class="badge bg-warning text-dark" data-i18n="admin.institution_admin">기관관리자</span>
+                                {% else %}
+                                    <span class="badge bg-secondary" data-i18n="admin.user_role">사용자</span>
+                                {% endif %}
+                            </td>
+                            <td data-value="{{ user.created_at[:10] if user.created_at else '' }}">{{ user.created_at[:10] if user.created_at else '-' }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" onclick="editUser({{ user.id }}, '{{ user.username }}', '{{ user.password }}', '{{ user.name or '' }}', '{{ user.department or '' }}', '{{ user.job_description or '' }}', '{{ user.institution or '' }}', '{{ user.role }}')">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <form action="{{ url_for('admin_delete_user', user_id=user.id) }}" method="POST" style="display: inline;" onsubmit="return confirm(typeof i18n !== 'undefined' ? i18n.t('admin.confirm_delete') : '정말 삭제하시겠습니까?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 사용자 추가 모달 -->
+<div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('admin_add_user') }}" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-user-plus"></i> <span data-i18n="admin.add_user">사용자 추가</span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><span data-i18n="admin.username">아이디</span> <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="username" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><span data-i18n="admin.password">비밀번호</span> <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="password" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label"><span data-i18n="admin.name">이름</span> <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="name" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label" data-i18n="admin.department">소속부서</label>
+                            <input type="text" class="form-control" name="department" data-i18n-placeholder="admin.dept_example">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label" data-i18n="admin.job_description">업무내용</label>
+                            <input type="text" class="form-control" name="job_description" data-i18n-placeholder="admin.job_example">
+                        </div>
+                    </div>
+                    {% if is_super_admin %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label" data-i18n="admin.institution">소속기관</label>
+                            <select class="form-select" name="institution">
+                                <option value="" data-i18n="admin.not_selected">선택 안 함</option>
+                                {% for key, name in available_institutions.items() %}
+                                <option value="{{ key }}">{{ name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label" data-i18n="admin.role">권한</label>
+                            <select class="form-select" name="role">
+                                <option value="user" data-i18n="admin.user_role">사용자</option>
+                                <option value="institution_admin" data-i18n="admin.institution_admin">기관관리자</option>
+                                <option value="admin" data-i18n="admin.super_admin">슈퍼관리자</option>
+                            </select>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="mb-3">
+                        <label class="form-label" data-i18n="admin.role">권한</label>
+                        <select class="form-select" name="role">
+                            <option value="user" data-i18n="admin.user_role">사용자</option>
+                            <option value="institution_admin" data-i18n="admin.institution_admin">기관관리자</option>
+                        </select>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="admin.cancel">취소</button>
+                    <button type="submit" class="btn btn-primary" data-i18n="admin.add">추가</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 사용자 수정 모달 -->
+<div class="modal fade" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="editUserForm" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-edit"></i> <span data-i18n="admin.edit_user">사용자 수정</span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><span data-i18n="admin.username">아이디</span> <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="username" id="editUsername" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><span data-i18n="admin.password">비밀번호</span> <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="password" id="editPassword" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label"><span data-i18n="admin.name">이름</span> <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="name" id="editName" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label" data-i18n="admin.department">소속부서</label>
+                            <input type="text" class="form-control" name="department" id="editDepartment">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label" data-i18n="admin.job_description">업무내용</label>
+                            <input type="text" class="form-control" name="job_description" id="editJobDescription">
+                        </div>
+                    </div>
+                    {% if is_super_admin %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label" data-i18n="admin.institution">소속기관</label>
+                            <select class="form-select" name="institution" id="editInstitution">
+                                <option value="" data-i18n="admin.not_selected">선택 안 함</option>
+                                {% for key, name in available_institutions.items() %}
+                                <option value="{{ key }}">{{ name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label" data-i18n="admin.role">권한</label>
+                            <select class="form-select" name="role" id="editRole">
+                                <option value="user" data-i18n="admin.user_role">사용자</option>
+                                <option value="institution_admin" data-i18n="admin.institution_admin">기관관리자</option>
+                                <option value="admin" data-i18n="admin.super_admin">슈퍼관리자</option>
+                            </select>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="mb-3">
+                        <label class="form-label" data-i18n="admin.role">권한</label>
+                        <select class="form-select" name="role" id="editRole">
+                            <option value="user" data-i18n="admin.user_role">사용자</option>
+                            <option value="institution_admin" data-i18n="admin.institution_admin">기관관리자</option>
+                        </select>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="admin.cancel">취소</button>
+                    <button type="submit" class="btn btn-primary" data-i18n="admin.save">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function editUser(id, username, password, name, department, jobDescription, institution, role) {
+    document.getElementById('editUserForm').action = '/admin/user/' + id + '/edit';
+    document.getElementById('editUsername').value = username;
+    document.getElementById('editPassword').value = password;
+    document.getElementById('editName').value = name;
+    document.getElementById('editDepartment').value = department;
+    document.getElementById('editJobDescription').value = jobDescription;
+    var instSelect = document.getElementById('editInstitution');
+    if (instSelect) instSelect.value = institution;
+    document.getElementById('editRole').value = role;
+    new bootstrap.Modal(document.getElementById('editUserModal')).show();
+}
+
+// 테이블 정렬 기능
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.getElementById('userTable');
+    const headers = table.querySelectorAll('th.sortable');
+    const tbody = table.querySelector('tbody');
+
+    headers.forEach(header => {
+        header.addEventListener('click', function() {
+            const col = parseInt(this.dataset.col);
+            const type = this.dataset.type;
+            const isAsc = this.classList.contains('asc');
+
+            // 모든 헤더의 정렬 클래스 제거
+            headers.forEach(h => h.classList.remove('asc', 'desc'));
+
+            // 현재 헤더에 정렬 클래스 추가
+            this.classList.add(isAsc ? 'desc' : 'asc');
+
+            // 행 정렬
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort((a, b) => {
+                const aVal = a.cells[col].dataset.value || '';
+                const bVal = b.cells[col].dataset.value || '';
+
+                let comparison = 0;
+                if (type === 'number') {
+                    comparison = parseFloat(aVal) - parseFloat(bVal);
+                } else {
+                    comparison = aVal.localeCompare(bVal, 'ko');
+                }
+
+                return isAsc ? -comparison : comparison;
+            });
+
+            // 정렬된 행 다시 추가
+            rows.forEach(row => tbody.appendChild(row));
+        });
+    });
+});
+</script>
+{% endblock %}

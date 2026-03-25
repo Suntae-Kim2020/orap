@@ -1,0 +1,345 @@
+# 계량서지학 지표 랭킹 기능 개발 프롬프트
+
+## 개요
+연구자 랭킹 페이지(researcher_ranking.html)를 두 개의 탭으로 분리하고,
+두 번째 탭에 계량서지학 지표(h-index, g-index, i10-index, m-index) 기반 연구자 랭킹 기능을 추가한다.
+
+---
+
+## 1. 연구자 랭킹 페이지 탭 분리
+
+### 요구사항
+- 기존 연구자 랭킹 페이지를 Bootstrap nav-tabs를 사용하여 두 개의 탭으로 분리한다.
+- 탭 1: "점수 기반 랭킹" - 기존 90점 체계(FWCI, Top10%, 상위저널, 국제협력, SDG, OA, Prominence) 그대로 유지
+- 탭 2: "계량서지학 지표 랭킹" - 새로 추가하는 계량서지학 지표 기반 랭킹
+
+### 구현 위치
+- templates/researcher_ranking.html
+
+### 구현 방법
+- 페이지 제목(h2) 아래에 <ul class="nav nav-tabs"> 탭 네비게이션 추가
+- 탭 1 (id="scoreRanking"): 기존 점수 기준 안내, 점수 설정, 필터, 결과 테이블, 상세 모달을 모두 감싼다
+- 탭 2 (id="biblioRanking"): 새로운 계량서지학 지표 UI를 넣는다
+- 탭 1이 기본 활성 탭 (show active)
+- 탭 2 클릭 시 데이터가 아직 없으면 자동으로 API 호출하여 로드 (shown.bs.tab 이벤트)
+
+---
+
+## 2. 계량서지학 지표 계산 API
+
+### 엔드포인트: GET /api/bibliometric_ranking
+
+### 파라미터
+- min_output (int, 기본값 10): 최소 논문수 필터
+- limit (int, 기본값 100): 표시 인원 제한
+- sort_by (string, 기본값 'h_index'): 정렬 기준 (h_index, g_index, i10_index, m_index, citations, fwci, scholarly_output, name)
+- year_from (int, 선택): 분석 시작연도
+- year_to (int, 선택): 분석 종료연도
+
+### 처리 로직
+
+#### 2-1. 데이터 조회
+- author 테이블에서 해당 기관(primary_affiliation) 소속 저자 목록 조회
+  - 필요 컬럼: author_id, scopus_author_id, name, scholarly_output, citations, field_weighted_citation_impact, h_index, scopus_author_profile, primary_affiliation, oldest_publication, most_recent_publication
+- publication 테이블에서 논문 데이터 조회 (연도 필터 적용 가능)
+  - 필요 컬럼: scopus_author_ids, citations
+
+#### 2-2. 저자별 논문 인용수 리스트 구축
+- publication의 scopus_author_ids 필드를 파싱하여 저자별 인용수 리스트 생성
+- 주의: scopus_author_ids 구분자는 '|' (파이프)이다. ';'이 아님. 안전하게 둘 다 처리할 것.
+  - 예: "57281125800| 57191076911| 57761203500"
+- citations 값은 문자열로 저장되어 있을 수 있으므로 int() 변환 시 try/except 처리 필요
+
+#### 2-3. 지표 계산 (저자별)
+
+**h-index 계산:**
+- 인용수 내림차순 정렬
+- i번째 논문의 인용수가 (i+1) 이상이면 h = i+1
+- 연도 필터 없을 때도 author 테이블 값을 사용하지 않고 논문 데이터에서 직접 재계산한다 (상세 API와 일치시키기 위함)
+
+**g-index 계산:**
+- 인용수 내림차순 정렬 후, 누적 인용수 합계가 (i+1)² 이상이면 g = i+1
+- 중간에 조건을 만족하지 못해도 break하지 않는다 (누적합은 계속 증가하므로 다시 만족할 수 있음)
+
+**i10-index 계산:**
+- 인용수가 10 이상인 논문의 수
+
+**m-index 계산:**
+- m = h-index ÷ 학술활동 연수
+- 학술활동 연수 = most_recent_publication - oldest_publication + 1
+- oldest_publication 또는 most_recent_publication이 없으면 None
+
+#### 2-4. 응답 형식
+```json
+{
+  "total_count": 1135,
+  "returned_count": 100,
+  "sort_by": "h_index",
+  "year_from": null,
+  "year_to": null,
+  "researchers": [
+    {
+      "scopus_author_id": "7601467227",
+      "name": "Lee, Joonghee",
+      "scholarly_output": 380,
+      "citations": 22666,
+      "fwci": 2.77,
+      "h_index": 86,
+      "g_index": 125,
+      "i10_index": 313,
+      "m_index": 3.31,
+      "career_years": 26,
+      "primary_affiliation": "Jeonbuk National University",
+      "profile_url": "https://www.scopus.com/authid/detail.url?authorId=7601467227"
+    }
+  ]
+}
+```
+
+---
+
+## 3. 계량서지학 지표 상세 API
+
+### 엔드포인트: GET /api/bibliometric_detail/<scopus_id>
+
+### 파라미터
+- year_from (int, 선택): 분석 시작연도
+- year_to (int, 선택): 분석 종료연도
+
+### 처리 로직
+
+#### 3-1. 데이터 조회
+- author 테이블에서 해당 scopus_id 저자 정보 조회 (oldest_publication, most_recent_publication 포함)
+- publication 테이블에서 해당 저자의 논문 목록 조회 (scopus_author_ids LIKE '%{scopus_id}%')
+  - 필요 컬럼: title, year, citations, field_weighted_citation_impact, scopus_source_title, eid
+  - 인용수 내림차순 정렬
+
+#### 3-2. 논문별 Scopus 링크 생성
+- eid가 있으면: https://www.scopus.com/record/display.uri?eid={eid}
+
+#### 3-3. 지표 계산 및 산출 근거 생성
+
+**h-index 산출 근거:**
+- h_papers: 상위 max(h_index + 3, 10)편의 논문 리스트
+- 각 논문에 rank, is_h_core (rank <= h_index 여부) 표시
+- description: "상위 {h}편의 논문이 각각 {h}회 이상 인용됨"
+
+**g-index 산출 근거:**
+- g_cumulative_list: 각 순위별 {rank, citations, cumulative, g_squared, satisfies} 리스트
+- g_detail: 상위 max(g_index + 3, 10)개 항목
+- description: "상위 {g}편 논문의 인용 합계({누적합})가 {g}² = {g²} 이상"
+
+**i10-index 산출 근거:**
+- i10_papers: 인용 10회 이상 논문 최대 20편
+- description: "10회 이상 인용된 논문 {i10}편"
+
+**m-index 산출 근거:**
+- career_years, oldest_publication, most_recent_publication 포함
+- description: "h-index({h}) ÷ 학술활동 연수({n}년, {시작}~{종료}) = {m}"
+
+#### 3-4. 응답 형식
+```json
+{
+  "author": {
+    "scopus_author_id": "...",
+    "name": "...",
+    "scholarly_output": 380,
+    "citations": 22666,
+    "fwci": 2.77,
+    "h_index_original": 103,
+    "primary_affiliation": "...",
+    "scopus_author_profile": "...",
+    "orcid": ""
+  },
+  "indices": {
+    "h_index": 86,
+    "g_index": 125,
+    "i10_index": 313,
+    "m_index": 3.31,
+    "career_years": 26,
+    "oldest_publication": 2001,
+    "most_recent_publication": 2026,
+    "total_papers": 380,
+    "total_citations": 22666
+  },
+  "h_detail": { "description": "...", "papers": [...] },
+  "g_detail": { "description": "...", "papers": [...] },
+  "i10_detail": { "description": "...", "papers": [...] },
+  "m_detail": { "description": "..." },
+  "year_from": null,
+  "year_to": null
+}
+```
+
+---
+
+## 4. 프론트엔드 - 탭 2 UI 구성
+
+### 4-1. 지표 안내 카드
+- 접이식(collapse) 카드로 4개 지표 설명 표시 (col-md-3 × 4열)
+- 각 카드에 정의, 산출 방법, 예시, 장점 포함
+
+**h-index 카드 (border-primary):**
+- 정의: h편의 논문이 각각 h회 이상 인용된 가장 큰 수 h
+- 산출: 논문을 피인용횟수 내림차순으로 정렬 시, 순위와 피인용횟수가 같아지거나 순위가 피인용횟수보다 작은 최댓값이 h
+- 예시: h=10이면, 최소 10편의 논문이 각각 10회 이상 인용됨
+- 장점: 생산성과 영향력의 균형 있는 측정
+
+**g-index 카드 (border-success):**
+- 정의: 상위 g편 논문의 인용 합계가 g² 이상인 가장 큰 수 g
+- 산출: 상위 g개의 논문 피인용횟수의 합이 g²보다 작지 않은 가장 큰 g값
+- 예시: g=15이면, 상위 15편의 인용 합계가 225 이상
+- 장점: 고인용 논문의 기여를 h-index보다 잘 반영
+
+**i10-index 카드 (border-warning):**
+- 정의: 10회 이상 인용된 논문의 수
+- 예시: i10=20이면, 20편의 논문이 10회 이상 인용됨
+- 장점: 직관적이고 이해하기 쉬운 지표 (Google Scholar 기준)
+
+**m-index 카드 (border-info):**
+- 정의: h-index를 학술 활동 연수로 나눈 값
+- 예시: h=20, 경력 10년이면 m=2.0
+- 장점: 경력 연수를 고려하여 신진/경력 연구자를 공정하게 비교
+
+### 4-2. 필터 영역
+- 최소 논문수 (biblioMinOutput, 기본값 10)
+- 표시 인원 (biblioLimit, 50/100/200/500/전체)
+- 정렬 기준 (biblioSortBy: h-index, g-index, i10-index, m-index, 인용수, FWCI)
+- 조회 버튼, CSV 다운로드 버튼
+- 분석기간 필터: 전체/최근3년/최근5년 버튼 + 사용자 지정 연도 입력
+
+### 4-3. 결과 테이블
+- 테이블 컬럼: 순위, 연구자, 논문수, 인용수, FWCI, h-index, g-index, i10-index, m-index, 상세
+- 각 지표 컬럼은 클릭하여 정렬 가능 (sortByKey 함수 재사용)
+- h-index: badge bg-primary
+- g-index: badge bg-success
+- i10-index: badge bg-warning text-dark
+- m-index: badge bg-info
+- 상세 버튼: btn-outline-info, 눈(fa-eye) 아이콘, showBiblioDetail() 호출
+
+### 4-4. 상세 모달 (biblioDetailModal)
+- modal-xl 크기
+- 상단: 연구자 이름, Scopus ID, ORCID, 소속
+
+**지표 요약 카드 (7열 row):**
+- 논문수, 인용수, h-index, g-index, i10-index, m-index, FWCI
+- 각 지표별 테마 색상 적용 (border-primary, border-success, border-warning, border-info)
+
+**h-index 상세 (collapse, 기본 펼침):**
+- 카드 헤더: bg-primary, "h-index = {값}" + 설명
+- 테이블: #, 제목, 연도, 인용수, h 경계
+  - h-index 범위 내 논문은 일반 표시, 범위 밖은 text-muted
+  - h번째 논문에 화살표 아이콘(fa-arrow-left text-danger)으로 경계 표시
+  - is_h_core인 논문에 "≤ h" badge bg-primary 표시
+- 하단 설명: "{h}번째 논문의 인용수({값})가 {h} 이상이므로 h={h}"
+
+**g-index 상세 (collapse, 기본 펼침):**
+- 카드 헤더: bg-success, "g-index = {값}" + 설명
+- 테이블: g, 해당 논문 인용수, 누적 인용수, g², 조건 충족
+  - 조건 충족: badge bg-success "≥ g²" / badge bg-secondary "< g²"
+  - 충족하는 행은 일반, 미충족 행은 text-muted
+- 하단 설명: "상위 {g}편의 누적 인용수가 {g}² = {g²} 이상이므로 g={g}"
+
+**i10-index 상세 (collapse, 기본 펼침):**
+- 카드 헤더: bg-warning, "i10-index = {값}" + 설명
+- 테이블: #, 제목, 연도, 인용수, Scopus 링크
+  - 최대 20편 표시, 초과 시 "... 외 {n}편 더 있음"
+- 하단 설명: "전체 {총}편 중 10회 이상 인용된 논문이 {i10}편이므로 i10={i10}"
+
+**m-index 상세 (collapse, 기본 펼침):**
+- 카드 헤더: bg-info, "m-index = {값}" + 설명
+- 본문: 수식 시각화 (h-index ÷ 학술활동 연수 = m-index)
+  - 3열 레이아웃: h-index 값 | 학술활동 연수 (시작~종료) | m-index 결과
+- 우측: 해석 기준
+  - m ≥ 3: 탁월 (badge bg-success)
+  - m ≥ 2: 우수 (badge bg-primary)
+  - m ≥ 1: 양호 (badge bg-info)
+  - m < 1: 보통 (badge bg-secondary)
+
+### 4-5. CSV 다운로드
+- 클라이언트에서 직접 CSV 생성 (서버 API 불필요)
+- BOM(\uFEFF) 추가하여 Excel 한글 호환
+- 컬럼: 순위, 연구자, 논문수, 인용수, FWCI, h-index, g-index, i10-index, m-index
+- 파일명: 계량서지학_랭킹_{기간}.csv
+
+---
+
+## 5. 다국어 지원 (i18n)
+
+### 추가할 번역 키 (static/lang/ko.json, static/lang/en.json)
+
+researcher_ranking 섹션에 다음 키 추가:
+
+```
+tab_score: 점수 기반 랭킹 / Score-based Ranking
+tab_bibliometric: 계량서지학 지표 랭킹 / Bibliometric Ranking
+biblio_info_title: 계량서지학 지표 안내 (클릭하여 펼치기)
+biblio_definition: 정의:
+biblio_example: 예시:
+biblio_strength: 장점:
+biblio_h_def: h편의 논문이 각각 h회 이상 인용된 가장 큰 수 h
+biblio_h_method: 산출:
+biblio_h_method_desc: 논문을 피인용횟수 내림차순으로 정렬 시, 순위와 피인용횟수가 같아지거나 순위가 피인용횟수보다 작은 최댓값이 h
+biblio_h_example: h=10이면, 최소 10편의 논문이 각각 10회 이상 인용됨
+biblio_h_strength: 생산성과 영향력의 균형 있는 측정
+biblio_g_def: 상위 g편 논문의 인용 합계가 g² 이상인 가장 큰 수 g
+biblio_g_method: 산출:
+biblio_g_method_desc: 상위 g개의 논문 피인용횟수의 합이 g²보다 작지 않은 가장 큰 g값
+biblio_g_example: g=15이면, 상위 15편의 인용 합계가 225 이상
+biblio_g_strength: 고인용 논문의 기여를 h-index보다 잘 반영
+biblio_i10_def: 10회 이상 인용된 논문의 수
+biblio_i10_example: i10=20이면, 20편의 논문이 10회 이상 인용됨
+biblio_i10_strength: 직관적이고 이해하기 쉬운 지표 (Google Scholar 기준)
+biblio_m_def: h-index를 학술 활동 연수로 나눈 값
+biblio_m_example: h=20, 경력 10년이면 m=2.0
+biblio_m_strength: 경력 연수를 고려하여 신진/경력 연구자를 공정하게 비교
+biblio_m_career_years: 학술활동 연수
+biblio_m_interpret: 해석 기준:
+biblio_m_outstanding: 탁월 / Outstanding
+biblio_m_excellent: 우수 / Excellent
+biblio_m_good: 양호 / Good
+biblio_m_average: 보통 / Average
+biblio_sort_by: 정렬 기준
+biblio_calculating: 계량서지학 지표 계산 중...
+biblio_detail_title: 계량서지학 지표 상세
+biblio_boundary: 경계
+biblio_g_paper_citations: 해당 논문 인용수
+biblio_g_cumulative: 누적 인용수
+biblio_g_condition: 조건 충족
+alert_no_data: 데이터가 없습니다. 먼저 조회해주세요.
+```
+
+---
+
+## 6. 주의사항 및 버그 방지
+
+### 6-1. 데이터 형식
+- publication.scopus_author_ids 구분자는 '|' (파이프 + 공백). ';'이 아님.
+  - 안전하게 처리: author_ids_str.replace(';', '|').split('|') 후 strip()
+- publication.citations 값이 문자열로 저장되어 있을 수 있음. int() 변환 시 try/except 필수.
+
+### 6-2. g-index 알고리즘
+- 누적 인용수가 단조 증가하므로, 중간에 조건 미충족 시에도 break하지 않는다.
+- 전체 논문을 순회하면서 조건을 만족하는 마지막 g를 찾아야 한다.
+
+### 6-3. h-index 일관성
+- 리스트 API와 상세 API에서 h-index를 동일한 방식으로 계산해야 한다.
+- author 테이블의 h_index (Scopus 원본값)를 사용하지 않고, 로컬 논문 데이터에서 항상 재계산한다.
+- 이유: DB에 저장된 논문이 Scopus 전체 논문보다 적을 수 있어 값이 달라질 수 있기 때문.
+
+### 6-4. m-index null 처리
+- oldest_publication 또는 most_recent_publication이 없는 저자는 m_index = null
+- 프론트엔드에서 null일 때 '-'로 표시
+
+---
+
+## 7. 수정 대상 파일 요약
+
+| 파일 | 수정 내용 |
+|------|-----------|
+| app.py | /api/bibliometric_ranking 엔드포인트 추가 |
+| app.py | /api/bibliometric_detail/<scopus_id> 엔드포인트 추가 |
+| templates/researcher_ranking.html | 탭 구조 추가, 탭2 UI (지표 안내, 필터, 테이블, 상세 모달) |
+| templates/researcher_ranking.html | JavaScript: loadBiblioRanking, renderBiblioTable, showBiblioDetail, displayBiblioDetailModal, downloadBiblioCSV 등 |
+| static/lang/ko.json | researcher_ranking 섹션에 biblio_* 번역 키 추가 |
+| static/lang/en.json | researcher_ranking 섹션에 biblio_* 번역 키 추가 |

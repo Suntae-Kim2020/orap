@@ -80,7 +80,7 @@
         <div class="login-header">
             <i class="fas fa-graduation-cap"></i>
             <h2>ORAP</h2>
-            <p>Online Research Analytics Platform</p>
+            <p>Open Research Analytics Platform</p>
         </div>
 
         {% if error %}
@@ -90,9 +90,13 @@
         {% endif %}
 
         <form method="POST" action="{{ url_for('login') }}">
+            <div class="mb-3">
+                <label class="form-label"><i class="fas fa-user"></i> 아이디</label>
+                <input type="text" class="form-control" name="username" placeholder="아이디를 입력하세요" autofocus required>
+            </div>
             <div class="mb-4">
-                <label class="form-label"><i class="fas fa-lock"></i> 접속 비밀번호</label>
-                <input type="password" class="form-control" name="password" placeholder="비밀번호를 입력하세요" autofocus required>
+                <label class="form-label"><i class="fas fa-lock"></i> 비밀번호</label>
+                <input type="password" class="form-control" name="password" placeholder="비밀번호를 입력하세요" required>
             </div>
             <button type="submit" class="btn btn-login">
                 <i class="fas fa-sign-in-alt"></i> 로그인

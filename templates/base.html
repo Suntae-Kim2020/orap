@@ -30,7 +30,7 @@
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('researcher_ranking') }}">
                 <i class="fas fa-graduation-cap"></i>
-                <span>{{ session.get('institution_name', 'ORAP') }}</span>
+                <span id="navbar-institution-name" data-institution="{{ session.get('institution', '') }}">{{ session.get('institution_name', 'ORAP') }}</span>
             </a>
             <div class="navbar-nav me-auto">
                 <!-- 숨김 처리: 홈, 분석방관리, 분석, 도움말 메뉴
@@ -59,12 +59,14 @@
                 <a class="nav-link" href="{{ url_for('strategic_field_analysis') }}">
                     <i class="fas fa-bullseye"></i> <span data-i18n="nav.strategic_field">연구분야분석</span>
                 </a>
+                <!-- 숨김 처리: 설문 메뉴
                 <a class="nav-link" href="{{ url_for('survey') }}">
                     <i class="fas fa-clipboard-list"></i> <span data-i18n="nav.survey">설문참여</span>
                 </a>
                 <a class="nav-link" href="{{ url_for('survey_analysis') }}">
                     <i class="fas fa-chart-pie"></i> <span data-i18n="nav.survey_analysis">설문분석</span>
                 </a>
+                -->
                 <!-- 숨김 처리: 도움말 메뉴
                 <div class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" id="helpDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -81,11 +83,24 @@
                 </div>
                 -->
             </div>
-            <!-- 기관 전환 및 로그아웃 -->
+            <!-- 기관 전환, 관리자, 로그아웃 -->
             <div class="d-flex align-items-center gap-3">
+                {% if session.get('user_role') in ['admin', 'institution_admin'] %}
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-warning dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-cog"></i> <span data-i18n="nav.admin">관리</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="{{ url_for('admin_users') }}"><i class="fas fa-users-cog"></i> <span data-i18n="admin.user_management">사용자 관리</span></a></li>
+                        {% if session.get('user_role') == 'admin' %}
+                        <li><a class="dropdown-item" href="{{ url_for('admin_dashboard') }}"><i class="fas fa-chart-line"></i> <span data-i18n="admin.dashboard_title">활동 대시보드</span></a></li>
+                        {% endif %}
+                    </ul>
+                </div>
+                {% endif %}
                 {% if not session.get('single_institution') %}
-                <a href="{{ url_for('switch_institution') }}" class="btn btn-sm btn-outline-light" title="기관 전환">
-                    <i class="fas fa-exchange-alt"></i> 기관전환
+                <a href="{{ url_for('switch_institution') }}" class="btn btn-sm btn-outline-light" data-i18n-title="nav.switch_institution">
+                    <i class="fas fa-exchange-alt"></i> <span data-i18n="nav.switch_institution">기관전환</span>
                 </a>
                 {% endif %}
                 <div>
@@ -119,6 +134,72 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+    <script>
+    // 기관명 번역 함수
+    function translateInstitutionName() {
+        const el = document.getElementById('navbar-institution-name');
+        if (!el || typeof i18n === 'undefined') return;
+
+        const institution = el.dataset.institution;
+        if (i18n.currentLang === 'en') {
+            if (institution === 'jbnu') {
+                el.textContent = 'JBNU ORAP';
+            } else if (institution === 'korea') {
+                el.textContent = 'Korea Univ ORAP';
+            }
+        } else {
+            if (institution === 'jbnu') {
+                el.textContent = '전북대 ORAP';
+            } else if (institution === 'korea') {
+                el.textContent = '고려대 ORAP';
+            }
+        }
+    }
+
+    // i18n 초기화 후 기관명 번역
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(translateInstitutionName, 100);
+        // 언어 변경 시 기관명 재번역
+        if (typeof i18n !== 'undefined') {
+            i18n.onLanguageChange(translateInstitutionName);
+        }
+    });
+
+    // 탭 클릭 로깅 함수
+    function logTabClick(pageName, tabName) {
+        fetch('/api/log_tab_click', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ page: pageName, tab: tabName })
+        }).catch(err => console.log('Tab log error:', err));
+    }
+
+    // 다운로드 로깅 함수
+    function logDownload(filename, pageName) {
+        fetch('/api/log_download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: filename, page: pageName || '' })
+        }).catch(err => console.log('Download log error:', err));
+    }
+
+    // Bootstrap 탭 자동 로깅 설정
+    function setupTabLogging(pageName) {
+        document.querySelectorAll('[data-bs-toggle="tab"], [data-bs-toggle="pill"], .nav-link[data-bs-target]').forEach(tab => {
+            tab.addEventListener('shown.bs.tab', function(e) {
+                const tabText = e.target.textContent.trim() || e.target.getAttribute('data-tab-name') || 'Unknown';
+                logTabClick(pageName, tabText);
+            });
+        });
+        // 버튼 탭도 지원
+        document.querySelectorAll('[data-tab-name]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const tabName = this.getAttribute('data-tab-name');
+                if (tabName) logTabClick(pageName, tabName);
+            });
+        });
+    }
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

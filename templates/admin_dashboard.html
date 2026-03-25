@@ -1,0 +1,538 @@
+{% extends "base.html" %}
+
+{% block title %}활동 대시보드 - ORAP{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-chart-line"></i> <span data-i18n="admin.dashboard_title">활동 대시보드</span> <small class="text-muted fs-6" data-i18n="admin.super_admin_only">(슈퍼관리자 전용)</small></h2>
+        <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-users"></i> <span data-i18n="admin.user_management">사용자 관리</span>
+        </a>
+    </div>
+
+    <!-- 요약 카드 -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-subtitle mb-2 opacity-75" data-i18n="admin.today_activity">오늘 활동</h6>
+                            <h2 class="card-title mb-0">{{ today_count }}</h2>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-calendar-day fa-2x opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-subtitle mb-2 opacity-75" data-i18n="admin.week_activity">이번 주 활동</h6>
+                            <h2 class="card-title mb-0">{{ week_count }}</h2>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-calendar-week fa-2x opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-subtitle mb-2 opacity-75" data-i18n="admin.active_users_7d">활성 사용자 (7일)</h6>
+                            <h2 class="card-title mb-0">{{ active_users }}</h2>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-users fa-2x opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-subtitle mb-2 opacity-75" data-i18n="admin.downloads_30d">다운로드 (30일)</h6>
+                            <h2 class="card-title mb-0">{{ downloads|length }}</h2>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-download fa-2x opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 기관별 종합 통계 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <i class="fas fa-university"></i> <span data-i18n="admin.institution_stats">기관별 종합 통계 (최근 30일)</span>
+                </div>
+                <div class="card-body">
+                    {% if institution_stats %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th data-i18n="admin.institution">기관</th>
+                                    <th class="text-center" data-i18n="admin.total_activities">총 활동</th>
+                                    <th class="text-center" data-i18n="admin.unique_users">활성 사용자</th>
+                                    <th class="text-center" data-i18n="admin.login">로그인</th>
+                                    <th class="text-center" data-i18n="admin.download">다운로드</th>
+                                    <th class="text-center" data-i18n="admin.activity_ratio">활동 비율</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set total_all = institution_stats|sum(attribute='total_activities') %}
+                                {% for inst in institution_stats %}
+                                <tr>
+                                    <td><strong>{{ inst.institution }}</strong></td>
+                                    <td class="text-center"><span class="badge bg-primary fs-6">{{ inst.total_activities }}</span></td>
+                                    <td class="text-center"><span class="badge bg-info">{{ inst.unique_users }}</span></td>
+                                    <td class="text-center"><span class="badge bg-success">{{ inst.logins }}</span></td>
+                                    <td class="text-center"><span class="badge bg-warning text-dark">{{ inst.downloads }}</span></td>
+                                    <td class="text-center">
+                                        {% set pct = (inst.total_activities / total_all * 100) if total_all > 0 else 0 %}
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar" role="progressbar" style="width: {{ pct }}%">{{ "%.1f"|format(pct) }}%</div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center" data-i18n="admin.no_data">데이터가 없습니다.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 기관 비교 차트 -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="fas fa-chart-pie"></i> <span data-i18n="admin.institution_pie_chart">기관별 활동 비율</span>
+                </div>
+                <div class="card-body">
+                    <canvas id="institutionPieChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="fas fa-chart-line"></i> <span data-i18n="admin.institution_daily_compare">기관별 일별 활동 비교 (최근 14일)</span>
+                </div>
+                <div class="card-body">
+                    <canvas id="institutionCompareChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- 인기 메뉴 -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="fas fa-fire"></i> <span data-i18n="admin.popular_menus">인기 메뉴 (최근 30일)</span>
+                </div>
+                <div class="card-body">
+                    {% if popular_menus %}
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th data-i18n="admin.menu">메뉴</th>
+                                <th class="text-end" data-i18n="admin.views">조회수</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for menu in popular_menus %}
+                            <tr>
+                                <td>{{ menu.action_detail }}</td>
+                                <td class="text-end"><span class="badge bg-primary">{{ menu.cnt }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="text-muted text-center" data-i18n="admin.no_data">데이터가 없습니다.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 사용자별 활동 -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="fas fa-user-clock"></i> <span data-i18n="admin.user_activity">사용자별 활동 (최근 30일)</span>
+                </div>
+                <div class="card-body">
+                    {% if user_stats %}
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th data-i18n="admin.user">사용자</th>
+                                <th data-i18n="admin.institution">기관</th>
+                                <th class="text-end" data-i18n="admin.activity_count">활동수</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in user_stats %}
+                            <tr>
+                                <td>{{ user.user_name or user.username }}</td>
+                                <td><small class="text-muted">{{ user.institution or '-' }}</small></td>
+                                <td class="text-end"><span class="badge bg-success">{{ user.cnt }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="text-muted text-center" data-i18n="admin.no_data">데이터가 없습니다.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 일별 활동 차트 -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="fas fa-chart-bar"></i> <span data-i18n="admin.daily_activity">일별 활동 (최근 14일)</span>
+                </div>
+                <div class="card-body">
+                    <canvas id="dailyChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 다운로드 이력 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-download"></i> <span data-i18n="admin.download_history">다운로드 이력 (최근 30일)</span>
+                </div>
+                <div class="card-body">
+                    {% if downloads %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="admin.time">시간</th>
+                                    <th data-i18n="admin.institution">기관</th>
+                                    <th data-i18n="admin.name">이름</th>
+                                    <th data-i18n="admin.user_id">아이디</th>
+                                    <th data-i18n="admin.content">내용</th>
+                                    <th data-i18n="admin.ip">IP</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for dl in downloads %}
+                                <tr>
+                                    <td><small>{{ dl.created_at[:16] }}</small></td>
+                                    <td><span class="badge bg-secondary">{{ dl.institution or '-' }}</span></td>
+                                    <td>{{ dl.user_name or '-' }}</td>
+                                    <td><small class="text-muted">{{ dl.username }}</small></td>
+                                    <td>{{ dl.action_detail }}</td>
+                                    <td><small class="text-muted">{{ dl.ip_address }}</small></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center" data-i18n="admin.no_download_records">다운로드 기록이 없습니다.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 최근 활동 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-history"></i> <span data-i18n="admin.recent_activities">최근 활동 (100건)</span></span>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover" id="activityTable">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="admin.time">시간</th>
+                                    <th data-i18n="admin.institution">기관</th>
+                                    <th data-i18n="admin.name">이름</th>
+                                    <th data-i18n="admin.user_id">아이디</th>
+                                    <th data-i18n="admin.action_type">유형</th>
+                                    <th data-i18n="admin.detail">상세</th>
+                                    <th data-i18n="admin.ip">IP</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for activity in recent_activities %}
+                                <tr>
+                                    <td><small>{{ activity.created_at[:16] }}</small></td>
+                                    <td><span class="badge bg-secondary">{{ activity.institution or '-' }}</span></td>
+                                    <td>{{ activity.user_name or '-' }}</td>
+                                    <td><small class="text-muted">{{ activity.username }}</small></td>
+                                    <td>
+                                        {% if activity.action_type == '로그인' %}
+                                        <span class="badge bg-success">{{ activity.action_type }}</span>
+                                        {% elif activity.action_type == '로그아웃' %}
+                                        <span class="badge bg-secondary">{{ activity.action_type }}</span>
+                                        {% elif activity.action_type == '다운로드' %}
+                                        <span class="badge bg-warning text-dark">{{ activity.action_type }}</span>
+                                        {% else %}
+                                        <span class="badge bg-info">{{ activity.action_type }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ activity.action_detail }}</td>
+                                    <td><small class="text-muted">{{ activity.ip_address }}</small></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// 색상 팔레트
+const colors = [
+    'rgba(54, 162, 235, 0.8)',
+    'rgba(255, 99, 132, 0.8)',
+    'rgba(75, 192, 192, 0.8)',
+    'rgba(255, 206, 86, 0.8)',
+    'rgba(153, 102, 255, 0.8)',
+    'rgba(255, 159, 64, 0.8)',
+    'rgba(199, 199, 199, 0.8)'
+];
+
+// 기관별 통계 데이터
+const institutionStats = {{ institution_stats | tojson | safe }};
+
+// 기관별 파이 차트
+if (institutionStats.length > 0) {
+    new Chart(document.getElementById('institutionPieChart'), {
+        type: 'doughnut',
+        data: {
+            labels: institutionStats.map(d => d.institution),
+            datasets: [{
+                data: institutionStats.map(d => d.total_activities),
+                backgroundColor: colors.slice(0, institutionStats.length),
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+// 기관별 일별 비교 차트
+const institutionDaily = {{ institution_daily | tojson | safe }};
+const institutions = Object.keys(institutionDaily);
+
+// 최근 14일 날짜 라벨 생성
+const today = new Date();
+const dateLabels = [];
+for (let i = 13; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    dateLabels.push(d.toISOString().slice(5, 10)); // MM-DD 형식
+}
+
+// 기관별 데이터셋 생성
+const datasets = institutions.map((inst, idx) => {
+    const instData = institutionDaily[inst];
+    const dataMap = {};
+    instData.forEach(d => {
+        dataMap[d.date.slice(5)] = d.cnt;
+    });
+
+    return {
+        label: inst,
+        data: dateLabels.map(date => dataMap[date] || 0),
+        borderColor: colors[idx % colors.length],
+        backgroundColor: colors[idx % colors.length].replace('0.8', '0.2'),
+        fill: false,
+        tension: 0.3
+    };
+});
+
+if (institutions.length > 0) {
+    new Chart(document.getElementById('institutionCompareChart'), {
+        type: 'line',
+        data: {
+            labels: dateLabels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+// 일별 활동 차트 (전체)
+const dailyData = {{ daily_stats | tojson | safe }};
+const labels = dailyData.map(d => d.date.slice(5)); // MM-DD 형식
+const values = dailyData.map(d => d.cnt);
+
+new Chart(document.getElementById('dailyChart'), {
+    type: 'bar',
+    data: {
+        labels: labels,
+        datasets: [{
+            label: typeof i18n !== 'undefined' ? i18n.t('admin.activity') : 'Activities',
+            data: values,
+            backgroundColor: 'rgba(54, 162, 235, 0.7)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    stepSize: 1
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            }
+        }
+    }
+});
+
+// 메뉴명 번역 매핑 (한글 -> 영어)
+const menuTranslations = {
+    '연구분야분석': 'Strategic Field Analysis',
+    '활동 대시보드': 'Activity Dashboard',
+    '연구 전략': 'Research Strategy',
+    '학문분야분석': 'Field Analysis',
+    '연구자 랭킹': 'Researcher Ranking',
+    '분석 모듈': 'Analysis Modules',
+    '사용자 관리': 'User Management',
+    '설문참여': 'Survey',
+    '설문분석': 'Survey Results'
+};
+
+// 활동 유형 번역 매핑
+const activityTypeTranslations = {
+    '페이지 조회': 'Page View',
+    '로그인': 'Login',
+    '로그아웃': 'Logout',
+    '다운로드': 'Download',
+    '탭 클릭': 'Tab Click'
+};
+
+// 텍스트 번역 함수
+function translateText(text, isEnglish) {
+    if (!isEnglish) return text;
+
+    let result = text;
+    // 메뉴명 번역
+    for (const [korean, english] of Object.entries(menuTranslations)) {
+        result = result.replace(new RegExp(korean, 'g'), english);
+    }
+    return result;
+}
+
+// 동적 콘텐츠 번역 함수
+function translateDynamicContent() {
+    const isEnglish = (typeof i18n !== 'undefined' && i18n.currentLang === 'en');
+
+    // 활동 유형 번역 (Type 컬럼의 배지)
+    document.querySelectorAll('#activityTable tbody tr td:nth-child(5) .badge').forEach(badge => {
+        const text = badge.textContent.trim();
+        if (isEnglish && activityTypeTranslations[text]) {
+            badge.textContent = activityTypeTranslations[text];
+        }
+    });
+
+    // 상세 내용 번역 (Detail 컬럼)
+    document.querySelectorAll('#activityTable tbody tr td:nth-child(6)').forEach(td => {
+        const text = td.textContent.trim();
+        td.textContent = translateText(text, isEnglish);
+    });
+
+    // 모든 테이블의 메뉴명/상세내용 번역
+    document.querySelectorAll('table tbody tr td').forEach(td => {
+        const text = td.textContent.trim();
+        // 메뉴명이 포함된 경우 번역
+        for (const korean of Object.keys(menuTranslations)) {
+            if (text.includes(korean)) {
+                td.textContent = translateText(text, isEnglish);
+                break;
+            }
+        }
+    });
+}
+
+// i18n 초기화 후 번역 실행
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(translateDynamicContent, 200);
+});
+
+// 언어 변경 감지
+const langSelector = document.getElementById('language-selector');
+if (langSelector) {
+    langSelector.addEventListener('change', function() {
+        setTimeout(function() {
+            location.reload(); // 페이지 새로고침으로 확실하게 번역 적용
+        }, 100);
+    });
+}
+</script>
+{% endblock %}

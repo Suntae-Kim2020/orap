@@ -756,6 +756,8 @@ function triggerCSVDownload(csvContent, filename) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    // 다운로드 로깅
+    logDownload(filename, '학문분야분석');
 }
 
 function getPeriodLabel() {
@@ -932,5 +934,8 @@ if (window.i18n && window.i18n.ready) {
 } else {
     window.addEventListener('i18nReady', initPage);
 }
+
+// 탭 로깅 설정
+setupTabLogging('학문분야분석');
 </script>
 {% endblock %}

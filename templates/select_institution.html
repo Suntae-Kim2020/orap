@@ -101,13 +101,13 @@
 </head>
 <body>
     <a href="{{ url_for('logout') }}" class="logout-link">
-        <i class="fas fa-sign-out-alt"></i> 로그아웃
+        <i class="fas fa-sign-out-alt"></i> <span data-i18n="institution.logout">로그아웃</span>
     </a>
 
     <div class="selection-container">
         <div class="selection-header">
             <h1><i class="fas fa-graduation-cap"></i> ORAP</h1>
-            <p>분석할 기관을 선택하세요</p>
+            <p data-i18n="institution.select_prompt">분석할 기관을 선택하세요</p>
         </div>
 
         <div class="institution-cards">
@@ -115,11 +115,11 @@
                 <div class="icon">
                     <i class="fas fa-university"></i>
                 </div>
-                <h3>전북대학교</h3>
+                <h3 data-i18n="institution.jbnu_name">전북대학교</h3>
                 <p>Jeonbuk National University</p>
                 <div class="stats">
-                    <span><i class="fas fa-users"></i> 연구자 9,391명</span>
-                    <span><i class="fas fa-file-alt"></i> 논문 24,566건</span>
+                    <span><i class="fas fa-users"></i> <span data-i18n="institution.researchers">연구자</span> 9,391<span data-i18n="institution.person_unit">명</span></span>
+                    <span><i class="fas fa-file-alt"></i> <span data-i18n="institution.papers">논문</span> 24,566<span data-i18n="institution.count_unit">건</span></span>
                     <span><i class="fas fa-calendar"></i> 2015-2024</span>
                 </div>
             </a>
@@ -128,15 +128,24 @@
                 <div class="icon">
                     <i class="fas fa-university"></i>
                 </div>
-                <h3>고려대학교</h3>
+                <h3 data-i18n="institution.korea_name">고려대학교</h3>
                 <p>Korea University</p>
                 <div class="stats">
-                    <span><i class="fas fa-users"></i> 연구자 26,749명</span>
-                    <span><i class="fas fa-file-alt"></i> 논문 61,541건</span>
+                    <span><i class="fas fa-users"></i> <span data-i18n="institution.researchers">연구자</span> 26,749<span data-i18n="institution.person_unit">명</span></span>
+                    <span><i class="fas fa-file-alt"></i> <span data-i18n="institution.papers">논문</span> 61,541<span data-i18n="institution.count_unit">건</span></span>
                     <span><i class="fas fa-calendar"></i> 2015-2024</span>
                 </div>
             </a>
         </div>
     </div>
+
+    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof i18n !== 'undefined') {
+                i18n.init();
+            }
+        });
+    </script>
 </body>
 </html>

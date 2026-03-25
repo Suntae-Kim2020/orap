@@ -769,6 +769,8 @@ function triggerCSVDownload(csvContent, filename) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    // 다운로드 로깅
+    logDownload(filename, '분석 모듈');
 }
 
 function getModulePeriodLabel() {
@@ -867,5 +869,8 @@ function downloadCollabCSV() {
     const filename = `${t('analysis_modules.' + typeKeys[currentCollabType])}_${getModulePeriodLabel()}.csv`;
     triggerCSVDownload(generateCSV(collabData, colDefs[currentCollabType]), filename);
 }
+
+// 탭 로깅 설정
+setupTabLogging('분석 모듈');
 </script>
 {% endblock %}

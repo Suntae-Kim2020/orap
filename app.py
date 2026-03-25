@@ -15,9 +15,6 @@ app = Flask(__name__)
 app.secret_key = 'orap-secret-key-2024-secure'
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
 
-# 인증 설정
-AUTH_PASSWORD = 'kst123!'
-
 # 기관별 데이터베이스 매핑
 INSTITUTION_DB = {
     'jbnu': 'jbnu.db',
@@ -33,6 +30,115 @@ INSTITUTION_AFFILIATIONS = {
     'jbnu': 'Jeonbuk National University',
     'korea': 'Korea University'
 }
+
+# 사용자 데이터베이스 초기화
+USERS_DB = 'users.db'
+
+def init_users_db():
+    """사용자 데이터베이스 초기화"""
+    conn = sqlite3.connect(USERS_DB)
+    cursor = conn.cursor()
+
+    # users 테이블 생성
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            name TEXT,
+            department TEXT,
+            job_description TEXT,
+            institution TEXT,
+            role TEXT DEFAULT 'user',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # 초기 사용자 추가 (존재하지 않는 경우만)
+    initial_users = [
+        ('user001', 'user0011234!', 'jbnu', 'user'),
+        ('user100', 'user1001234!', 'korea', 'user'),
+        ('jbnu_admin', 'jbnuadmin1234!', 'jbnu', 'institution_admin'),
+        ('korea_admin', 'koreaadmin1234!', 'korea', 'institution_admin'),
+        ('admin', 'admin1234!', None, 'admin')
+    ]
+
+    for username, password, institution, role in initial_users:
+        cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
+        if not cursor.fetchone():
+            cursor.execute(
+                'INSERT INTO users (username, password, institution, role) VALUES (?, ?, ?, ?)',
+                (username, password, institution, role)
+            )
+
+    conn.commit()
+    conn.close()
+
+# 앱 시작 시 users DB 초기화
+init_users_db()
+
+
+# 활동 로그 테이블 초기화
+def init_activity_logs_db():
+    """활동 로그 테이블 초기화"""
+    conn = sqlite3.connect(USERS_DB)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            username TEXT,
+            user_name TEXT,
+            institution TEXT,
+            action_type TEXT,
+            action_detail TEXT,
+            page_url TEXT,
+            ip_address TEXT,
+            user_agent TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_activity_logs_db()
+
+
+def log_activity(action_type, action_detail='', page_url=None):
+    """사용자 활동 로그 기록"""
+    try:
+        username = session.get('username', '')
+        if not username:
+            return
+
+        conn = sqlite3.connect(USERS_DB)
+        cursor = conn.cursor()
+
+        # 사용자 정보 조회
+        cursor.execute('SELECT id, name FROM users WHERE username = ?', (username,))
+        user = cursor.fetchone()
+        user_id = user[0] if user else None
+        user_name = user[1] if user else ''
+
+        cursor.execute('''
+            INSERT INTO activity_logs
+            (user_id, username, user_name, institution, action_type, action_detail, page_url, ip_address, user_agent)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            user_id,
+            username,
+            user_name,
+            session.get('institution', ''),
+            action_type,
+            action_detail,
+            page_url or request.path,
+            request.remote_addr,
+            request.user_agent.string[:200] if request.user_agent else ''
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Activity log error: {e}")
 
 
 def get_institution_affiliation(institution=None):
@@ -54,6 +160,34 @@ def login_required(f):
                 return redirect(url_for('select_institution'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+def admin_required(f):
+    """관리자 권한 필수 데코레이터 (슈퍼관리자 또는 기관관리자)"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('authenticated'):
+            return redirect(url_for('login'))
+        user_role = session.get('user_role')
+        if user_role not in ('admin', 'institution_admin'):
+            flash('관리자 권한이 필요합니다.')
+            return redirect(url_for('researcher_ranking'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def super_admin_required(f):
+    """슈퍼관리자(admin) 전용 데코레이터"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('authenticated'):
+            return redirect(url_for('login'))
+        if session.get('user_role') != 'admin':
+            flash('슈퍼관리자 권한이 필요합니다.')
+            return redirect(url_for('researcher_ranking'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 
 # Cloud Run에서는 /tmp 사용, 로컬에서는 uploads 사용
 UPLOAD_FOLDER = '/tmp/uploads' if os.getenv('PORT') else 'uploads'
@@ -360,34 +494,48 @@ def safe_remove_file(filepath):
 def login():
     """로그인 페이지"""
     if request.method == 'POST':
+        username = request.form.get('username', '')
         password = request.form.get('password', '')
 
-        # 기관별 전용 비밀번호 처리
-        if password == 'kst123':
-            # 전북대학교 전용
+        # 사용자 데이터베이스에서 인증
+        conn = sqlite3.connect(USERS_DB)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))
+        user = cursor.fetchone()
+        conn.close()
+
+        if user:
             session['authenticated'] = True
-            session['institution'] = 'jbnu'
-            session['single_institution'] = True
-            return redirect(url_for('researcher_ranking'))
-        elif password == 'jjpark123':
-            # 고려대학교 전용
-            session['authenticated'] = True
-            session['institution'] = 'korea'
-            session['single_institution'] = True
-            return redirect(url_for('researcher_ranking'))
-        elif password == AUTH_PASSWORD:
-            # 일반 접속 (기관 선택 가능)
-            session['authenticated'] = True
-            session['single_institution'] = False
-            return redirect(url_for('select_institution'))
+            session['username'] = user['username']
+            session['user_role'] = user['role']
+
+            # 로그인 활동 기록
+            log_activity('로그인', f"사용자: {user['username']}")
+
+            if user['role'] == 'admin':
+                # 관리자는 기관 선택 가능
+                session['single_institution'] = False
+                return redirect(url_for('select_institution'))
+            elif user['institution']:
+                # 기관 사용자는 해당 기관으로 바로 접속
+                session['institution'] = user['institution']
+                session['institution_name'] = INSTITUTION_NAMES.get(user['institution'], user['institution'])
+                session['single_institution'] = True
+                return redirect(url_for('researcher_ranking'))
+            else:
+                # 기관 정보 없으면 선택 화면으로
+                session['single_institution'] = False
+                return redirect(url_for('select_institution'))
         else:
-            return render_template('login.html', error='비밀번호가 올바르지 않습니다.')
+            return render_template('login.html', error='아이디 또는 비밀번호가 올바르지 않습니다.')
     return render_template('login.html')
 
 
 @app.route('/logout')
 def logout():
     """로그아웃"""
+    log_activity('로그아웃', '')
     session.clear()
     return redirect(url_for('login'))
 
@@ -1600,7 +1748,9 @@ def extract_second_stage_candidates():
         return jsonify({'success': False, 'error': f'2단계 후보 추출 중 오류가 발생했습니다: {str(e)}'})
 
 @app.route('/api/download_first_stage_candidates', methods=['POST'])
+@login_required
 def download_first_stage_candidates():
+    log_activity('다운로드', '1단계 후보 CSV')
     try:
         room_id = request.form.get('room_id')
         weight_1 = float(request.form.get('weight_1', 0))
@@ -1830,7 +1980,9 @@ def get_topic_distribution_data():
         return jsonify({'success': False, 'error': f'주제 분포 데이터 조회 중 오류가 발생했습니다: {str(e)}'})
 
 @app.route('/api/download_topic_analysis', methods=['POST'])
+@login_required
 def download_topic_analysis():
+    log_activity('다운로드', '주제 분석')
     try:
         room_id = request.form.get('room_id')
         weight_1 = float(request.form.get('weight_1', 0))
@@ -2019,7 +2171,9 @@ def download_topic_analysis():
         return f"주제 분포 분석 다운로드 중 오류가 발생했습니다: {str(e)}", 500
 
 @app.route('/api/download_second_stage_candidates', methods=['POST'])
+@login_required
 def download_second_stage_candidates():
+    log_activity('다운로드', '2단계 후보 CSV')
     try:
         room_id = request.form.get('room_id')
         weight_1 = float(request.form.get('weight_1', 0))
@@ -3185,8 +3339,10 @@ def api_recalculate_scores():
 
 
 @app.route('/researcher_ranking')
+@login_required
 def researcher_ranking():
     """우수 연구자 랭킹 페이지"""
+    log_activity('페이지 조회', '연구자 랭킹')
     return render_template('researcher_ranking.html')
 
 
@@ -3331,6 +3487,314 @@ def api_researcher_scores():
             'returned_count': len(results),
             'fwci_method': fwci_method,
             'researchers': results
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@app.route('/api/bibliometric_ranking')
+def api_bibliometric_ranking():
+    """계량서지학 지표 기반 연구자 랭킹 API (인용수, FWCI, h-index, g-index, i10-index)"""
+    try:
+        min_output = request.args.get('min_output', 10, type=int)
+        limit = request.args.get('limit', 100, type=int)
+        sort_by = request.args.get('sort_by', 'h_index')
+        year_from = request.args.get('year_from', type=int)
+        year_to = request.args.get('year_to', type=int)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        affiliation = get_institution_affiliation()
+
+        # 저자 목록 조회
+        cursor.execute("""
+            SELECT author_id, scopus_author_id, name, scholarly_output,
+                   citations, field_weighted_citation_impact, h_index,
+                   scopus_author_profile, primary_affiliation,
+                   oldest_publication, most_recent_publication
+            FROM author
+            WHERE primary_affiliation LIKE ?
+        """, (f'%{affiliation}%',))
+        authors = [dict(row) for row in cursor.fetchall()]
+
+        # 논문 데이터 조회 (인용수 필요)
+        year_filter = ""
+        params = []
+        if year_from and year_to:
+            year_filter = "WHERE year >= ? AND year <= ?"
+            params = [year_from, year_to]
+
+        cursor.execute(f"""
+            SELECT scopus_author_ids, citations
+            FROM publication
+            {year_filter}
+        """, params)
+        publications = cursor.fetchall()
+
+        # 저자별 논문 인용수 리스트 구축
+        author_citations = {}  # scopus_author_id -> [citation_count, ...]
+        for pub in publications:
+            author_ids_str = pub['scopus_author_ids'] or ''
+            try:
+                    cite_count = int(pub['citations'] or 0)
+            except (ValueError, TypeError):
+                    cite_count = 0
+            for aid in author_ids_str.replace(';', '|').split('|'):
+                aid = aid.strip()
+                if aid:
+                    if aid not in author_citations:
+                        author_citations[aid] = []
+                    author_citations[aid].append(cite_count)
+
+        conn.close()
+
+        results = []
+        for author in authors:
+            sid = author['scopus_author_id']
+            cites_list = author_citations.get(sid, [])
+            paper_count = len(cites_list) if (year_from and year_to) else (author['scholarly_output'] or 0)
+
+            if paper_count < min_output:
+                continue
+
+            # 인용수 내림차순 정렬
+            cites_list.sort(reverse=True)
+
+            # g-index 계산: 상위 g편의 인용 합계 >= g^2
+            g_index = 0
+            cumulative = 0
+            for i, c in enumerate(cites_list):
+                cumulative += c
+                if cumulative >= (i + 1) ** 2:
+                    g_index = i + 1
+
+            # i10-index 계산: 인용 10회 이상 논문 수
+            i10_index = sum(1 for c in cites_list if c >= 10)
+
+            # h-index: 논문 데이터에서 항상 재계산 (상세와 일치)
+            h_index = 0
+            for i, c in enumerate(cites_list):
+                if c >= (i + 1):
+                    h_index = i + 1
+                else:
+                    break
+
+            if year_from and year_to:
+                total_citations = sum(cites_list)
+                fwci = None  # 기간 필터 시 개별 FWCI 재계산 불가
+            else:
+                total_citations = author['citations'] or 0
+                fwci = author['field_weighted_citation_impact']
+
+            # m-index 계산: h-index / 학술 활동 연수
+            oldest = author.get('oldest_publication')
+            most_recent = author.get('most_recent_publication')
+            if oldest and most_recent and most_recent >= oldest:
+                career_years = most_recent - oldest + 1
+                m_index = round(h_index / career_years, 2) if career_years > 0 else None
+            else:
+                career_years = None
+                m_index = None
+
+            results.append({
+                'scopus_author_id': sid,
+                'name': author['name'],
+                'scholarly_output': paper_count,
+                'citations': total_citations,
+                'fwci': round(fwci, 2) if fwci else None,
+                'h_index': h_index,
+                'g_index': g_index,
+                'i10_index': i10_index,
+                'm_index': m_index,
+                'career_years': career_years,
+                'primary_affiliation': affiliation,
+                'profile_url': author['scopus_author_profile']
+            })
+
+        # 정렬
+        valid_sort_keys = ['citations', 'fwci', 'h_index', 'g_index', 'i10_index', 'm_index', 'scholarly_output', 'name']
+        if sort_by not in valid_sort_keys:
+            sort_by = 'h_index'
+        results.sort(key=lambda x: (x[sort_by] if x[sort_by] is not None else -1), reverse=(sort_by != 'name'))
+
+        total_count = len(results)
+        if limit > 0:
+            results = results[:limit]
+
+        return jsonify({
+            'total_count': total_count,
+            'returned_count': len(results),
+            'sort_by': sort_by,
+            'year_from': year_from,
+            'year_to': year_to,
+            'researchers': results
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@app.route('/api/bibliometric_detail/<scopus_id>')
+def api_bibliometric_detail(scopus_id):
+    """계량서지학 지표 상세 API - h/g/i10-index 산출 근거 제공"""
+    try:
+        year_from = request.args.get('year_from', type=int)
+        year_to = request.args.get('year_to', type=int)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 저자 기본 정보
+        cursor.execute("""
+            SELECT author_id, scopus_author_id, name, scholarly_output,
+                   citations, field_weighted_citation_impact, h_index,
+                   scopus_author_profile, primary_affiliation, orcid,
+                   oldest_publication, most_recent_publication
+            FROM author WHERE scopus_author_id = ?
+        """, (scopus_id,))
+        author = cursor.fetchone()
+        if not author:
+            conn.close()
+            return jsonify({'error': 'Author not found'}), 404
+        author_dict = dict(author)
+
+        # 해당 저자의 논문 목록 (인용수 포함)
+        year_filter = ""
+        params = []
+        if year_from and year_to:
+            year_filter = "AND year >= ? AND year <= ?"
+            params = [year_from, year_to]
+
+        cursor.execute(f"""
+            SELECT title, year, citations, field_weighted_citation_impact,
+                   scopus_source_title, eid
+            FROM publication
+            WHERE scopus_author_ids LIKE ?
+            {year_filter}
+            ORDER BY CAST(citations AS INTEGER) DESC
+        """, (f'%{scopus_id}%', *params))
+        papers_raw = cursor.fetchall()
+        conn.close()
+
+        # 논문 데이터 정리
+        papers = []
+        for p in papers_raw:
+            try:
+                cites = int(p['citations'] or 0)
+            except (ValueError, TypeError):
+                cites = 0
+            eid = p['eid'] or ''
+            scopus_link = f"https://www.scopus.com/record/display.uri?eid={eid}" if eid else None
+            papers.append({
+                'title': p['title'] or '',
+                'year': p['year'],
+                'citations': cites,
+                'fwci': round(float(p['field_weighted_citation_impact'] or 0), 2),
+                'source': p['scopus_source_title'] or '',
+                'scopus_link': scopus_link
+            })
+
+        # 인용수 내림차순 정렬 (이미 SQL에서 정렬했지만 확실히)
+        papers.sort(key=lambda x: x['citations'], reverse=True)
+
+        total_papers = len(papers)
+        total_citations = sum(p['citations'] for p in papers)
+
+        # h-index 계산 및 경계 표시
+        h_index = 0
+        for i, p in enumerate(papers):
+            if p['citations'] >= (i + 1):
+                h_index = i + 1
+            else:
+                break
+
+        # g-index 계산 및 경계 표시
+        g_index = 0
+        cumulative = 0
+        g_cumulative_list = []
+        for i, p in enumerate(papers):
+            cumulative += p['citations']
+            g_squared = (i + 1) ** 2
+            g_cumulative_list.append({
+                'rank': i + 1,
+                'citations': p['citations'],
+                'cumulative': cumulative,
+                'g_squared': g_squared,
+                'satisfies': cumulative >= g_squared
+            })
+            if cumulative >= g_squared:
+                g_index = i + 1
+
+        # i10-index 계산
+        i10_index = sum(1 for p in papers if p['citations'] >= 10)
+
+        # 상세 논문 리스트 (상위 제한)
+        h_papers = papers[:max(h_index + 3, 10)]  # h-index 경계 전후
+        for i, p in enumerate(h_papers):
+            p['rank'] = i + 1
+            p['is_h_core'] = (i < h_index)
+
+        g_detail = g_cumulative_list[:max(g_index + 3, 10)]
+
+        i10_papers = [p for p in papers if p['citations'] >= 10][:20]
+
+        # m-index 계산: h-index / 학술 활동 연수
+        oldest_pub = author_dict.get('oldest_publication')
+        most_recent_pub = author_dict.get('most_recent_publication')
+        if oldest_pub and most_recent_pub and most_recent_pub >= oldest_pub:
+            career_years = most_recent_pub - oldest_pub + 1
+            m_index = round(h_index / career_years, 2) if career_years > 0 else None
+        else:
+            career_years = None
+            m_index = None
+
+        return jsonify({
+            'author': {
+                'scopus_author_id': author_dict['scopus_author_id'],
+                'name': author_dict['name'],
+                'scholarly_output': total_papers if (year_from and year_to) else (author_dict['scholarly_output'] or 0),
+                'citations': total_citations if (year_from and year_to) else (author_dict['citations'] or 0),
+                'fwci': round(author_dict['field_weighted_citation_impact'] or 0, 2),
+                'h_index_original': author_dict['h_index'] or 0,
+                'primary_affiliation': author_dict['primary_affiliation'] or '',
+                'scopus_author_profile': author_dict['scopus_author_profile'] or '',
+                'orcid': author_dict['orcid'] or ''
+            },
+            'indices': {
+                'h_index': h_index,
+                'g_index': g_index,
+                'i10_index': i10_index,
+                'm_index': m_index,
+                'career_years': career_years,
+                'oldest_publication': oldest_pub,
+                'most_recent_publication': most_recent_pub,
+                'total_papers': total_papers,
+                'total_citations': total_citations
+            },
+            'h_detail': {
+                'description': f'상위 {h_index}편의 논문이 각각 {h_index}회 이상 인용됨',
+                'papers': h_papers
+            },
+            'g_detail': {
+                'description': f'상위 {g_index}편 논문의 인용 합계({g_cumulative_list[g_index-1]["cumulative"] if g_index > 0 else 0})가 {g_index}² = {g_index**2} 이상',
+                'papers': g_detail
+            },
+            'i10_detail': {
+                'description': f'10회 이상 인용된 논문 {i10_index}편',
+                'papers': i10_papers
+            },
+            'm_detail': {
+                'description': f'h-index({h_index}) ÷ 학술활동 연수({career_years}년, {oldest_pub}~{most_recent_pub}) = {m_index}' if m_index else '학술활동 기간 정보 없음'
+            },
+            'year_from': year_from,
+            'year_to': year_to
         })
     except Exception as e:
         import traceback
@@ -3524,8 +3988,10 @@ def api_researcher_score_detail(scopus_id):
 
 
 @app.route('/api/download_researcher_ranking')
+@login_required
 def download_researcher_ranking():
     """연구자 랭킹 CSV 다운로드 (사전 계산 테이블 사용)"""
+    log_activity('다운로드', '연구자 랭킹 CSV')
     import io
 
     conn = get_db_connection()
@@ -3615,8 +4081,10 @@ def download_researcher_ranking():
 # ========================================
 
 @app.route('/analysis_modules')
+@login_required
 def analysis_modules():
     """연구자 분석 모듈 메인 페이지"""
+    log_activity('페이지 조회', '분석 모듈')
     return render_template('analysis_modules.html')
 
 
@@ -4477,8 +4945,10 @@ def api_collaboration_analysis():
 
 
 @app.route('/research_strategy')
+@login_required
 def research_strategy():
     """연구 전략 메인 페이지"""
+    log_activity('페이지 조회', '연구 전략')
     return render_template('research_strategy.html')
 
 
@@ -5204,7 +5674,9 @@ def api_strategic_portfolio():
 ###############################################################################
 
 @app.route('/field_analysis')
+@login_required
 def field_analysis():
+    log_activity('페이지 조회', '학문분야분석')
     return render_template('field_analysis.html')
 
 
@@ -5682,8 +6154,10 @@ def api_field_analysis_collaborators():
 # ==================== 설문 관련 ====================
 
 @app.route('/survey')
+@login_required
 def survey():
     """설문 페이지"""
+    log_activity('페이지 조회', '설문참여')
     return render_template('survey.html')
 
 
@@ -5768,8 +6242,10 @@ def submit_survey():
 
 
 @app.route('/survey/analysis')
+@login_required
 def survey_analysis():
     """설문 결과 분석 페이지"""
+    log_activity('페이지 조회', '설문분석')
     return render_template('survey_analysis.html')
 
 
@@ -6473,8 +6949,10 @@ def api_researcher_scores_custom():
 # ============================================
 
 @app.route('/strategic_field_analysis')
+@login_required
 def strategic_field_analysis():
     """연구분야분석 페이지"""
+    log_activity('페이지 조회', '연구분야분석')
     return render_template('strategic_field_analysis.html')
 
 
@@ -7350,6 +7828,401 @@ def api_strategic_field_collaborators():
         'subcategory': subcategory,
         'keywords': keywords,
         'collaborators': result
+    })
+
+
+# ========================================
+# 관리자 기능
+# ========================================
+
+@app.route('/admin')
+@admin_required
+def admin_users():
+    """사용자 관리 페이지"""
+    conn = sqlite3.connect(USERS_DB)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    user_role = session.get('user_role')
+    user_institution = session.get('institution')
+
+    if user_role == 'admin':
+        # 슈퍼관리자: 모든 사용자 조회
+        cursor.execute('SELECT * FROM users ORDER BY id')
+    else:
+        # 기관관리자: 같은 기관 사용자만 조회
+        cursor.execute('SELECT * FROM users WHERE institution = ? ORDER BY id', (user_institution,))
+
+    users = cursor.fetchall()
+    conn.close()
+
+    # 기관관리자는 자신의 기관만 선택 가능
+    if user_role == 'admin':
+        available_institutions = INSTITUTION_NAMES
+    else:
+        available_institutions = {user_institution: INSTITUTION_NAMES.get(user_institution, user_institution)}
+
+    return render_template('admin_users.html',
+                           users=users,
+                           institutions=INSTITUTION_NAMES,
+                           available_institutions=available_institutions,
+                           is_super_admin=(user_role == 'admin'))
+
+
+@app.route('/admin/user/add', methods=['POST'])
+@admin_required
+def admin_add_user():
+    """사용자 추가"""
+    username = request.form.get('username', '').strip()
+    password = request.form.get('password', '').strip()
+    name = request.form.get('name', '').strip()
+    department = request.form.get('department', '').strip() or None
+    job_description = request.form.get('job_description', '').strip() or None
+    institution = request.form.get('institution', '').strip() or None
+    role = request.form.get('role', 'user')
+
+    user_role = session.get('user_role')
+    user_institution = session.get('institution')
+
+    # 기관관리자는 자신의 기관 사용자만 추가 가능
+    if user_role != 'admin':
+        institution = user_institution
+        # 기관관리자는 슈퍼관리자나 다른 기관관리자 생성 불가
+        if role == 'admin':
+            role = 'user'
+
+    if not username or not password or not name:
+        flash('아이디, 비밀번호, 이름은 필수입니다.')
+        return redirect(url_for('admin_users'))
+
+    conn = sqlite3.connect(USERS_DB)
+    cursor = conn.cursor()
+
+    # 중복 체크
+    cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
+    if cursor.fetchone():
+        conn.close()
+        flash('이미 존재하는 아이디입니다.')
+        return redirect(url_for('admin_users'))
+
+    cursor.execute(
+        'INSERT INTO users (username, password, name, department, job_description, institution, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        (username, password, name, department, job_description, institution, role)
+    )
+    conn.commit()
+    conn.close()
+    flash(f'사용자 "{name}"({username})가 추가되었습니다.')
+    return redirect(url_for('admin_users'))
+
+
+@app.route('/admin/user/<int:user_id>/edit', methods=['POST'])
+@admin_required
+def admin_edit_user(user_id):
+    """사용자 수정"""
+    username = request.form.get('username', '').strip()
+    password = request.form.get('password', '').strip()
+    name = request.form.get('name', '').strip()
+    department = request.form.get('department', '').strip() or None
+    job_description = request.form.get('job_description', '').strip() or None
+    institution = request.form.get('institution', '').strip() or None
+    role = request.form.get('role', 'user')
+
+    user_role = session.get('user_role')
+    user_institution = session.get('institution')
+
+    conn = sqlite3.connect(USERS_DB)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # 기관관리자 권한 체크
+    if user_role != 'admin':
+        # 수정하려는 사용자가 같은 기관인지 확인
+        cursor.execute('SELECT institution FROM users WHERE id = ?', (user_id,))
+        target_user = cursor.fetchone()
+        if not target_user or target_user['institution'] != user_institution:
+            conn.close()
+            flash('권한이 없습니다.')
+            return redirect(url_for('admin_users'))
+        # 기관관리자는 기관 변경 불가, 슈퍼관리자 생성 불가
+        institution = user_institution
+        if role == 'admin':
+            role = 'user'
+
+    if not username or not password or not name:
+        flash('아이디, 비밀번호, 이름은 필수입니다.')
+        conn.close()
+        return redirect(url_for('admin_users'))
+
+    # 다른 사용자와 중복 체크
+    cursor.execute('SELECT id FROM users WHERE username = ? AND id != ?', (username, user_id))
+    if cursor.fetchone():
+        conn.close()
+        flash('이미 존재하는 아이디입니다.')
+        return redirect(url_for('admin_users'))
+
+    cursor.execute(
+        'UPDATE users SET username = ?, password = ?, name = ?, department = ?, job_description = ?, institution = ?, role = ? WHERE id = ?',
+        (username, password, name, department, job_description, institution, role, user_id)
+    )
+    conn.commit()
+    conn.close()
+    flash(f'사용자 "{name}"({username})가 수정되었습니다.')
+    return redirect(url_for('admin_users'))
+
+
+@app.route('/admin/user/<int:user_id>/delete', methods=['POST'])
+@admin_required
+def admin_delete_user(user_id):
+    """사용자 삭제"""
+    user_role = session.get('user_role')
+    user_institution = session.get('institution')
+
+    conn = sqlite3.connect(USERS_DB)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # 삭제 전 사용자 정보 조회
+    cursor.execute('SELECT username, role, institution FROM users WHERE id = ?', (user_id,))
+    user = cursor.fetchone()
+
+    if not user:
+        conn.close()
+        flash('사용자를 찾을 수 없습니다.')
+        return redirect(url_for('admin_users'))
+
+    # 기관관리자 권한 체크
+    if user_role != 'admin':
+        if user['institution'] != user_institution:
+            conn.close()
+            flash('권한이 없습니다.')
+            return redirect(url_for('admin_users'))
+
+    if user['role'] == 'admin':
+        # 마지막 슈퍼관리자인지 확인
+        cursor.execute('SELECT COUNT(*) FROM users WHERE role = "admin"')
+        admin_count = cursor.fetchone()[0]
+        if admin_count <= 1:
+            conn.close()
+            flash('최소 1명의 슈퍼관리자가 필요합니다.')
+            return redirect(url_for('admin_users'))
+
+    cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+    conn.commit()
+    conn.close()
+
+    if user:
+        flash(f'사용자 "{user[0]}"가 삭제되었습니다.')
+    return redirect(url_for('admin_users'))
+
+
+# ========================================
+# 활동 대시보드
+# ========================================
+
+@app.route('/admin/dashboard')
+@super_admin_required
+def admin_dashboard():
+    """활동 대시보드 (슈퍼관리자 전용)"""
+    log_activity('페이지 조회', '활동 대시보드')
+
+    conn = sqlite3.connect(USERS_DB)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # 오늘 활동 수
+    cursor.execute('''
+        SELECT COUNT(*) FROM activity_logs
+        WHERE DATE(created_at) = DATE('now', 'localtime')
+    ''')
+    today_count = cursor.fetchone()[0]
+
+    # 이번 주 활동 수
+    cursor.execute('''
+        SELECT COUNT(*) FROM activity_logs
+        WHERE DATE(created_at) >= DATE('now', '-7 days', 'localtime')
+    ''')
+    week_count = cursor.fetchone()[0]
+
+    # 활성 사용자 수 (최근 7일)
+    cursor.execute('''
+        SELECT COUNT(DISTINCT username) FROM activity_logs
+        WHERE DATE(created_at) >= DATE('now', '-7 days', 'localtime')
+    ''')
+    active_users = cursor.fetchone()[0]
+
+    # 인기 메뉴 (최근 30일)
+    cursor.execute('''
+        SELECT action_detail, COUNT(*) as cnt
+        FROM activity_logs
+        WHERE action_type = '페이지 조회'
+        AND DATE(created_at) >= DATE('now', '-30 days', 'localtime')
+        GROUP BY action_detail
+        ORDER BY cnt DESC
+        LIMIT 10
+    ''')
+    popular_menus = cursor.fetchall()
+
+    # 최근 활동 (최근 100건) - 기관, 이름 포함
+    cursor.execute('''
+        SELECT * FROM activity_logs
+        ORDER BY created_at DESC
+        LIMIT 100
+    ''')
+    recent_activities = cursor.fetchall()
+
+    # 일별 활동 수 (최근 14일)
+    cursor.execute('''
+        SELECT DATE(created_at) as date, COUNT(*) as cnt
+        FROM activity_logs
+        WHERE DATE(created_at) >= DATE('now', '-14 days', 'localtime')
+        GROUP BY DATE(created_at)
+        ORDER BY date
+    ''')
+    daily_stats = [{'date': row['date'], 'cnt': row['cnt']} for row in cursor.fetchall()]
+
+    # 사용자별 활동 수 (최근 30일)
+    cursor.execute('''
+        SELECT username, user_name, institution, COUNT(*) as cnt
+        FROM activity_logs
+        WHERE DATE(created_at) >= DATE('now', '-30 days', 'localtime')
+        GROUP BY username
+        ORDER BY cnt DESC
+        LIMIT 20
+    ''')
+    user_stats = cursor.fetchall()
+
+    # 다운로드 이력 (최근 30일)
+    cursor.execute('''
+        SELECT * FROM activity_logs
+        WHERE action_type = '다운로드'
+        AND DATE(created_at) >= DATE('now', '-30 days', 'localtime')
+        ORDER BY created_at DESC
+        LIMIT 50
+    ''')
+    downloads = cursor.fetchall()
+
+    # 기관별 통계 (최근 30일)
+    cursor.execute('''
+        SELECT institution,
+               COUNT(*) as total_activities,
+               COUNT(DISTINCT username) as unique_users,
+               SUM(CASE WHEN action_type = '다운로드' THEN 1 ELSE 0 END) as downloads,
+               SUM(CASE WHEN action_type = '로그인' THEN 1 ELSE 0 END) as logins
+        FROM activity_logs
+        WHERE DATE(created_at) >= DATE('now', '-30 days', 'localtime')
+        AND institution IS NOT NULL AND institution != ''
+        GROUP BY institution
+        ORDER BY total_activities DESC
+    ''')
+    institution_stats = [dict(row) for row in cursor.fetchall()]
+
+    # 기관별 일별 활동 (비교용, 최근 14일)
+    cursor.execute('''
+        SELECT institution, DATE(created_at) as date, COUNT(*) as cnt
+        FROM activity_logs
+        WHERE DATE(created_at) >= DATE('now', '-14 days', 'localtime')
+        AND institution IS NOT NULL AND institution != ''
+        GROUP BY institution, DATE(created_at)
+        ORDER BY institution, date
+    ''')
+    institution_daily = {}
+    for row in cursor.fetchall():
+        inst = row['institution']
+        if inst not in institution_daily:
+            institution_daily[inst] = []
+        institution_daily[inst].append({'date': row['date'], 'cnt': row['cnt']})
+
+    conn.close()
+
+    return render_template('admin_dashboard.html',
+                           today_count=today_count,
+                           week_count=week_count,
+                           active_users=active_users,
+                           popular_menus=popular_menus,
+                           recent_activities=recent_activities,
+                           daily_stats=daily_stats,
+                           user_stats=user_stats,
+                           downloads=downloads,
+                           institution_stats=institution_stats,
+                           institution_daily=institution_daily)
+
+
+@app.route('/api/log_tab_click', methods=['POST'])
+@login_required
+def api_log_tab_click():
+    """탭 클릭 로깅 API"""
+    try:
+        data = request.get_json()
+        page_name = data.get('page', '')
+        tab_name = data.get('tab', '')
+
+        if page_name and tab_name:
+            log_activity('탭 클릭', f'{page_name} > {tab_name}')
+
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
+
+@app.route('/api/log_download', methods=['POST'])
+@login_required
+def api_log_download():
+    """다운로드 로깅 API"""
+    try:
+        data = request.get_json()
+        filename = data.get('filename', '')
+        page_name = data.get('page', '')
+
+        if filename:
+            detail = f'{page_name} > {filename}' if page_name else filename
+            log_activity('다운로드', detail)
+
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
+
+@app.route('/api/admin/activity_logs')
+@admin_required
+def api_activity_logs():
+    """활동 로그 API"""
+    user_role = session.get('user_role')
+    user_institution = session.get('institution')
+
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    offset = (page - 1) * per_page
+
+    conn = sqlite3.connect(USERS_DB)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # 기관 필터
+    institution_filter = ""
+    params = []
+    if user_role != 'admin':
+        institution_filter = "WHERE institution = ?"
+        params = [user_institution]
+
+    cursor.execute(f'''
+        SELECT * FROM activity_logs
+        {institution_filter}
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?
+    ''', params + [per_page, offset])
+    logs = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute(f'SELECT COUNT(*) FROM activity_logs {institution_filter}', params)
+    total = cursor.fetchone()[0]
+
+    conn.close()
+
+    return jsonify({
+        'logs': logs,
+        'total': total,
+        'page': page,
+        'per_page': per_page,
+        'pages': (total + per_page - 1) // per_page
     })
 
 
