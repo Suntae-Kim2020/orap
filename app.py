@@ -213,8 +213,7 @@ def super_admin_required(f):
     return decorated_function
 
 
-# Cloud Run에서는 /tmp 사용, 로컬에서는 uploads 사용
-UPLOAD_FOLDER = '/tmp/uploads' if os.getenv('PORT') else 'uploads'
+UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 
 # 컬럼 매핑 (70컬럼/67컬럼 형식)
@@ -288,7 +287,7 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 # 스냅샷 파일 저장 디렉토리
-SNAPSHOT_FOLDER = '/tmp/snapshots' if os.getenv('PORT') else 'snapshots'
+SNAPSHOT_FOLDER = 'snapshots'
 if not os.path.exists(SNAPSHOT_FOLDER):
     os.makedirs(SNAPSHOT_FOLDER)
 
@@ -323,20 +322,7 @@ def get_db_connection(institution=None):
     # 앱 디렉토리 기준 경로
     app_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # PythonAnywhere 환경
-    if os.getenv('PYTHONANYWHERE'):
-        db_path = os.path.join(app_dir, db_filename)
-    # Cloud Run 환경
-    elif os.getenv('PORT'):
-        db_path = f'/tmp/{db_filename}'
-        # DB가 없거나 비어있으면 복사
-        if not os.path.exists(db_path) or os.path.getsize(db_path) == 0:
-            src_path = os.path.join(app_dir, db_filename)
-            if os.path.exists(src_path):
-                shutil.copy2(src_path, db_path)
-    # 로컬 환경
-    else:
-        db_path = os.path.join(app_dir, db_filename)
+    db_path = os.path.join(app_dir, db_filename)
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
