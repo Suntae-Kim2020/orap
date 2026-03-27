@@ -1,0 +1,235 @@
+# ORAP 개발 프롬프트 (2026-03-27~28 작업분)
+
+이 문서는 2일간 작업한 신규 기능 추가, 오류 수정, 코드 정리 내용을 재구현하기 위한 상세 프롬프트입니다.
+
+---
+
+## 1. 계량서지학 지표 랭킹 - hg-index 추가 및 지표 안내 보강
+
+### 1-1. hg-index 추가
+
+**정의:** hg-index = √(h-index × g-index), h-index와 g-index의 기하평균
+
+**백엔드 (app.py):**
+- `/api/bibliometric_ranking`: `import math; hg_index = round(math.sqrt(h_index * g_index), 2)` 추가, 응답에 `hg_index` 필드 포함, `valid_sort_keys`에 `'hg_index'` 추가
+- `/api/bibliometric_detail/<scopus_id>`: 동일하게 hg_index 계산, `indices`에 포함, `hg_detail` 추가
+
+**프론트엔드 (researcher_ranking.html):**
+- 지표 안내 카드: col-md-3, border-secondary, 정의/산출/예시/장점/해석 포함
+- 정렬 드롭다운에 hg-index 추가
+- 테이블: g-index와 i10-index 사이에 hg-index 컬럼 (badge bg-secondary)
+- 상세 모달: 요약 카드 + 수식 시각화 (√(h × g) = hg) + h/g 비율 해석
+- CSV 다운로드에 hg-index 포함
+- sortLabels에 `'hg_index': 'hg-index'` 추가
+
+### 1-2. 지표 안내 카드 보강
+
+각 지표 카드에 **산출 방법**과 **해석(insight)** 추가:
+
+**산출 방법 (정의와 예시 사이에 추가):**
+- h-index: 논문을 피인용횟수 내림차순으로 정렬 시, 순위와 피인용횟수가 같아지거나 순위가 피인용횟수보다 작은 최댓값이 h
+- g-index: 상위 g개의 논문 피인용횟수의 합이 g²보다 작지 않은 가장 큰 g값
+- i10-index: 전체 논문 중 피인용횟수가 10회 이상인 논문의 수를 합산
+- m-index: m = h-index ÷ (최근 발표연도 - 최초 발표연도 + 1)
+
+**해석 (카드 하단 border-top 구분선 아래):**
+- h-index: "나는 꾸준히 인정받는 논문을 여러 편 썼다"를 측정. 1,000회 인용 논문 1편만 있으면 h=1. 생산성과 영향력을 동시에 보려는 가장 균형 잡힌 지표.
+- g-index: "내 상위 논문들은 정말 많이 인용됐다"를 측정. h-index는 슈퍼스타 논문을 과소평가하는데, g-index는 그걸 보정. 항상 h ≤ g 관계 성립.
+- i10-index: "최소한 10회 이상 인정받은 논문이 몇 편이냐". 계산이 가장 단순하고, Google Scholar 프로필에서 자동으로 표시.
+- m-index: "나는 같은 기간 동안 얼마나 빠르게 성과를 쌓았나". h=20이어도 10년이면 m=2.0, 20년이면 m=1.0. 신진/원로 연구자를 공평하게 비교하는 유일한 지표.
+- hg-index: h-index(꾸준함)와 g-index(폭발력)의 기하평균. 두 지표가 모두 높아야 높게 나옴. h와 g가 비슷하면 균일한 인용 분포, h << g이면 소수의 히트 논문에 의존.
+
+### 1-3. 다국어 키 (ko.json, en.json)
+
+```
+biblio_hg_def, biblio_hg_method, biblio_hg_method_desc, biblio_hg_example
+biblio_hg_strength, biblio_hg_insight, biblio_hg_ratio_label
+biblio_hg_balanced, biblio_hg_skewed
+biblio_h_insight, biblio_g_insight, biblio_i10_insight, biblio_m_insight
+biblio_h_method, biblio_h_method_desc, biblio_g_method, biblio_g_method_desc
+biblio_i10_method, biblio_i10_method_desc, biblio_m_method, biblio_m_method_desc
+```
+
+---
+
+## 2. 데이터 스냅샷 관리 기능
+
+### 2-1. 개요
+분석 시점에 최신 rawdata를 수집하고 적용할 수 있는 스냅샷 관리 기능.
+
+### 2-2. DB 스키마
+- `data_snapshot` 테이블: snapshot_id, snapshot_name, description, collection_date, year_from, year_to, status(draft/applied/archived), applied_at, applied_by, total_publications, total_authors, created_at, created_by
+- `snapshot_files` 테이블: file_id, snapshot_id, filename, original_filename, data_type, file_size, record_count, upload_date
+
+### 2-3. 테이블 생성 - 중요사항
+`migrate_database()`는 request context 없이 실행되어 `get_db_connection()`이 실패한다.
+별도 함수 `ensure_snapshot_tables(conn)`을 만들어서 라우트 핸들러 내에서 호출.
+초기 스냅샷이 없으면 기존 데이터 기반으로 status='applied' 스냅샷 자동 생성.
+
+### 2-4. Context Processor
+`inject_active_snapshot()`: 모든 페이지에 활성 스냅샷 정보 주입.
+**테이블 존재 여부를 sqlite_master에서 먼저 확인** 후 조회해야 한다.
+
+### 2-5. 파일 유형 자동 감지 (2단계)
+
+**프론트엔드 (detectDataType):** 파일명 패턴으로 1차 감지
+**백엔드 (detect_data_type_from_file):** 파일명 + CSV 1행 헤더(`Data set,"..."`)로 2차 감지
+
+감지 규칙:
+- top_1_, _1__most_cited → 1%
+- top_10_, _10__most_cited, _10__journals → 10%
+- top_25_, _25__journals → 25%
+- sdg, sustainable_development → SDGs
+- international_collaboration → International
+- cited_by_patent, patent_cit → patent
+- cited_by_polic, policy_cit → policy
+- single_author, coauthor → coauthored
+- 그 외 → 전체논문데이터
+
+### 2-6. 복수 파일 업로드
+- `<input type="file" multiple>` 사용
+- `async function uploadMultipleToSnapshot()`: 순차 업로드 + 진행률 표시
+- 결과 테이블: 파일별 감지 유형 + 성공/실패
+
+### 2-7. 스냅샷 적용(Apply) 로직 - 성능 최적화
+
+**처리 순서:** 전체논문데이터 먼저 → 플래그 파일 나중에
+
+**전체논문데이터 처리:**
+- 기존 EID/DOI를 메모리 set에 로드 (DB 쿼리 없이 O(1) 중복 체크)
+- 1,000건씩 배치 executemany INSERT
+
+**플래그 파일 처리:**
+- EID 목록 추출 후 500건씩 배치 IN 절 UPDATE
+
+**적용 후 자동 보정:**
+- SDG 플래그: `sustainable_development_goals_2025` 컬럼이 '-'가 아니면 `is_SDG = 1`
+- 산학협력 플래그: `sector`에 'Corporate' 포함 시 `is_academic_corporate = 1`
+- **주의:** 새 레코드의 boolean 컬럼은 NULL이므로 조건에 `(is_SDG IS NULL OR is_SDG = 0)` 사용
+
+**60컬럼 미만 파일은 자동 건너뜀** (통계/요약 파일 제외)
+
+### 2-8. API 엔드포인트
+- GET /admin/snapshots - 관리 페이지
+- POST /api/snapshots - 생성
+- GET /api/snapshots/<id> - 상세
+- POST /api/snapshots/<id>/upload - 파일 업로드
+- POST /api/snapshots/<id>/apply - 적용
+- POST /api/snapshots/<id>/delete - 삭제
+- POST /api/snapshots/<id>/file/<file_id>/delete - 파일 삭제
+- GET /api/snapshot/active - 활성 스냅샷
+
+### 2-9. 관리 페이지 (admin_snapshots.html)
+- 스냅샷 목록 + 생성 모달 + 상세 모달
+- 상세 모달 안에 "이 스냅샷 적용하기" 버튼 (draft + 파일 있을 때)
+- 모달 닫힐 때 파일 업로드했으면 페이지 새로고침 (버튼 상태 갱신)
+- 리스트에서도 적용 버튼 표시 (applied 상태만 제외)
+
+### 2-10. base.html
+- 관리 드롭다운에 "데이터 스냅샷" 메뉴 추가
+- navbar 아래에 데이터 정보 바 (수집일, 기간, 적용일)
+
+---
+
+## 3. ESG 분석 기능
+
+### 3-1. 개요
+연구분야분석 페이지에 ESG 탭 3개 추가. 기존 키워드 매핑 엔진 재사용.
+
+### 3-2. DB 시드 데이터 (strategic_field_config)
+`migrate_database()`에서 실패할 수 있으므로 수동 INSERT 스크립트도 준비.
+
+14개 서브카테고리:
+- ESG-E(환경): 기후변화·탄소, 재생에너지, 환경오염·정화, 생태계·생물다양성, 순환경제·자원
+- ESG-S(사회): 공중보건·의료, 교육·인재양성, 사회적 형평성, 식품안전·식량, 지역사회·삶의질
+- ESG-G(지배구조): 연구윤리·투명성, 산학협력·기술이전, 데이터 거버넌스, AI 윤리·규제
+
+### 3-3. 프론트엔드 (strategic_field_analysis.html)
+- 미래모빌리티 탭 뒤에 `ms-3 border-start ps-3`으로 시각적 구분
+- 아이콘: E=fa-leaf(green), S=fa-users(blue), G=fa-balance-scale(yellow)
+- tab-pane 3개 추가 (id: esg-e, esg-s, esg-g)
+- categoryMap에 ESG 3개 매핑 추가
+
+---
+
+## 4. 분석방 코드 제거
+
+### 4-1. 삭제된 라우트 (~1,900줄)
+/room_manager, /create_room, /save_room, /update_room, /upload_data,
+/unified_upload, /update_room_settings, process_file_upload(),
+/upload_file, /analysis_run, /manage_rooms, /edit_room, /delete_room,
+/update_room_info, /api/rooms, /api/room_uploads, /api/room_stats,
+/delete_upload, /api/extract_candidates, /topic_distribution_analysis,
+/api/topic_distribution_data, /api/download_topic_analysis,
+/api/download_first_stage_candidates, /api/download_second_stage_candidates,
+/help/stage1, /help/stage2
+
+### 4-2. 삭제된 템플릿 (9개)
+room_manager.html, unified_upload.html, create_room.html, edit_room.html,
+manage_rooms.html, upload_data.html, analysis_run.html, help_stage1.html, help_stage2.html
+
+### 4-3. 삭제된 유틸리티 함수
+update_progress(), get_progress(), cleanup_progress(), safe_remove_file()
+
+### 4-4. 코드 정리
+- migrate_database() 내 room_id 참조 제거 (중복 제거 로직)
+- 스냅샷 apply에서 file_uploads 테이블 참조 제거
+- base.html: 주석 처리된 분석방/도움말 메뉴 완전 삭제
+
+### 4-5. 주의: Jinja 주석 내 url_for
+HTML 주석(`<!-- -->`) 안의 `{{ url_for('help_stage1') }}`도 Jinja가 실행하므로,
+삭제된 라우트를 참조하는 주석은 반드시 완전 삭제해야 한다.
+
+---
+
+## 5. 오류 수정
+
+### 5-1. Apple 로고 문자 (U+F8FF)
+논문 제목에 macOS 전용 문자 U+F8FF(Apple 로고)가 포함.
+`UPDATE publication SET title = REPLACE(title, '\uf8ff', '-') WHERE title LIKE '%\uf8ff%'`
+git restore 후에도 다시 적용 필요.
+
+### 5-2. citations/year 소수점 문자열 파싱
+CSV 임포트 시 숫자값이 "255.0", "2018.0" 형태 문자열로 저장됨.
+`int("255.0")`은 ValueError 발생.
+**수정:** `int()` → `int(float())` (6곳)
+- `int(pub['citations'] or 0)` → `int(float(pub['citations'] or 0))`
+- `int(pub['year'])` → `int(float(pub['year']))`
+
+### 5-3. Boolean 플래그 NULL 문제
+스냅샷 적용으로 새로 INSERT된 레코드의 boolean 컬럼이 NULL(0이 아님).
+`AND is_SDG = 0` 조건은 NULL을 포함하지 않아 UPDATE 실패.
+**수정:** `AND is_SDG = 0` → `AND (is_SDG IS NULL OR is_SDG = 0)`
+
+### 5-4. scoring_presets 테이블 누락
+`init_scoring_presets_table()`이 request context 없이 실패.
+DB 복원(git restore) 시 수동 생성 필요.
+
+### 5-5. 연구분야분석 카테고리 전환 시 이전 데이터 잔존
+카테고리/서브카테고리 전환 시 `currentResearcherIds`가 초기화되지 않아,
+이전 분야의 연구자 데이터가 하위 탭에 표시되는 버그.
+**수정:** switchCategory(), selectSubcategory()에서 `currentResearcherIds = []` 초기화 추가.
+
+### 5-6. SDG 플래그 미세팅
+SDG 파일(`Publications_by_SDG_-_*.csv`)이 요약 파일(13건, 60컬럼 미만)이라 건너뛰어짐.
+**수정:** 스냅샷 적용 후 `sustainable_development_goals_2025` 컬럼 데이터로 `is_SDG` 자동 세팅.
+
+### 5-7. 산학협력 플래그 미세팅
+별도 파일이 아닌 `sector` 컬럼에 "Corporate" 포함 여부로 판별.
+**수정:** 스냅샷 적용 후 `sector LIKE '%Corporate%'`인 논문에 `is_academic_corporate = 1` 자동 세팅.
+
+---
+
+## 6. 수정 대상 파일 요약
+
+| 파일 | 수정 내용 |
+|------|-----------|
+| app.py | hg-index 계산, COLUMN_ORDER 상수 추출, 스냅샷 관리 API 8개, detect_data_type_from_file(), ensure_snapshot_tables(), inject_active_snapshot(), ESG 시드 데이터, 분석방 코드 1,900줄 삭제, int→int(float) 수정 6곳, NULL 처리, SDG/산학협력 자동 보정 |
+| templates/admin_snapshots.html | 스냅샷 관리 페이지 (신규) |
+| templates/base.html | 스냅샷 메뉴 추가, 데이터 정보 바, 분석방/도움말 주석 삭제 |
+| templates/researcher_ranking.html | hg-index 카드/테이블/모달/CSV, 지표 안내 보강 |
+| templates/strategic_field_analysis.html | ESG 탭 3개, categoryMap, currentResearcherIds 초기화 |
+| static/lang/ko.json | biblio_hg_*, snapshot.*, strategic_field.esg_* 키 |
+| static/lang/en.json | 동일 영문 키 |
+| jbnu.db | Apple 문자 수정, scoring_presets 생성, ESG 시드 데이터, SDG/산학협력 플래그 |
+| 삭제된 템플릿 | room_manager, unified_upload, create_room, edit_room, manage_rooms, upload_data, analysis_run, help_stage1, help_stage2 (9개) |
