@@ -104,6 +104,30 @@ def init_activity_logs_db():
 init_activity_logs_db()
 
 
+@app.context_processor
+def inject_active_snapshot():
+    """모든 페이지에 활성 스냅샷 정보 주입"""
+    try:
+        if not session.get('authenticated'):
+            return {'active_snapshot': None}
+        conn = get_db_connection()
+        # 테이블 존재 여부 먼저 확인
+        table_exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='data_snapshot'"
+        ).fetchone()
+        if not table_exists:
+            conn.close()
+            return {'active_snapshot': None}
+        snapshot = conn.execute(
+            "SELECT snapshot_name, collection_date, applied_at, year_from, year_to, "
+            "total_publications, total_authors FROM data_snapshot WHERE status = 'applied' LIMIT 1"
+        ).fetchone()
+        conn.close()
+        return {'active_snapshot': dict(snapshot) if snapshot else None}
+    except Exception:
+        return {'active_snapshot': None}
+
+
 def log_activity(action_type, action_detail='', page_url=None):
     """사용자 활동 로그 기록"""
     try:
@@ -193,10 +217,83 @@ def super_admin_required(f):
 UPLOAD_FOLDER = '/tmp/uploads' if os.getenv('PORT') else 'uploads'
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 
+# 컬럼 매핑 (70컬럼/67컬럼 형식)
+COLUMN_ORDER_70 = [
+    'title', 'authors', 'number_of_authors', 'scopus_author_ids',
+    'year', 'full_date', 'scopus_source_title', 'volume', 'issue', 'pages',
+    'article_number', 'issn', 'source_id', 'source_type',
+    'publisher', 'language',
+    'snip_publication_year', 'snip_percentile_publication_year',
+    'citescore_publication_year', 'citescore_percentile_publication_year',
+    'sjr_publication_year', 'sjr_percentile_publication_year',
+    'field_weighted_view_impact', 'views', 'citations',
+    'field_weighted_citation_impact', 'field_citation_average',
+    'outputs_in_top_citation_percentiles_per_percentile',
+    'field_weighted_outputs_in_top_citation_percentiles_per_percentile',
+    'main_patent_families', 'policy_citations', 'reference', 'abstract',
+    'doi', 'publication_type', 'open_access', 'eid', 'pubmed_id',
+    'institutions', 'institution_ids', 'sector',
+    'number_of_institutions', 'scopus_affiliation_ids',
+    'scopus_affiliation_names', 'scopus_author_id_first_author',
+    'scopus_author_id_last_author', 'scopus_author_id_corresponding_author',
+    'scopus_author_id_single_author', 'country_region',
+    'number_of_countries_regions', 'all_science_journal_classification_asjc_code',
+    'all_science_journal_classification_asjc_field_name',
+    'quacquarelli_symonds_qs_subject_area_code',
+    'quacquarelli_symonds_qs_subject_area_field_name',
+    'quacquarelli_symonds_qs_subject_code',
+    'quacquarelli_symonds_qs_subject_field_name',
+    'times_higher_education_the_code', 'times_higher_education_the_field_name',
+    'anzsrc_for_2020_parent_code', 'anzsrc_for_2020_parent_name',
+    'anzsrc_for_2020_code', 'anzsrc_for_2020_name',
+    'sustainable_development_goals_2025', 'topic_cluster_name',
+    'topic_cluster_number', 'topic_cluster_prominence_percentile',
+    'topic_name', 'topic_number', 'topic_prominence_percentile',
+    'publication_link_to_topic_strength'
+]
+
+COLUMN_ORDER_67 = [
+    'title', 'authors', 'number_of_authors', 'scopus_author_ids',
+    'year', 'full_date', 'scopus_source_title', 'volume', 'issue', 'pages',
+    'article_number', 'issn', 'source_id', 'source_type', 'language',
+    'snip_publication_year', 'snip_percentile_publication_year',
+    'citescore_publication_year', 'citescore_percentile_publication_year',
+    'sjr_publication_year', 'sjr_percentile_publication_year',
+    'field_weighted_view_impact', 'views', 'citations',
+    'field_weighted_citation_impact', 'field_citation_average',
+    'outputs_in_top_citation_percentiles_per_percentile',
+    'field_weighted_outputs_in_top_citation_percentiles_per_percentile',
+    'main_patent_families', 'policy_citations', 'reference', 'abstract',
+    'doi', 'publication_type', 'open_access', 'eid', 'pubmed_id',
+    'institutions', 'number_of_institutions', 'scopus_affiliation_ids',
+    'scopus_affiliation_names', 'scopus_author_id_first_author',
+    'scopus_author_id_last_author', 'scopus_author_id_corresponding_author',
+    'scopus_author_id_single_author', 'country_region',
+    'number_of_countries_regions', 'all_science_journal_classification_asjc_code',
+    'all_science_journal_classification_asjc_field_name',
+    'quacquarelli_symonds_qs_subject_area_code',
+    'quacquarelli_symonds_qs_subject_area_field_name',
+    'quacquarelli_symonds_qs_subject_code',
+    'quacquarelli_symonds_qs_subject_field_name',
+    'times_higher_education_the_code', 'times_higher_education_the_field_name',
+    'anzsrc_for_2020_parent_code', 'anzsrc_for_2020_parent_name',
+    'anzsrc_for_2020_code', 'anzsrc_for_2020_name',
+    'sustainable_development_goals_2025', 'topic_cluster_name',
+    'topic_cluster_number', 'topic_cluster_prominence_percentile',
+    'topic_name', 'topic_number', 'topic_prominence_percentile',
+    'publication_link_to_topic_strength'
+]
+
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+# 스냅샷 파일 저장 디렉토리
+SNAPSHOT_FOLDER = '/tmp/snapshots' if os.getenv('PORT') else 'snapshots'
+if not os.path.exists(SNAPSHOT_FOLDER):
+    os.makedirs(SNAPSHOT_FOLDER)
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['SNAPSHOT_FOLDER'] = SNAPSHOT_FOLDER
 
 # 컬럼 매핑 로드
 def load_column_mapping():
@@ -438,6 +535,87 @@ def migrate_database():
             VALUES (?, ?, ?, ?)
         """, default_fields)
         print("Initialized strategic_field_config with default data")
+
+    # ESG 카테고리 추가 (없으면)
+    cursor.execute("SELECT COUNT(*) FROM strategic_field_config WHERE category LIKE 'ESG%'")
+    if cursor.fetchone()[0] == 0:
+        esg_fields = [
+            # ESG-E (환경)
+            ('ESG-E(환경)', '기후변화·탄소', '["climate change", "carbon", "CO2", "greenhouse gas", "GHG", "decarbonization", "net zero", "carbon neutral"]', 1),
+            ('ESG-E(환경)', '재생에너지', '["renewable energy", "solar energy", "wind energy", "clean energy", "green energy", "sustainable energy"]', 2),
+            ('ESG-E(환경)', '환경오염·정화', '["pollution", "water treatment", "air quality", "soil contamination", "waste management", "remediation"]', 3),
+            ('ESG-E(환경)', '생태계·생물다양성', '["biodiversity", "ecosystem", "conservation", "endangered species", "habitat", "ecological"]', 4),
+            ('ESG-E(환경)', '순환경제·자원', '["circular economy", "recycling", "waste reduction", "resource efficiency", "upcycling", "sustainable materials"]', 5),
+            # ESG-S (사회)
+            ('ESG-S(사회)', '공중보건·의료', '["public health", "healthcare", "disease prevention", "epidemiology", "global health", "health equity"]', 1),
+            ('ESG-S(사회)', '교육·인재양성', '["education", "STEM education", "e-learning", "higher education", "workforce development", "human capital"]', 2),
+            ('ESG-S(사회)', '사회적 형평성', '["social equity", "inequality", "diversity", "inclusion", "gender equality", "social justice"]', 3),
+            ('ESG-S(사회)', '식품안전·식량', '["food safety", "food security", "nutrition", "agriculture", "crop", "sustainable food"]', 4),
+            ('ESG-S(사회)', '지역사회·삶의질', '["community development", "quality of life", "well-being", "urban planning", "rural development", "social welfare"]', 5),
+            # ESG-G (지배구조)
+            ('ESG-G(지배구조)', '연구윤리·투명성', '["research ethics", "transparency", "open science", "reproducibility", "data sharing", "peer review"]', 1),
+            ('ESG-G(지배구조)', '산학협력·기술이전', '["industry-academia", "technology transfer", "patent", "commercialization", "startup", "spin-off"]', 2),
+            ('ESG-G(지배구조)', '데이터 거버넌스', '["data governance", "data privacy", "cybersecurity", "information security", "GDPR", "data protection"]', 3),
+            ('ESG-G(지배구조)', 'AI 윤리·규제', '["AI ethics", "responsible AI", "algorithmic fairness", "bias", "regulation", "trustworthy AI"]', 4),
+        ]
+        cursor.executemany("""
+            INSERT INTO strategic_field_config (category, subcategory, keywords, display_order)
+            VALUES (?, ?, ?, ?)
+        """, esg_fields)
+        print("Initialized ESG categories in strategic_field_config")
+
+    # data_snapshot 테이블 생성
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS data_snapshot (
+            snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_name TEXT NOT NULL,
+            description TEXT,
+            collection_date TEXT NOT NULL,
+            year_from INTEGER NOT NULL,
+            year_to INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'draft',
+            applied_at TEXT,
+            applied_by TEXT,
+            total_publications INTEGER DEFAULT 0,
+            total_authors INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            created_by TEXT
+        )
+    """)
+
+    # snapshot_files 테이블 생성
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS snapshot_files (
+            file_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            data_type TEXT NOT NULL DEFAULT 'publication',
+            file_size INTEGER DEFAULT 0,
+            record_count INTEGER DEFAULT 0,
+            upload_date TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (snapshot_id) REFERENCES data_snapshot(snapshot_id)
+        )
+    """)
+
+    # 기존 데이터가 있고 스냅샷이 없으면 초기 스냅샷 자동 생성
+    cursor.execute("SELECT COUNT(*) FROM publication")
+    pub_count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM data_snapshot")
+    snap_count = cursor.fetchone()[0]
+    if pub_count > 0 and snap_count == 0:
+        cursor.execute("SELECT COUNT(*) FROM author")
+        author_count = cursor.fetchone()[0]
+        cursor.execute("SELECT MIN(year), MAX(year) FROM publication WHERE year IS NOT NULL")
+        year_row = cursor.fetchone()
+        min_year = year_row[0] or 2020
+        max_year = year_row[1] or 2026
+        cursor.execute("""
+            INSERT INTO data_snapshot (snapshot_name, description, collection_date, year_from, year_to,
+                                       status, applied_at, total_publications, total_authors, created_by)
+            VALUES (?, ?, datetime('now'), ?, ?, 'applied', datetime('now'), ?, ?, 'system')
+        """, ('초기 데이터', '기존 데이터에서 자동 생성된 스냅샷', min_year, max_year, pub_count, author_count))
+        print(f"Created initial snapshot: {pub_count} publications, {author_count} authors")
 
     conn.commit()
     conn.close()
@@ -3600,6 +3778,10 @@ def api_bibliometric_ranking():
                 career_years = None
                 m_index = None
 
+            # hg-index 계산: √(h × g)
+            import math
+            hg_index = round(math.sqrt(h_index * g_index), 2) if h_index > 0 and g_index > 0 else 0
+
             results.append({
                 'scopus_author_id': sid,
                 'name': author['name'],
@@ -3608,6 +3790,7 @@ def api_bibliometric_ranking():
                 'fwci': round(fwci, 2) if fwci else None,
                 'h_index': h_index,
                 'g_index': g_index,
+                'hg_index': hg_index,
                 'i10_index': i10_index,
                 'm_index': m_index,
                 'career_years': career_years,
@@ -3616,7 +3799,7 @@ def api_bibliometric_ranking():
             })
 
         # 정렬
-        valid_sort_keys = ['citations', 'fwci', 'h_index', 'g_index', 'i10_index', 'm_index', 'scholarly_output', 'name']
+        valid_sort_keys = ['citations', 'fwci', 'h_index', 'g_index', 'hg_index', 'i10_index', 'm_index', 'scholarly_output', 'name']
         if sort_by not in valid_sort_keys:
             sort_by = 'h_index'
         results.sort(key=lambda x: (x[sort_by] if x[sort_by] is not None else -1), reverse=(sort_by != 'name'))
@@ -3755,6 +3938,10 @@ def api_bibliometric_detail(scopus_id):
             career_years = None
             m_index = None
 
+        # hg-index 계산: √(h × g)
+        import math
+        hg_index = round(math.sqrt(h_index * g_index), 2) if h_index > 0 and g_index > 0 else 0
+
         return jsonify({
             'author': {
                 'scopus_author_id': author_dict['scopus_author_id'],
@@ -3770,6 +3957,7 @@ def api_bibliometric_detail(scopus_id):
             'indices': {
                 'h_index': h_index,
                 'g_index': g_index,
+                'hg_index': hg_index,
                 'i10_index': i10_index,
                 'm_index': m_index,
                 'career_years': career_years,
@@ -3792,6 +3980,9 @@ def api_bibliometric_detail(scopus_id):
             },
             'm_detail': {
                 'description': f'h-index({h_index}) ÷ 학술활동 연수({career_years}년, {oldest_pub}~{most_recent_pub}) = {m_index}' if m_index else '학술활동 기간 정보 없음'
+            },
+            'hg_detail': {
+                'description': f'√(h-index({h_index}) × g-index({g_index})) = √{h_index * g_index} = {hg_index}'
             },
             'year_from': year_from,
             'year_to': year_to
@@ -8224,6 +8415,522 @@ def api_activity_logs():
         'per_page': per_page,
         'pages': (total + per_page - 1) // per_page
     })
+
+
+# ========================================
+# 데이터 스냅샷 관리
+# ========================================
+
+def detect_data_type_from_file(filepath, original_filename=''):
+    """파일명 + CSV 1행 헤더로 데이터 유형 자동 감지"""
+    # 1차: 파일명으로 판별
+    f = original_filename.lower()
+    if 'top_1_' in f or 'top_1%' in f or '_1__most_cited' in f:
+        return '1%'
+    if 'top_10_' in f or 'top_10%' in f or '_10__most_cited' in f or '_10__journals' in f:
+        return '10%'
+    if 'top_25_' in f or 'top_25%' in f or '_25__journals' in f:
+        return '25%'
+    if 'sdg' in f or 'sustainable_development' in f:
+        return 'SDGs'
+    if 'international_collaboration' in f or 'international_collab' in f:
+        return 'International'
+    if 'cited_by_patent' in f or 'patent_cit' in f:
+        return 'patent'
+    if 'cited_by_polic' in f or 'policy_cit' in f:
+        return 'policy'
+    if 'single_author' in f or 'coauthor' in f or 'co-author' in f:
+        return 'coauthored'
+
+    # 2차: CSV 1행(Data set 설명)으로 판별
+    try:
+        first_line = ''
+        for enc in ['utf-8-sig', 'cp949']:
+            try:
+                with open(filepath, 'r', encoding=enc) as fh:
+                    first_line = fh.readline().lower()
+                break
+            except Exception:
+                continue
+
+        if first_line:
+            if 'top 1%' in first_line or 'top 1 %' in first_line:
+                return '1%'
+            if 'top 10%' in first_line or 'top 10 %' in first_line or '10% most cited' in first_line:
+                return '10%'
+            if 'top 25%' in first_line or 'top 25 %' in first_line:
+                return '25%'
+            if 'sdg' in first_line or 'sustainable development' in first_line:
+                return 'SDGs'
+            if 'international collaboration' in first_line:
+                return 'International'
+            if 'cited by patent' in first_line or 'patent' in first_line:
+                return 'patent'
+            if 'cited by polic' in first_line or 'policy' in first_line:
+                return 'policy'
+            if 'single author' in first_line or 'co-author' in first_line:
+                return 'coauthored'
+    except Exception:
+        pass
+
+    return '전체논문데이터'
+
+
+def ensure_snapshot_tables(conn):
+    """스냅샷 테이블이 없으면 생성"""
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS data_snapshot (
+            snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_name TEXT NOT NULL,
+            description TEXT,
+            collection_date TEXT NOT NULL,
+            year_from INTEGER NOT NULL,
+            year_to INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'draft',
+            applied_at TEXT,
+            applied_by TEXT,
+            total_publications INTEGER DEFAULT 0,
+            total_authors INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            created_by TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS snapshot_files (
+            file_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            data_type TEXT NOT NULL DEFAULT 'publication',
+            file_size INTEGER DEFAULT 0,
+            record_count INTEGER DEFAULT 0,
+            upload_date TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (snapshot_id) REFERENCES data_snapshot(snapshot_id)
+        )
+    """)
+    # 기존 데이터가 있고 스냅샷이 없으면 초기 스냅샷 자동 생성
+    cursor.execute("SELECT COUNT(*) FROM data_snapshot")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("SELECT COUNT(*) FROM publication")
+        pub_count = cursor.fetchone()[0]
+        if pub_count > 0:
+            cursor.execute("SELECT COUNT(*) FROM author")
+            author_count = cursor.fetchone()[0]
+            cursor.execute("SELECT MIN(year), MAX(year) FROM publication WHERE year IS NOT NULL")
+            year_row = cursor.fetchone()
+            min_year = year_row[0] or 2020
+            max_year = year_row[1] or 2026
+            cursor.execute("""
+                INSERT INTO data_snapshot (snapshot_name, description, collection_date, year_from, year_to,
+                                           status, applied_at, total_publications, total_authors, created_by)
+                VALUES (?, ?, datetime('now'), ?, ?, 'applied', datetime('now'), ?, ?, 'system')
+            """, ('초기 데이터', '기존 데이터에서 자동 생성된 스냅샷', min_year, max_year, pub_count, author_count))
+    conn.commit()
+
+
+@app.route('/admin/snapshots')
+@admin_required
+def admin_snapshots():
+    """데이터 스냅샷 관리 페이지"""
+    log_activity('페이지 조회', '스냅샷 관리')
+    conn = get_db_connection()
+    ensure_snapshot_tables(conn)
+    snapshots = conn.execute("""
+        SELECT s.*, (SELECT COUNT(*) FROM snapshot_files WHERE snapshot_id = s.snapshot_id) as file_count
+        FROM data_snapshot s ORDER BY s.created_at DESC
+    """).fetchall()
+    conn.close()
+    return render_template('admin_snapshots.html', snapshots=[dict(s) for s in snapshots])
+
+
+@app.route('/api/snapshots', methods=['POST'])
+@admin_required
+def api_create_snapshot():
+    """새 스냅샷 생성"""
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        description = data.get('description', '').strip()
+        collection_date = data.get('collection_date', '')
+        year_from = data.get('year_from', 2020)
+        year_to = data.get('year_to', 2026)
+
+        if not name or not collection_date:
+            return jsonify({'error': '스냅샷명과 수집일은 필수입니다.'}), 400
+
+        conn = get_db_connection()
+        ensure_snapshot_tables(conn)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO data_snapshot (snapshot_name, description, collection_date, year_from, year_to, created_by)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (name, description, collection_date, year_from, year_to, session.get('user_id', 'admin')))
+        snapshot_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        # 스냅샷 파일 디렉토리 생성
+        institution = session.get('institution', 'jbnu')
+        snap_dir = os.path.join(app.config['SNAPSHOT_FOLDER'], institution, str(snapshot_id))
+        os.makedirs(snap_dir, exist_ok=True)
+
+        return jsonify({'success': True, 'snapshot_id': snapshot_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/snapshots/<int:snapshot_id>', methods=['GET'])
+@admin_required
+def api_get_snapshot(snapshot_id):
+    """스냅샷 상세 정보"""
+    conn = get_db_connection()
+    snapshot = conn.execute("SELECT * FROM data_snapshot WHERE snapshot_id = ?", (snapshot_id,)).fetchone()
+    if not snapshot:
+        conn.close()
+        return jsonify({'error': 'Snapshot not found'}), 404
+    files = conn.execute("SELECT * FROM snapshot_files WHERE snapshot_id = ? ORDER BY upload_date", (snapshot_id,)).fetchall()
+    conn.close()
+    return jsonify({
+        'snapshot': dict(snapshot),
+        'files': [dict(f) for f in files]
+    })
+
+
+@app.route('/api/snapshots/<int:snapshot_id>/upload', methods=['POST'])
+@admin_required
+def api_snapshot_upload(snapshot_id):
+    """스냅샷에 파일 업로드"""
+    try:
+        conn = get_db_connection()
+        snapshot = conn.execute("SELECT * FROM data_snapshot WHERE snapshot_id = ?", (snapshot_id,)).fetchone()
+        if not snapshot:
+            conn.close()
+            return jsonify({'error': 'Snapshot not found'}), 404
+        if snapshot['status'] == 'applied':
+            conn.close()
+            return jsonify({'error': '이미 적용된 스냅샷에는 파일을 추가할 수 없습니다.'}), 400
+
+        file = request.files.get('file')
+        if not file or not allowed_file(file.filename):
+            conn.close()
+            return jsonify({'error': '유효한 CSV/Excel 파일을 선택해주세요.'}), 400
+
+        data_type = request.form.get('data_type', '').strip()
+        institution = session.get('institution', 'jbnu')
+        snap_dir = os.path.join(app.config['SNAPSHOT_FOLDER'], institution, str(snapshot_id))
+        os.makedirs(snap_dir, exist_ok=True)
+
+        # 파일 저장
+        from werkzeug.utils import secure_filename
+        import time
+        safe_name = f"{int(time.time())}_{secure_filename(file.filename)}"
+        filepath = os.path.join(snap_dir, safe_name)
+        file.save(filepath)
+        file_size = os.path.getsize(filepath)
+
+        # 데이터 유형 자동 감지 (클라이언트 감지값이 없거나 기본값이면 서버에서 재감지)
+        if not data_type or data_type == '전체논문데이터':
+            data_type = detect_data_type_from_file(filepath, file.filename)
+
+        # 레코드 수 추정 (CSV 라인 수)
+        record_count = 0
+        try:
+            with open(filepath, 'r', encoding='utf-8-sig') as f:
+                record_count = max(0, sum(1 for _ in f) - 20)  # 헤더 20줄 제외
+        except Exception:
+            try:
+                with open(filepath, 'r', encoding='cp949') as f:
+                    record_count = max(0, sum(1 for _ in f) - 20)
+            except Exception:
+                pass
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO snapshot_files (snapshot_id, filename, original_filename, data_type, file_size, record_count)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (snapshot_id, safe_name, file.filename, data_type, file_size, record_count))
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'file_id': cursor.lastrowid,
+            'filename': file.filename,
+            'file_size': file_size,
+            'record_count': record_count
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/snapshots/<int:snapshot_id>/apply', methods=['POST'])
+@admin_required
+def api_apply_snapshot(snapshot_id):
+    """스냅샷 적용 - 데이터 교체"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        snapshot = cursor.execute("SELECT * FROM data_snapshot WHERE snapshot_id = ?", (snapshot_id,)).fetchone()
+        if not snapshot:
+            conn.close()
+            return jsonify({'error': 'Snapshot not found'}), 404
+
+        files = cursor.execute("SELECT * FROM snapshot_files WHERE snapshot_id = ?", (snapshot_id,)).fetchall()
+        if not files:
+            conn.close()
+            return jsonify({'error': '업로드된 파일이 없습니다.'}), 400
+
+        institution = session.get('institution', 'jbnu')
+        snap_dir = os.path.join(app.config['SNAPSHOT_FOLDER'], institution, str(snapshot_id))
+
+        # 1. 기존 적용 스냅샷 → archived
+        cursor.execute("UPDATE data_snapshot SET status = 'archived' WHERE status = 'applied'")
+
+        # 2. 기존 데이터 삭제
+        cursor.execute("DELETE FROM publication")
+        cursor.execute("DELETE FROM researcher_score")
+        cursor.execute("DELETE FROM file_uploads")
+        conn.commit()
+
+        # 3. 스냅샷 파일들을 순차 처리 (전체논문데이터 먼저, 플래그 파일 나중에)
+        total_insert = 0
+        total_update = 0
+        total_skipped = 0
+
+        type_flags = {
+            '전체논문데이터': {},
+            '1%': {'is_1': 1},
+            '10%': {'is_10': 1},
+            '25%': {'is_25': 1},
+            'SDGs': {'is_SDG': 1},
+            'International': {'is_international': 1},
+            'patent': {'is_patent_cited': 1},
+            'policy': {'is_policy_cited': 1},
+            'coauthored': {'is_coauthored': 1},
+        }
+
+        # 전체논문데이터를 먼저, 나머지(플래그) 파일을 나중에 처리
+        sorted_files = sorted(files, key=lambda x: 0 if x['data_type'] == '전체논문데이터' else 1)
+
+        for sf in sorted_files:
+            filepath = os.path.join(snap_dir, sf['filename'])
+            if not os.path.exists(filepath):
+                continue
+
+            data_type = sf['data_type']
+            flags = type_flags.get(data_type, {})
+
+            # 파일 읽기
+            df = None
+            for enc in ['utf-8-sig', 'cp949']:
+                try:
+                    df = pd.read_csv(filepath, encoding=enc, header=19, low_memory=False)
+                    break
+                except Exception:
+                    continue
+            if df is None:
+                try:
+                    df = pd.read_excel(filepath, header=19)
+                except Exception:
+                    continue
+
+            if len(df.columns) < 60:
+                total_skipped += 1
+                continue
+
+            # 컬럼 매핑
+            if len(df.columns) >= 70:
+                column_order = COLUMN_ORDER_70
+            else:
+                column_order = COLUMN_ORDER_67
+            df.columns = column_order[:len(df.columns)]
+
+            # EID/DOI 인덱스 구축 (한번에 로드)
+            if data_type != '전체논문데이터' and flags:
+                # 플래그 파일: EID 기반 일괄 업데이트
+                eids = df['eid'].dropna().astype(str).str.strip().tolist()
+                eids = [e for e in eids if e]
+                dois = df['doi'].dropna().astype(str).str.strip().tolist()
+                dois = [d for d in dois if d]
+
+                if eids:
+                    for flag_col in flags.keys():
+                        # 배치 업데이트 (500개씩)
+                        for i in range(0, len(eids), 500):
+                            batch = eids[i:i+500]
+                            placeholders = ','.join(['?' for _ in batch])
+                            cursor.execute(f"UPDATE publication SET {flag_col} = 1 WHERE eid IN ({placeholders})", batch)
+
+                if dois:
+                    for flag_col in flags.keys():
+                        for i in range(0, len(dois), 500):
+                            batch = dois[i:i+500]
+                            placeholders = ','.join(['?' for _ in batch])
+                            cursor.execute(f"UPDATE publication SET {flag_col} = 1 WHERE doi IN ({placeholders}) AND doi != ''", batch)
+
+                total_update += len(eids) + len(dois)
+                conn.commit()
+                continue
+
+            # 전체논문데이터: 배치 INSERT
+            # 기존 EID 세트 로드
+            existing_eids = set()
+            for row in cursor.execute("SELECT eid FROM publication WHERE eid IS NOT NULL AND eid != ''"):
+                existing_eids.add(row[0])
+            existing_dois = set()
+            for row in cursor.execute("SELECT doi FROM publication WHERE doi IS NOT NULL AND doi != ''"):
+                existing_dois.add(row[0])
+
+            batch_rows = []
+            for _, row in df.iterrows():
+                eid = str(row.get('eid', '')).strip() if pd.notna(row.get('eid')) else ''
+                doi = str(row.get('doi', '')).strip() if pd.notna(row.get('doi')) else ''
+
+                if not eid and not doi:
+                    continue
+
+                # 메모리 기반 중복 체크 (DB 쿼리 없음)
+                if eid and eid in existing_eids:
+                    total_update += 1
+                    continue
+                if doi and doi in existing_dois:
+                    total_update += 1
+                    continue
+
+                values = {}
+                for col in column_order[:len(df.columns)]:
+                    val = row.get(col)
+                    if pd.notna(val):
+                        values[col] = str(val).strip() if isinstance(val, str) else val
+                    else:
+                        values[col] = None
+
+                batch_rows.append(values)
+                if eid:
+                    existing_eids.add(eid)
+                if doi:
+                    existing_dois.add(doi)
+
+            # 배치 INSERT (1000건씩)
+            if batch_rows:
+                cols = list(batch_rows[0].keys())
+                col_names = ', '.join(cols)
+                placeholders = ', '.join(['?' for _ in cols])
+                for i in range(0, len(batch_rows), 1000):
+                    batch = batch_rows[i:i+1000]
+                    cursor.executemany(
+                        f"INSERT INTO publication ({col_names}) VALUES ({placeholders})",
+                        [[r.get(c) for c in cols] for r in batch]
+                    )
+                total_insert += len(batch_rows)
+
+            conn.commit()
+
+        # 4. 논문/저자 수 집계
+        cursor.execute("SELECT COUNT(*) FROM publication")
+        pub_count = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM author")
+        author_count = cursor.fetchone()[0]
+
+        # 5. 스냅샷 상태 업데이트
+        cursor.execute("""
+            UPDATE data_snapshot SET status = 'applied', applied_at = datetime('now'),
+                   applied_by = ?, total_publications = ?, total_authors = ?
+            WHERE snapshot_id = ?
+        """, (session.get('user_id', 'admin'), pub_count, author_count, snapshot_id))
+        conn.commit()
+
+        # 6. 연구자 점수 재계산
+        try:
+            batch_calculate_researcher_scores()
+        except Exception as e:
+            print(f"Score recalculation warning: {e}")
+
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'total_publications': pub_count,
+            'total_authors': author_count,
+            'inserted': total_insert,
+            'updated': total_update
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
+@app.route('/api/snapshots/<int:snapshot_id>/delete', methods=['POST'])
+@admin_required
+def api_delete_snapshot(snapshot_id):
+    """스냅샷 삭제 (draft/archived만)"""
+    try:
+        conn = get_db_connection()
+        snapshot = conn.execute("SELECT * FROM data_snapshot WHERE snapshot_id = ?", (snapshot_id,)).fetchone()
+        if not snapshot:
+            conn.close()
+            return jsonify({'error': 'Snapshot not found'}), 404
+        if snapshot['status'] == 'applied':
+            conn.close()
+            return jsonify({'error': '현재 적용 중인 스냅샷은 삭제할 수 없습니다.'}), 400
+
+        # 파일 삭제
+        institution = session.get('institution', 'jbnu')
+        snap_dir = os.path.join(app.config['SNAPSHOT_FOLDER'], institution, str(snapshot_id))
+        import shutil
+        if os.path.exists(snap_dir):
+            shutil.rmtree(snap_dir)
+
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM snapshot_files WHERE snapshot_id = ?", (snapshot_id,))
+        cursor.execute("DELETE FROM data_snapshot WHERE snapshot_id = ?", (snapshot_id,))
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/snapshots/<int:snapshot_id>/file/<int:file_id>/delete', methods=['POST'])
+@admin_required
+def api_delete_snapshot_file(snapshot_id, file_id):
+    """스냅샷 파일 개별 삭제"""
+    try:
+        conn = get_db_connection()
+        sf = conn.execute("SELECT * FROM snapshot_files WHERE file_id = ? AND snapshot_id = ?", (file_id, snapshot_id)).fetchone()
+        if not sf:
+            conn.close()
+            return jsonify({'error': 'File not found'}), 404
+
+        institution = session.get('institution', 'jbnu')
+        filepath = os.path.join(app.config['SNAPSHOT_FOLDER'], institution, str(snapshot_id), sf['filename'])
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+        conn.execute("DELETE FROM snapshot_files WHERE file_id = ?", (file_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/snapshot/active')
+@login_required
+def api_active_snapshot():
+    """현재 활성 스냅샷 정보"""
+    try:
+        conn = get_db_connection()
+        snapshot = conn.execute(
+            "SELECT * FROM data_snapshot WHERE status = 'applied' LIMIT 1"
+        ).fetchone()
+        conn.close()
+        return jsonify({'snapshot': dict(snapshot) if snapshot else None})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

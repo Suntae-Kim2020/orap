@@ -1,0 +1,448 @@
+# ORAP 개발 프롬프트 (2026-03-27 작업분)
+
+이 문서는 아래 4가지 기능을 처음부터 구현하기 위한 상세 프롬프트입니다.
+
+---
+
+## 1. 계량서지학 지표 랭킹 - hg-index 추가 및 지표 안내 보강
+
+### 1-1. hg-index 추가
+
+#### 정의
+hg-index = √(h-index × g-index), h-index와 g-index의 기하평균
+
+#### 백엔드 (app.py)
+
+**리스트 API (`/api/bibliometric_ranking`):**
+- h_index, g_index 계산 후 `import math; hg_index = round(math.sqrt(h_index * g_index), 2)` 추가
+- 응답에 `hg_index` 필드 포함
+- `valid_sort_keys`에 `'hg_index'` 추가
+
+**상세 API (`/api/bibliometric_detail/<scopus_id>`):**
+- 동일하게 hg_index 계산
+- `indices`에 `hg_index` 포함
+- `hg_detail` 추가: `{'description': f'√(h-index({h}) × g-index({g})) = √{h*g} = {hg}'}`
+
+#### 프론트엔드 (templates/researcher_ranking.html)
+
+**지표 안내 카드:**
+- col-md-3, border-secondary, bg-secondary text-white 헤더
+- 정의: h-index와 g-index의 기하평균 √(h × g)
+- 산출: hg = √(h-index × g-index), 두 값을 곱한 뒤 제곱근
+- 예시: h=86, g=125이면 hg = √(86×125) ≈ 103.7
+- 장점: h-index와 g-index의 균형 잡힌 절충 지표
+- 해석: h-index(꾸준함)와 g-index(폭발력)의 기하평균으로, 두 지표가 모두 높아야 높게 나옵니다. h와 g가 비슷하면 균일한 인용 분포, h << g이면 소수의 히트 논문에 의존하는 연구자입니다.
+
+**정렬 기준 드롭다운:**
+- `<option value="hg_index">hg-index</option>` 추가
+
+**테이블 헤더/행:**
+- g-index와 i10-index 사이에 hg-index 컬럼 추가
+- 헤더: `biblioThS('hg-index', 'hg_index')`
+- 행: `<span class="badge bg-secondary">${r.hg_index != null ? r.hg_index.toFixed(1) : '-'}</span>`
+
+**상세 모달:**
+- 요약 카드: g-index와 i10-index 사이에 hg-index 카드 (border-secondary, text-secondary)
+- 상세 섹션 (g-index 상세와 i10-index 상세 사이):
+  - card border-secondary, bg-secondary text-white 헤더
+  - 수식 시각화: √( h-index × g-index ) = √{곱} = hg값
+  - h/g 비율 표시: h/g > 0.8이면 "균일한 인용 분포", 아니면 "소수의 고인용 논문에 의존"
+
+**CSV 다운로드:**
+- headers에 'hg-index' 추가 (g-index 다음)
+- 데이터에 `r.hg_index != null ? r.hg_index.toFixed(2) : ''` 추가
+
+**sortLabels:**
+- `'hg_index': 'hg-index'` 추가
+
+#### 다국어 (ko.json, en.json)
+
+```
+biblio_hg_def: h-index와 g-index의 기하평균 √(h × g) / Geometric mean of h-index and g-index: √(h × g)
+biblio_hg_method: 산출: / Method:
+biblio_hg_method_desc: hg = √(h-index × g-index), 두 값을 곱한 뒤 제곱근 / hg = √(h-index × g-index), multiply the two values then take the square root
+biblio_hg_example: h=86, g=125이면 hg = √(86×125) ≈ 103.7 / h=86, g=125 → hg = √(86×125) ≈ 103.7
+biblio_hg_strength: h-index와 g-index의 균형 잡힌 절충 지표 / Balanced compromise between h-index and g-index
+biblio_hg_insight: (위 해석 텍스트) / (English translation)
+biblio_hg_ratio_label: h/g 비율 / h/g ratio
+biblio_hg_balanced: 균일한 인용 분포 (h와 g가 유사) / Uniform citation distribution (h and g are similar)
+biblio_hg_skewed: 소수의 고인용 논문에 의존 (g가 h보다 크게 높음) / Relies on a few highly-cited papers (g is much larger than h)
+```
+
+### 1-2. 지표 안내 카드 보강 - 산출 방법 추가
+
+각 지표 안내 카드에 "산출:" 항목을 정의와 예시 사이에 추가한다.
+
+**h-index:**
+- 산출: 논문을 피인용횟수 내림차순으로 정렬 시, 순위와 피인용횟수가 같아지거나 순위가 피인용횟수보다 작은 최댓값이 h
+
+**g-index:**
+- 산출: 상위 g개의 논문 피인용횟수의 합이 g²보다 작지 않은 가장 큰 g값
+
+**i10-index:**
+- 산출: 전체 논문 중 피인용횟수가 10회 이상인 논문의 수를 합산
+
+**m-index:**
+- 산출: m = h-index ÷ (최근 발표연도 - 최초 발표연도 + 1)
+
+### 1-3. 지표 안내 카드 보강 - 해석(insight) 추가
+
+각 카드 본문 하단에 `<div class="mt-2 pt-2 border-top">` 구분선 아래로 해석 텍스트 추가.
+
+**h-index:**
+"나는 꾸준히 인정받는 논문을 여러 편 썼다"를 측정합니다. 1,000회 인용 논문 1편만 있으면 h=1입니다. 생산성과 영향력을 동시에 보려는 가장 균형 잡힌 지표입니다.
+
+**g-index:**
+"내 상위 논문들은 정말 많이 인용됐다"를 측정합니다. h-index는 슈퍼스타 논문을 과소평가하는데, g-index는 그걸 보정해줘서 항상 h ≤ g 관계가 성립합니다.
+
+**i10-index:**
+"최소한 10회 이상 인정받은 논문이 몇 편이냐"를 측정합니다. 계산이 가장 단순하고, Google Scholar 프로필에서 자동으로 보여줘서 접근성이 높습니다.
+
+**m-index:**
+"나는 같은 기간 동안 얼마나 빠르게 성과를 쌓았나"를 측정합니다. h=20이어도 10년 걸렸으면 m=2.0, 20년 걸렸으면 m=1.0으로 경력 길이의 차이를 보정해줘서 신진 연구자와 원로 연구자를 공평하게 비교할 수 있는 유일한 지표입니다.
+
+---
+
+## 2. Apple 로고 문자(U+F8FF) 수정
+
+### 문제
+macOS에서 U+F8FF 문자가 Apple 로고(사과 그림)로 표시됨.
+논문 제목 "Hierarchical Ni{사과}Mo{사과}S and Ni{사과}Fe{사과}S Nanosheets..."에 포함.
+
+### 수정 방법
+```sql
+UPDATE publication SET title = REPLACE(title, X'EFA3BF', '-') WHERE title LIKE '%' || X'EFA3BF' || '%';
+```
+
+또는 Python으로:
+```python
+import sqlite3
+conn = sqlite3.connect('jbnu.db')
+cur = conn.cursor()
+cur.execute("SELECT title FROM publication WHERE title LIKE '%' || X'EFA3BF' || '%'")
+for row in cur.fetchall():
+    old = row[0]
+    new = old.replace('\uf8ff', '-')
+    cur.execute('UPDATE publication SET title = ? WHERE title = ?', (new, old))
+conn.commit()
+conn.close()
+```
+
+---
+
+## 3. 데이터 스냅샷 관리 기능
+
+### 3-1. 개요
+분석 시점에 최신 rawdata를 수집하고 적용할 수 있도록 데이터 스냅샷 관리 기능을 추가한다.
+- 스냅샷: 특정 시점에 Scopus에서 수집한 rawdata 묶음
+- 적용(Apply): 스냅샷의 데이터를 publication/author 테이블에 반영
+- 활성 스냅샷: 현재 분석에 사용 중인 데이터 (1개만 활성)
+
+### 3-2. DB 스키마
+
+**data_snapshot 테이블:**
+```sql
+CREATE TABLE IF NOT EXISTS data_snapshot (
+    snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_name TEXT NOT NULL,
+    description TEXT,
+    collection_date TEXT NOT NULL,
+    year_from INTEGER NOT NULL,
+    year_to INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',  -- draft | applied | archived
+    applied_at TEXT,
+    applied_by TEXT,
+    total_publications INTEGER DEFAULT 0,
+    total_authors INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    created_by TEXT
+);
+```
+
+**snapshot_files 테이블:**
+```sql
+CREATE TABLE IF NOT EXISTS snapshot_files (
+    file_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_id INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    data_type TEXT NOT NULL DEFAULT 'publication',
+    file_size INTEGER DEFAULT 0,
+    record_count INTEGER DEFAULT 0,
+    upload_date TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (snapshot_id) REFERENCES data_snapshot(snapshot_id)
+);
+```
+
+### 3-3. 테이블 생성 방법 - 중요
+
+`migrate_database()`는 앱 시작 시 request context 없이 실행되어 `get_db_connection()`이 session에 접근 못해 실패할 수 있다.
+따라서 별도 함수 `ensure_snapshot_tables(conn)`을 만들어서 **라우트 핸들러 내에서** 호출한다.
+
+```python
+def ensure_snapshot_tables(conn):
+    """스냅샷 테이블이 없으면 생성"""
+    cursor = conn.cursor()
+    cursor.execute("""CREATE TABLE IF NOT EXISTS data_snapshot (...)""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS snapshot_files (...)""")
+    # 기존 데이터가 있고 스냅샷이 없으면 초기 스냅샷 자동 생성
+    cursor.execute("SELECT COUNT(*) FROM data_snapshot")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("SELECT COUNT(*) FROM publication")
+        pub_count = cursor.fetchone()[0]
+        if pub_count > 0:
+            # 초기 스냅샷 생성 (status='applied')
+            ...
+    conn.commit()
+```
+
+### 3-4. Context Processor - 활성 스냅샷 정보 주입
+
+모든 페이지에 활성 스냅샷 정보를 자동 주입한다. **테이블 존재 여부를 먼저 확인**해야 한다.
+
+```python
+@app.context_processor
+def inject_active_snapshot():
+    try:
+        if not session.get('authenticated'):
+            return {'active_snapshot': None}
+        conn = get_db_connection()
+        # 테이블 존재 여부 먼저 확인
+        table_exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='data_snapshot'"
+        ).fetchone()
+        if not table_exists:
+            conn.close()
+            return {'active_snapshot': None}
+        snapshot = conn.execute(
+            "SELECT snapshot_name, collection_date, applied_at, year_from, year_to, "
+            "total_publications, total_authors FROM data_snapshot WHERE status = 'applied' LIMIT 1"
+        ).fetchone()
+        conn.close()
+        return {'active_snapshot': dict(snapshot) if snapshot else None}
+    except Exception:
+        return {'active_snapshot': None}
+```
+
+### 3-5. 스냅샷 파일 저장 디렉토리
+
+```python
+SNAPSHOT_FOLDER = '/tmp/snapshots' if os.getenv('PORT') else 'snapshots'
+os.makedirs(SNAPSHOT_FOLDER, exist_ok=True)
+app.config['SNAPSHOT_FOLDER'] = SNAPSHOT_FOLDER
+```
+
+구조: `/snapshots/{institution}/{snapshot_id}/파일들`
+
+### 3-6. API 엔드포인트
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | /admin/snapshots | 관리 페이지 렌더링 |
+| POST | /api/snapshots | 새 스냅샷 생성 |
+| GET | /api/snapshots/<id> | 스냅샷 상세 (파일 목록 포함) |
+| POST | /api/snapshots/<id>/upload | 파일 업로드 (multipart) |
+| POST | /api/snapshots/<id>/apply | 스냅샷 적용 (데이터 교체) |
+| POST | /api/snapshots/<id>/delete | 스냅샷 삭제 (draft/archived만) |
+| POST | /api/snapshots/<id>/file/<file_id>/delete | 개별 파일 삭제 |
+| GET | /api/snapshot/active | 활성 스냅샷 정보 |
+
+### 3-7. 스냅샷 적용(Apply) 로직
+
+1. 기존 적용 스냅샷 → status='archived'로 변경
+2. publication, researcher_score, file_uploads 테이블 DELETE
+3. 스냅샷 파일들을 순차 처리:
+   - CSV/Excel 읽기 (utf-8-sig → cp949 → Excel 순서로 시도)
+   - 70컬럼/67컬럼 형식 판별 후 컬럼 매핑 (COLUMN_ORDER_70, COLUMN_ORDER_67)
+   - data_type에 따라 boolean 플래그 설정 (is_1, is_10, is_25, is_SDG, is_international 등)
+   - EID/DOI 기반 중복 체크, 기존 레코드는 플래그 OR 업데이트
+4. publication/author 수 집계
+5. data_snapshot status='applied', applied_at 업데이트
+6. batch_calculate_researcher_scores() 호출하여 점수 재계산
+
+**주의:** COLUMN_ORDER_70, COLUMN_ORDER_67은 모듈 레벨 상수로 정의해야 한다.
+process_file_upload() 내부에 로컬 변수로만 있으면 apply 함수에서 접근 불가.
+
+### 3-8. 데이터 유형(data_type) 목록
+
+파일 업로드 시 선택 가능한 유형:
+- 전체논문데이터
+- 1% (Top 1%)
+- 10% (Top 10%)
+- 25% (Top 25%)
+- SDGs
+- International
+- patent (Patent Cited)
+- policy (Policy Cited)
+- coauthored (Co-authored)
+
+### 3-9. 관리자 페이지 템플릿 (admin_snapshots.html)
+
+base.html 상속, 구성 요소:
+- 활성 스냅샷 정보 alert (alert-success)
+- 스냅샷 목록 테이블: ID, 이름, 수집일, 기간, 상태(badge), 파일수, 논문수, 적용일, 생성일, 관리 버튼
+- 새 스냅샷 생성 모달: 이름, 설명, 수집일(기본 오늘), 시작/종료연도
+- 상세 모달 (modal-lg): 스냅샷 정보 + 파일 목록 테이블 + 파일 업로드 폼(draft 상태만)
+- 적용 확인 대화상자
+- 삭제 확인 대화상자
+
+### 3-10. base.html 수정
+
+**관리 드롭다운에 메뉴 추가:**
+```html
+<li><a class="dropdown-item" href="{{ url_for('admin_snapshots') }}">
+    <i class="fas fa-database"></i> 데이터 스냅샷</a></li>
+```
+
+**데이터 정보 바 (navbar 아래, container 위):**
+```html
+{% if active_snapshot %}
+<div class="bg-light border-bottom py-1">
+    <div class="container">
+        <small class="text-muted">
+            <i class="fas fa-database"></i> 데이터 정보:
+            <strong>{{ active_snapshot.snapshot_name }}</strong>
+            | 수집일: {{ active_snapshot.collection_date }}
+            | 기간: {{ active_snapshot.year_from }}~{{ active_snapshot.year_to }}
+            | 적용일: {{ active_snapshot.applied_at[:10] }}
+        </small>
+    </div>
+</div>
+{% endif %}
+```
+
+### 3-11. 다국어 키
+
+```
+snapshot.title: 데이터 스냅샷 / Data Snapshots
+snapshot.subtitle: 분석 데이터의 수집·적용 이력을 관리합니다 / Manage data collection and application history
+snapshot.create: 새 스냅샷 생성 / Create Snapshot
+snapshot.name: 스냅샷명 / Snapshot Name
+snapshot.list: 스냅샷 목록 / Snapshot List
+snapshot.collection_date: 수집일 / Collection Date
+snapshot.period: 기간 / Period
+snapshot.status: 상태 / Status
+snapshot.files: 파일 / Files
+snapshot.pub_count: 논문수 / Publications
+snapshot.applied_at: 적용일 / Applied
+snapshot.created_at: 생성일 / Created
+snapshot.actions: 관리 / Actions
+snapshot.current_data: 현재 적용된 데이터: / Current Data:
+snapshot.data_info: 데이터 정보 / Data Info
+```
+
+---
+
+## 4. ESG 분석 기능
+
+### 4-1. 개요
+연구분야분석 페이지에 ESG(Environmental, Social, Governance) 탭을 추가한다.
+기존 전략분야 분석(에너지, 바이오, 농생명, 모빌리티)과 동일한 키워드 매핑 엔진을 사용한다.
+
+### 4-2. DB 시드 데이터 (strategic_field_config 테이블)
+
+ESG 카테고리가 없으면 14개 레코드를 INSERT한다.
+migrate_database() 내에서 실행하되, request context 문제로 실패할 수 있으므로
+별도 Python 스크립트나 수동 INSERT도 준비한다.
+
+```python
+esg_fields = [
+    # ESG-E(환경)
+    ('ESG-E(환경)', '기후변화·탄소', '["climate change", "carbon", "CO2", "greenhouse gas", "GHG", "decarbonization", "net zero", "carbon neutral"]', 1),
+    ('ESG-E(환경)', '재생에너지', '["renewable energy", "solar energy", "wind energy", "clean energy", "green energy", "sustainable energy"]', 2),
+    ('ESG-E(환경)', '환경오염·정화', '["pollution", "water treatment", "air quality", "soil contamination", "waste management", "remediation"]', 3),
+    ('ESG-E(환경)', '생태계·생물다양성', '["biodiversity", "ecosystem", "conservation", "endangered species", "habitat", "ecological"]', 4),
+    ('ESG-E(환경)', '순환경제·자원', '["circular economy", "recycling", "waste reduction", "resource efficiency", "upcycling", "sustainable materials"]', 5),
+    # ESG-S(사회)
+    ('ESG-S(사회)', '공중보건·의료', '["public health", "healthcare", "disease prevention", "epidemiology", "global health", "health equity"]', 1),
+    ('ESG-S(사회)', '교육·인재양성', '["education", "STEM education", "e-learning", "higher education", "workforce development", "human capital"]', 2),
+    ('ESG-S(사회)', '사회적 형평성', '["social equity", "inequality", "diversity", "inclusion", "gender equality", "social justice"]', 3),
+    ('ESG-S(사회)', '식품안전·식량', '["food safety", "food security", "nutrition", "agriculture", "crop", "sustainable food"]', 4),
+    ('ESG-S(사회)', '지역사회·삶의질', '["community development", "quality of life", "well-being", "urban planning", "rural development", "social welfare"]', 5),
+    # ESG-G(지배구조)
+    ('ESG-G(지배구조)', '연구윤리·투명성', '["research ethics", "transparency", "open science", "reproducibility", "data sharing", "peer review"]', 1),
+    ('ESG-G(지배구조)', '산학협력·기술이전', '["industry-academia", "technology transfer", "patent", "commercialization", "startup", "spin-off"]', 2),
+    ('ESG-G(지배구조)', '데이터 거버넌스', '["data governance", "data privacy", "cybersecurity", "information security", "GDPR", "data protection"]', 3),
+    ('ESG-G(지배구조)', 'AI 윤리·규제', '["AI ethics", "responsible AI", "algorithmic fairness", "bias", "regulation", "trustworthy AI"]', 4),
+]
+```
+
+### 4-3. 프론트엔드 수정 (strategic_field_analysis.html)
+
+**탭 추가** (미래모빌리티 탭 뒤, `ms-3 border-start ps-3`으로 시각적 구분):
+```html
+<li class="nav-item ms-3 border-start ps-3" role="presentation">
+    <button class="nav-link" id="esg-e-tab" data-bs-toggle="tab" data-bs-target="#esg-e"
+            type="button" onclick="switchCategory('ESG-E(환경)')">
+        <i class="fas fa-leaf text-success"></i> ESG-E(환경)
+    </button>
+</li>
+<li class="nav-item" role="presentation">
+    <button class="nav-link" id="esg-s-tab" data-bs-toggle="tab" data-bs-target="#esg-s"
+            type="button" onclick="switchCategory('ESG-S(사회)')">
+        <i class="fas fa-users text-primary"></i> ESG-S(사회)
+    </button>
+</li>
+<li class="nav-item" role="presentation">
+    <button class="nav-link" id="esg-g-tab" data-bs-toggle="tab" data-bs-target="#esg-g"
+            type="button" onclick="switchCategory('ESG-G(지배구조)')">
+        <i class="fas fa-balance-scale text-warning"></i> ESG-G(지배구조)
+    </button>
+</li>
+```
+
+**tab-pane 추가:**
+```html
+<div class="tab-pane fade" id="esg-e" role="tabpanel"></div>
+<div class="tab-pane fade" id="esg-s" role="tabpanel"></div>
+<div class="tab-pane fade" id="esg-g" role="tabpanel"></div>
+```
+
+**JavaScript categoryMap 확장:**
+```javascript
+const categoryMap = {
+    '에너지': 'energy',
+    '바이오': 'bio',
+    '농생명': 'agri',
+    '미래모빌리티': 'mobility',
+    'ESG-E(환경)': 'esg-e',
+    'ESG-S(사회)': 'esg-s',
+    'ESG-G(지배구조)': 'esg-g'
+};
+```
+
+### 4-4. 다국어 키
+
+strategic_field 섹션에 추가:
+```
+esg_e: ESG-E(환경) / ESG-E (Environmental)
+esg_s: ESG-S(사회) / ESG-S (Social)
+esg_g: ESG-G(지배구조) / ESG-G (Governance)
+```
+
+### 4-5. 주의사항
+- ESG 탭은 기존 전략분야 분석과 완전히 동일한 엔진(키워드 매핑, 연구자 랭킹, 트렌드 차트, 공동연구자 분석 등)을 사용한다.
+- 별도 API를 만들 필요 없이 strategic_field_config 테이블에 카테고리만 추가하면 된다.
+- DB 시드 데이터가 migrate_database()에서 실패할 수 있으므로, 수동 INSERT 스크립트도 준비할 것.
+- 키워드는 연구분야분석 페이지의 "키워드 설정"에서 사용자가 추가/삭제/수정 가능.
+
+---
+
+## 수정 대상 파일 요약
+
+| 파일 | 수정 내용 |
+|------|-----------|
+| app.py | hg-index 계산 (리스트 API + 상세 API) |
+| app.py | COLUMN_ORDER_70, COLUMN_ORDER_67 모듈 레벨 상수 추출 |
+| app.py | SNAPSHOT_FOLDER 설정, ensure_snapshot_tables() 함수 |
+| app.py | inject_active_snapshot() context processor |
+| app.py | 스냅샷 관리 API 라우트 7개 |
+| app.py | ESG 시드 데이터 (migrate_database 내) |
+| templates/researcher_ranking.html | hg-index: 안내 카드, 테이블 컬럼, 상세 모달, CSV |
+| templates/researcher_ranking.html | 지표 안내 카드에 산출 방법 + 해석(insight) 추가 |
+| templates/admin_snapshots.html | 스냅샷 관리 페이지 (신규) |
+| templates/base.html | 관리 메뉴에 스냅샷 링크 추가, 데이터 정보 바 추가 |
+| templates/strategic_field_analysis.html | ESG 탭 3개 + tab-pane + categoryMap |
+| static/lang/ko.json | biblio_hg_*, snapshot.*, strategic_field.esg_* 키 추가 |
+| static/lang/en.json | 동일 영문 키 추가 |
+| jbnu.db | U+F8FF 문자 수정, ESG 시드 데이터 INSERT |

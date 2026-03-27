@@ -682,6 +682,9 @@
                             <p><strong data-i18n="researcher_ranking.biblio_h_method">산출:</strong> <span data-i18n="researcher_ranking.biblio_h_method_desc">논문을 피인용횟수 내림차순으로 정렬 시, 순위와 피인용횟수가 같아지거나 순위가 피인용횟수보다 작은 최댓값이 h</span></p>
                             <p><strong data-i18n="researcher_ranking.biblio_example">예시:</strong> <span data-i18n="researcher_ranking.biblio_h_example">h=10이면, 최소 10편의 논문이 각각 10회 이상 인용됨</span></p>
                             <p class="mb-0 text-muted"><strong data-i18n="researcher_ranking.biblio_strength">장점:</strong> <span data-i18n="researcher_ranking.biblio_h_strength">생산성과 영향력의 균형 있는 측정</span></p>
+                            <div class="mt-2 pt-2 border-top">
+                                <p class="mb-0" data-i18n="researcher_ranking.biblio_h_insight">"나는 꾸준히 인정받는 논문을 여러 편 썼다"를 측정합니다. 1,000회 인용 논문 1편만 있으면 h=1입니다. 생산성과 영향력을 동시에 보려는 가장 균형 잡힌 지표입니다.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -695,6 +698,25 @@
                             <p><strong data-i18n="researcher_ranking.biblio_g_method">산출:</strong> <span data-i18n="researcher_ranking.biblio_g_method_desc">상위 g개의 논문 피인용횟수의 합이 g²보다 작지 않은 가장 큰 g값</span></p>
                             <p><strong data-i18n="researcher_ranking.biblio_example">예시:</strong> <span data-i18n="researcher_ranking.biblio_g_example">g=15이면, 상위 15편의 인용 합계가 225 이상</span></p>
                             <p class="mb-0 text-muted"><strong data-i18n="researcher_ranking.biblio_strength">장점:</strong> <span data-i18n="researcher_ranking.biblio_g_strength">고인용 논문의 기여를 h-index보다 잘 반영</span></p>
+                            <div class="mt-2 pt-2 border-top">
+                                <p class="mb-0" data-i18n="researcher_ranking.biblio_g_insight">"내 상위 논문들은 정말 많이 인용됐다"를 측정합니다. h-index는 슈퍼스타 논문을 과소평가하는데, g-index는 그걸 보정해줘서 항상 h ≤ g 관계가 성립합니다.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card h-100 border-secondary">
+                        <div class="card-header bg-secondary text-white py-2">
+                            <strong>hg-index</strong>
+                        </div>
+                        <div class="card-body small">
+                            <p><strong data-i18n="researcher_ranking.biblio_definition">정의:</strong> <span data-i18n="researcher_ranking.biblio_hg_def">h-index와 g-index의 기하평균 √(h × g)</span></p>
+                            <p><strong data-i18n="researcher_ranking.biblio_hg_method">산출:</strong> <span data-i18n="researcher_ranking.biblio_hg_method_desc">hg = √(h-index × g-index), 두 값을 곱한 뒤 제곱근</span></p>
+                            <p><strong data-i18n="researcher_ranking.biblio_example">예시:</strong> <span data-i18n="researcher_ranking.biblio_hg_example">h=86, g=125이면 hg = √(86×125) ≈ 103.7</span></p>
+                            <p class="mb-0 text-muted"><strong data-i18n="researcher_ranking.biblio_strength">장점:</strong> <span data-i18n="researcher_ranking.biblio_hg_strength">h-index와 g-index의 균형 잡힌 절충 지표</span></p>
+                            <div class="mt-2 pt-2 border-top">
+                                <p class="mb-0" data-i18n="researcher_ranking.biblio_hg_insight">h-index(꾸준함)와 g-index(폭발력)의 기하평균으로, 두 지표가 모두 높아야 높게 나옵니다. h와 g가 비슷하면 균일한 인용 분포, h << g이면 소수의 히트 논문에 의존하는 연구자입니다.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -705,8 +727,12 @@
                         </div>
                         <div class="card-body small">
                             <p><strong data-i18n="researcher_ranking.biblio_definition">정의:</strong> <span data-i18n="researcher_ranking.biblio_i10_def">10회 이상 인용된 논문의 수</span></p>
+                            <p><strong data-i18n="researcher_ranking.biblio_i10_method">산출:</strong> <span data-i18n="researcher_ranking.biblio_i10_method_desc">전체 논문 중 피인용횟수가 10회 이상인 논문의 수를 합산</span></p>
                             <p><strong data-i18n="researcher_ranking.biblio_example">예시:</strong> <span data-i18n="researcher_ranking.biblio_i10_example">i10=20이면, 20편의 논문이 10회 이상 인용됨</span></p>
                             <p class="mb-0 text-muted"><strong data-i18n="researcher_ranking.biblio_strength">장점:</strong> <span data-i18n="researcher_ranking.biblio_i10_strength">직관적이고 이해하기 쉬운 지표 (Google Scholar 기준)</span></p>
+                            <div class="mt-2 pt-2 border-top">
+                                <p class="mb-0" data-i18n="researcher_ranking.biblio_i10_insight">"최소한 10회 이상 인정받은 논문이 몇 편이냐"를 측정합니다. 계산이 가장 단순하고, Google Scholar 프로필에서 자동으로 보여줘서 접근성이 높습니다.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -717,8 +743,12 @@
                         </div>
                         <div class="card-body small">
                             <p><strong data-i18n="researcher_ranking.biblio_definition">정의:</strong> <span data-i18n="researcher_ranking.biblio_m_def">h-index를 학술 활동 연수로 나눈 값</span></p>
+                            <p><strong data-i18n="researcher_ranking.biblio_m_method">산출:</strong> <span data-i18n="researcher_ranking.biblio_m_method_desc">m = h-index ÷ (최근 발표연도 - 최초 발표연도 + 1)</span></p>
                             <p><strong data-i18n="researcher_ranking.biblio_example">예시:</strong> <span data-i18n="researcher_ranking.biblio_m_example">h=20, 경력 10년이면 m=2.0</span></p>
                             <p class="mb-0 text-muted"><strong data-i18n="researcher_ranking.biblio_strength">장점:</strong> <span data-i18n="researcher_ranking.biblio_m_strength">경력 연수를 고려하여 신진/경력 연구자를 공정하게 비교</span></p>
+                            <div class="mt-2 pt-2 border-top">
+                                <p class="mb-0" data-i18n="researcher_ranking.biblio_m_insight">"나는 같은 기간 동안 얼마나 빠르게 성과를 쌓았나"를 측정합니다. h=20이어도 10년 걸렸으면 m=2.0, 20년 걸렸으면 m=1.0으로 경력 길이의 차이를 보정해줘서 신진 연구자와 원로 연구자를 공평하게 비교할 수 있는 유일한 지표입니다.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -750,6 +780,7 @@
                 <select class="form-select" id="biblioSortBy">
                     <option value="h_index">h-index</option>
                     <option value="g_index">g-index</option>
+                    <option value="hg_index">hg-index</option>
                     <option value="i10_index">i10-index</option>
                     <option value="m_index">m-index</option>
                     <option value="citations" data-i18n="researcher_ranking.table_citations">인용수</option>
@@ -1638,6 +1669,7 @@ function renderBiblioTable() {
         + biblioThS('FWCI', 'fwci')
         + biblioThS('h-index', 'h_index')
         + biblioThS('g-index', 'g_index')
+        + biblioThS('hg-index', 'hg_index')
         + biblioThS('i10-index', 'i10_index')
         + biblioThS('m-index', 'm_index')
         + '<th>' + i18n.t('researcher_ranking.table_detail') + '</th>';
@@ -1659,6 +1691,7 @@ function renderBiblioTable() {
             <td>${r.fwci != null ? r.fwci.toFixed(2) : '-'}</td>
             <td><span class="badge bg-primary">${r.h_index || 0}</span></td>
             <td><span class="badge bg-success">${r.g_index || 0}</span></td>
+            <td><span class="badge bg-secondary">${r.hg_index != null ? r.hg_index.toFixed(1) : '-'}</span></td>
             <td><span class="badge bg-warning text-dark">${r.i10_index || 0}</span></td>
             <td><span class="badge bg-info">${r.m_index != null ? r.m_index.toFixed(2) : '-'}</span></td>
             <td>
@@ -1741,7 +1774,7 @@ function loadBiblioRanking() {
 
             document.getElementById('biblioTotalCount').textContent = data.total_count;
             document.getElementById('biblioReturnedCount').textContent = data.returned_count;
-            const sortLabels = { 'h_index': 'h-index', 'g_index': 'g-index', 'i10_index': 'i10-index', 'citations': i18n.t('researcher_ranking.table_citations'), 'fwci': 'FWCI' };
+            const sortLabels = { 'h_index': 'h-index', 'g_index': 'g-index', 'hg_index': 'hg-index', 'i10_index': 'i10-index', 'm_index': 'm-index', 'citations': i18n.t('researcher_ranking.table_citations'), 'fwci': 'FWCI' };
             document.getElementById('biblioSortDisplay').textContent = sortLabels[sortBy] || sortBy;
             document.getElementById('biblioResultSummary').style.display = 'block';
 
@@ -1785,6 +1818,7 @@ function displayBiblioDetailModal(data) {
     const gDetail = data.g_detail;
     const i10Detail = data.i10_detail;
     const mDetail = data.m_detail;
+    const hgDetail = data.hg_detail;
 
     function truncTitle(title, maxLen) {
         if (!title) return '';
@@ -1885,6 +1919,14 @@ function displayBiblioDetailModal(data) {
                 </div>
             </div>
             <div class="col text-center">
+                <div class="card border-secondary h-100">
+                    <div class="card-body py-2">
+                        <h6 class="mb-1 small">hg-index</h6>
+                        <h3 class="mb-0 text-secondary">${indices.hg_index}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col text-center">
                 <div class="card border-warning h-100">
                     <div class="card-body py-2">
                         <h6 class="mb-1 small">i10-index</h6>
@@ -1968,6 +2010,45 @@ function displayBiblioDetailModal(data) {
                     <div class="p-2 bg-light small">
                         <i class="fas fa-info-circle text-success"></i>
                         상위 ${indices.g_index}편의 누적 인용수가 ${indices.g_index}² = ${indices.g_index ** 2} 이상이므로 g=${indices.g_index}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- hg-index 상세 -->
+        <div class="card mb-3 border-secondary">
+            <div class="card-header bg-secondary text-white py-2" data-bs-toggle="collapse" data-bs-target="#hgIndexDetail" style="cursor:pointer;">
+                <strong><i class="fas fa-chevron-down"></i> hg-index = ${indices.hg_index}</strong>
+                <span class="ms-2 small">${hgDetail.description}</span>
+            </div>
+            <div class="collapse show" id="hgIndexDetail">
+                <div class="card-body">
+                    <div class="bg-light p-3 rounded border">
+                        <div class="d-flex align-items-center justify-content-center gap-3" style="font-size: 1.3rem;">
+                            <div class="text-muted">√(</div>
+                            <div class="text-center">
+                                <div class="small text-muted">h-index</div>
+                                <strong class="text-primary">${indices.h_index}</strong>
+                            </div>
+                            <div class="text-muted">×</div>
+                            <div class="text-center">
+                                <div class="small text-muted">g-index</div>
+                                <strong class="text-success">${indices.g_index}</strong>
+                            </div>
+                            <div class="text-muted">)</div>
+                            <div class="text-muted">=</div>
+                            <div class="text-center">
+                                <div class="small text-muted">√${indices.h_index * indices.g_index}</div>
+                                <strong class="text-secondary fs-4">${indices.hg_index}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-2 small text-muted">
+                        <i class="fas fa-info-circle"></i>
+                        ${i18n.t('researcher_ranking.biblio_hg_ratio_label')}: h/g = ${(indices.h_index / indices.g_index).toFixed(2)}
+                        — ${indices.h_index / indices.g_index > 0.8
+                            ? i18n.t('researcher_ranking.biblio_hg_balanced')
+                            : i18n.t('researcher_ranking.biblio_hg_skewed')}
                     </div>
                 </div>
             </div>
@@ -2062,7 +2143,7 @@ function downloadBiblioCSV() {
         alert(i18n.t('researcher_ranking.alert_no_data') || '데이터가 없습니다. 먼저 조회해주세요.');
         return;
     }
-    const headers = ['순위', '연구자', '논문수', '인용수', 'FWCI', 'h-index', 'g-index', 'i10-index', 'm-index'];
+    const headers = ['순위', '연구자', '논문수', '인용수', 'FWCI', 'h-index', 'g-index', 'hg-index', 'i10-index', 'm-index'];
     let csv = '\uFEFF' + headers.join(',') + '\n';
     biblioData.forEach((r, idx) => {
         csv += [
@@ -2073,6 +2154,7 @@ function downloadBiblioCSV() {
             r.fwci != null ? r.fwci.toFixed(2) : '',
             r.h_index || 0,
             r.g_index || 0,
+            r.hg_index != null ? r.hg_index.toFixed(2) : '',
             r.i10_index || 0,
             r.m_index != null ? r.m_index.toFixed(2) : ''
         ].join(',') + '\n';

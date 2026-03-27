@@ -177,29 +177,36 @@
 
 ### 4-1. 지표 안내 카드
 - 접이식(collapse) 카드로 4개 지표 설명 표시 (col-md-3 × 4열)
-- 각 카드에 정의, 산출 방법, 예시, 장점 포함
+- 각 카드에 정의, 산출 방법, 예시, 장점, 해석(insight) 포함
+- 해석(insight)은 카드 본문 하단에 border-top 구분선 아래로 표시
 
 **h-index 카드 (border-primary):**
 - 정의: h편의 논문이 각각 h회 이상 인용된 가장 큰 수 h
 - 산출: 논문을 피인용횟수 내림차순으로 정렬 시, 순위와 피인용횟수가 같아지거나 순위가 피인용횟수보다 작은 최댓값이 h
 - 예시: h=10이면, 최소 10편의 논문이 각각 10회 이상 인용됨
 - 장점: 생산성과 영향력의 균형 있는 측정
+- 해석: "나는 꾸준히 인정받는 논문을 여러 편 썼다"를 측정합니다. 1,000회 인용 논문 1편만 있으면 h=1입니다. 생산성과 영향력을 동시에 보려는 가장 균형 잡힌 지표입니다.
 
 **g-index 카드 (border-success):**
 - 정의: 상위 g편 논문의 인용 합계가 g² 이상인 가장 큰 수 g
 - 산출: 상위 g개의 논문 피인용횟수의 합이 g²보다 작지 않은 가장 큰 g값
 - 예시: g=15이면, 상위 15편의 인용 합계가 225 이상
 - 장점: 고인용 논문의 기여를 h-index보다 잘 반영
+- 해석: "내 상위 논문들은 정말 많이 인용됐다"를 측정합니다. h-index는 슈퍼스타 논문을 과소평가하는데, g-index는 그걸 보정해줘서 항상 h ≤ g 관계가 성립합니다.
 
 **i10-index 카드 (border-warning):**
 - 정의: 10회 이상 인용된 논문의 수
+- 산출: 전체 논문 중 피인용횟수가 10회 이상인 논문의 수를 합산
 - 예시: i10=20이면, 20편의 논문이 10회 이상 인용됨
 - 장점: 직관적이고 이해하기 쉬운 지표 (Google Scholar 기준)
+- 해석: "최소한 10회 이상 인정받은 논문이 몇 편이냐"를 측정합니다. 계산이 가장 단순하고, Google Scholar 프로필에서 자동으로 보여줘서 접근성이 높습니다.
 
 **m-index 카드 (border-info):**
 - 정의: h-index를 학술 활동 연수로 나눈 값
+- 산출: m = h-index ÷ (최근 발표연도 - 최초 발표연도 + 1)
 - 예시: h=20, 경력 10년이면 m=2.0
 - 장점: 경력 연수를 고려하여 신진/경력 연구자를 공정하게 비교
+- 해석: "나는 같은 기간 동안 얼마나 빠르게 성과를 쌓았나"를 측정합니다. h=20이어도 10년 걸렸으면 m=2.0, 20년 걸렸으면 m=1.0으로 경력 길이의 차이를 보정해줘서 신진 연구자와 원로 연구자를 공평하게 비교할 수 있는 유일한 지표입니다.
 
 ### 4-2. 필터 영역
 - 최소 논문수 (biblioMinOutput, 기본값 10)
@@ -221,9 +228,10 @@
 - modal-xl 크기
 - 상단: 연구자 이름, Scopus ID, ORCID, 소속
 
-**지표 요약 카드 (7열 row):**
+**지표 요약 카드 (7열 row, g-2 간격):**
 - 논문수, 인용수, h-index, g-index, i10-index, m-index, FWCI
 - 각 지표별 테마 색상 적용 (border-primary, border-success, border-warning, border-info)
+- h-100으로 카드 높이 통일
 
 **h-index 상세 (collapse, 기본 펼침):**
 - 카드 헤더: bg-primary, "h-index = {값}" + 설명
@@ -250,6 +258,7 @@
 - 카드 헤더: bg-info, "m-index = {값}" + 설명
 - 본문: 수식 시각화 (h-index ÷ 학술활동 연수 = m-index)
   - 3열 레이아웃: h-index 값 | 학술활동 연수 (시작~종료) | m-index 결과
+  - font-size 1.3rem, bg-light 배경, rounded border
 - 우측: 해석 기준
   - m ≥ 3: 탁월 (badge bg-success)
   - m ≥ 2: 우수 (badge bg-primary)
@@ -277,28 +286,42 @@ biblio_info_title: 계량서지학 지표 안내 (클릭하여 펼치기)
 biblio_definition: 정의:
 biblio_example: 예시:
 biblio_strength: 장점:
+
 biblio_h_def: h편의 논문이 각각 h회 이상 인용된 가장 큰 수 h
 biblio_h_method: 산출:
 biblio_h_method_desc: 논문을 피인용횟수 내림차순으로 정렬 시, 순위와 피인용횟수가 같아지거나 순위가 피인용횟수보다 작은 최댓값이 h
 biblio_h_example: h=10이면, 최소 10편의 논문이 각각 10회 이상 인용됨
 biblio_h_strength: 생산성과 영향력의 균형 있는 측정
+biblio_h_insight: "나는 꾸준히 인정받는 논문을 여러 편 썼다"를 측정합니다. 1,000회 인용 논문 1편만 있으면 h=1입니다. 생산성과 영향력을 동시에 보려는 가장 균형 잡힌 지표입니다.
+
 biblio_g_def: 상위 g편 논문의 인용 합계가 g² 이상인 가장 큰 수 g
 biblio_g_method: 산출:
 biblio_g_method_desc: 상위 g개의 논문 피인용횟수의 합이 g²보다 작지 않은 가장 큰 g값
 biblio_g_example: g=15이면, 상위 15편의 인용 합계가 225 이상
 biblio_g_strength: 고인용 논문의 기여를 h-index보다 잘 반영
+biblio_g_insight: "내 상위 논문들은 정말 많이 인용됐다"를 측정합니다. h-index는 슈퍼스타 논문을 과소평가하는데, g-index는 그걸 보정해줘서 항상 h ≤ g 관계가 성립합니다.
+
 biblio_i10_def: 10회 이상 인용된 논문의 수
+biblio_i10_method: 산출:
+biblio_i10_method_desc: 전체 논문 중 피인용횟수가 10회 이상인 논문의 수를 합산
 biblio_i10_example: i10=20이면, 20편의 논문이 10회 이상 인용됨
 biblio_i10_strength: 직관적이고 이해하기 쉬운 지표 (Google Scholar 기준)
+biblio_i10_insight: "최소한 10회 이상 인정받은 논문이 몇 편이냐"를 측정합니다. 계산이 가장 단순하고, Google Scholar 프로필에서 자동으로 보여줘서 접근성이 높습니다.
+
 biblio_m_def: h-index를 학술 활동 연수로 나눈 값
+biblio_m_method: 산출:
+biblio_m_method_desc: m = h-index ÷ (최근 발표연도 - 최초 발표연도 + 1)
 biblio_m_example: h=20, 경력 10년이면 m=2.0
 biblio_m_strength: 경력 연수를 고려하여 신진/경력 연구자를 공정하게 비교
+biblio_m_insight: "나는 같은 기간 동안 얼마나 빠르게 성과를 쌓았나"를 측정합니다. h=20이어도 10년 걸렸으면 m=2.0, 20년 걸렸으면 m=1.0으로 경력 길이의 차이를 보정해줘서 신진 연구자와 원로 연구자를 공평하게 비교할 수 있는 유일한 지표입니다.
+
 biblio_m_career_years: 학술활동 연수
 biblio_m_interpret: 해석 기준:
 biblio_m_outstanding: 탁월 / Outstanding
 biblio_m_excellent: 우수 / Excellent
 biblio_m_good: 양호 / Good
 biblio_m_average: 보통 / Average
+
 biblio_sort_by: 정렬 기준
 biblio_calculating: 계량서지학 지표 계산 중...
 biblio_detail_title: 계량서지학 지표 상세

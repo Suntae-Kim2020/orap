@@ -1,0 +1,435 @@
+{% extends "base.html" %}
+
+{% block title %}데이터 스냅샷 관리 - ORAP{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <div>
+            <h2><i class="fas fa-database"></i> <span data-i18n="snapshot.title">데이터 스냅샷 관리</span></h2>
+            <p class="text-muted" data-i18n="snapshot.subtitle">분석 데이터의 수집·적용 이력을 관리합니다</p>
+        </div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createSnapshotModal">
+            <i class="fas fa-plus"></i> <span data-i18n="snapshot.create">새 스냅샷 생성</span>
+        </button>
+    </div>
+</div>
+
+<!-- 활성 스냅샷 정보 -->
+{% if active_snapshot %}
+<div class="alert alert-success d-flex align-items-center mb-4">
+    <i class="fas fa-check-circle me-2 fs-5"></i>
+    <div>
+        <strong data-i18n="snapshot.current_data">현재 적용된 데이터:</strong>
+        {{ active_snapshot.snapshot_name }}
+        | <span data-i18n="snapshot.collection_date">수집일</span>: {{ active_snapshot.collection_date }}
+        | <span data-i18n="snapshot.period">기간</span>: {{ active_snapshot.year_from }}~{{ active_snapshot.year_to }}
+        | <span data-i18n="snapshot.applied_at">적용일</span>: {{ active_snapshot.applied_at[:10] if active_snapshot.applied_at else '-' }}
+        | <span data-i18n="snapshot.pub_count">논문</span>: {{ active_snapshot.total_publications | default(0) }}건
+    </div>
+</div>
+{% endif %}
+
+<!-- 스냅샷 목록 -->
+<div class="card">
+    <div class="card-header">
+        <i class="fas fa-list"></i> <span data-i18n="snapshot.list">스냅샷 목록</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th data-i18n="snapshot.name">스냅샷명</th>
+                        <th data-i18n="snapshot.collection_date">수집일</th>
+                        <th data-i18n="snapshot.period">기간</th>
+                        <th data-i18n="snapshot.status">상태</th>
+                        <th data-i18n="snapshot.files">파일</th>
+                        <th data-i18n="snapshot.pub_count">논문수</th>
+                        <th data-i18n="snapshot.applied_at">적용일</th>
+                        <th data-i18n="snapshot.created_at">생성일</th>
+                        <th data-i18n="snapshot.actions">관리</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in snapshots %}
+                    <tr>
+                        <td>{{ s.snapshot_id }}</td>
+                        <td><strong>{{ s.snapshot_name }}</strong>
+                            {% if s.description %}<br><small class="text-muted">{{ s.description }}</small>{% endif %}
+                        </td>
+                        <td>{{ s.collection_date }}</td>
+                        <td>{{ s.year_from }}~{{ s.year_to }}</td>
+                        <td>
+                            {% if s.status == 'applied' %}
+                                <span class="badge bg-success">적용됨</span>
+                            {% elif s.status == 'draft' %}
+                                <span class="badge bg-warning text-dark">준비중</span>
+                            {% else %}
+                                <span class="badge bg-secondary">보관</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ s.file_count }}개</td>
+                        <td>{{ s.total_publications | default(0) | int }}</td>
+                        <td>{{ s.applied_at[:10] if s.applied_at else '-' }}</td>
+                        <td>{{ s.created_at[:10] if s.created_at else '-' }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-info" onclick="showSnapshotDetail({{ s.snapshot_id }})" title="상세">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                {% if s.status == 'draft' %}
+                                <button class="btn btn-outline-success" onclick="applySnapshot({{ s.snapshot_id }}, '{{ s.snapshot_name }}')" title="적용">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                                {% endif %}
+                                {% if s.status != 'applied' %}
+                                <button class="btn btn-outline-danger" onclick="deleteSnapshot({{ s.snapshot_id }}, '{{ s.snapshot_name }}')" title="삭제">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not snapshots %}
+                    <tr><td colspan="10" class="text-center text-muted py-4">스냅샷이 없습니다.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 새 스냅샷 생성 모달 -->
+<div class="modal fade" id="createSnapshotModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus"></i> 새 스냅샷 생성</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">스냅샷명 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="snapshotName" placeholder="예: 2026년 1차 데이터">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">설명</label>
+                    <textarea class="form-control" id="snapshotDesc" rows="2" placeholder="선택사항"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">데이터 수집일 <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="snapshotDate">
+                </div>
+                <div class="row">
+                    <div class="col-6">
+                        <label class="form-label">시작연도</label>
+                        <input type="number" class="form-control" id="snapshotYearFrom" value="2020" min="1990" max="2030">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">종료연도</label>
+                        <input type="number" class="form-control" id="snapshotYearTo" value="2026" min="1990" max="2030">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="createSnapshot()">생성</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 스냅샷 상세 모달 -->
+<div class="modal fade" id="snapshotDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-database"></i> <span id="detailTitle">스냅샷 상세</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="snapshotDetailContent">
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 오늘 날짜 기본값
+document.getElementById('snapshotDate').value = new Date().toISOString().split('T')[0];
+
+// 상세 모달 닫힐 때 페이지 새로고침 (버튼 상태 갱신)
+document.getElementById('snapshotDetailModal').addEventListener('hidden.bs.modal', function() {
+    // 파일이 업로드됐으면 페이지 갱신
+    if (document.getElementById('uploadResults') && document.getElementById('uploadResults').style.display !== 'none') {
+        location.reload();
+    }
+});
+
+function createSnapshot() {
+    const name = document.getElementById('snapshotName').value.trim();
+    const description = document.getElementById('snapshotDesc').value.trim();
+    const collection_date = document.getElementById('snapshotDate').value;
+    const year_from = parseInt(document.getElementById('snapshotYearFrom').value);
+    const year_to = parseInt(document.getElementById('snapshotYearTo').value);
+
+    if (!name || !collection_date) {
+        alert('스냅샷명과 수집일은 필수입니다.');
+        return;
+    }
+
+    fetch('/api/snapshots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description, collection_date, year_from, year_to })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('오류: ' + data.error);
+        }
+    });
+}
+
+function showSnapshotDetail(snapshotId) {
+    fetch(`/api/snapshots/${snapshotId}`)
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) { alert(data.error); return; }
+        const s = data.snapshot;
+        const files = data.files;
+        const isDraft = s.status === 'draft';
+
+        let statusBadge = s.status === 'applied' ? '<span class="badge bg-success">적용됨</span>'
+            : s.status === 'draft' ? '<span class="badge bg-warning text-dark">준비중</span>'
+            : '<span class="badge bg-secondary">보관</span>';
+
+        let filesHtml = '';
+        files.forEach(f => {
+            const sizeKB = (f.file_size / 1024).toFixed(1);
+            filesHtml += `<tr>
+                <td>${f.original_filename}</td>
+                <td><span class="badge bg-info">${f.data_type}</span></td>
+                <td>${sizeKB} KB</td>
+                <td>${f.record_count}</td>
+                <td>${f.upload_date ? f.upload_date.substring(0, 16) : '-'}</td>
+                <td>${isDraft ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteSnapshotFile(${snapshotId}, ${f.file_id})"><i class="fas fa-trash"></i></button>` : ''}</td>
+            </tr>`;
+        });
+
+        let uploadForm = isDraft ? `
+            <div class="card mt-3">
+                <div class="card-header py-2"><i class="fas fa-upload"></i> 파일 업로드 <small class="text-light">(복수 선택 가능, 파일명으로 유형 자동 감지)</small></div>
+                <div class="card-body">
+                    <div class="row align-items-end">
+                        <div class="col-md-8">
+                            <label class="form-label small">파일 선택 (여러 파일 동시 선택 가능)</label>
+                            <input type="file" class="form-control form-control-sm" id="uploadFiles" accept=".csv,.xlsx,.xls" multiple>
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-sm btn-primary w-100" onclick="uploadMultipleToSnapshot(${snapshotId})">
+                                <i class="fas fa-upload"></i> 업로드
+                            </button>
+                        </div>
+                    </div>
+                    <div id="uploadProgress" class="mt-2" style="display:none;">
+                        <small id="uploadStatus" class="text-muted"></small>
+                        <div class="progress mt-1"><div class="progress-bar progress-bar-striped progress-bar-animated" id="uploadProgressBar" style="width:0%"></div></div>
+                    </div>
+                    <div id="uploadResults" class="mt-2" style="display:none;"></div>
+                </div>
+            </div>
+        ` : '';
+
+        document.getElementById('detailTitle').textContent = s.snapshot_name;
+        document.getElementById('snapshotDetailContent').innerHTML = `
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <p><strong>상태:</strong> ${statusBadge}</p>
+                    <p><strong>수집일:</strong> ${s.collection_date}</p>
+                    <p><strong>분석 기간:</strong> ${s.year_from} ~ ${s.year_to}</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>적용일:</strong> ${s.applied_at || '-'}</p>
+                    <p><strong>논문수:</strong> ${s.total_publications || 0}건</p>
+                    <p><strong>저자수:</strong> ${s.total_authors || 0}명</p>
+                </div>
+            </div>
+            ${s.description ? `<p class="text-muted"><i class="fas fa-info-circle"></i> ${s.description}</p>` : ''}
+
+            <h6><i class="fas fa-file"></i> 업로드된 파일 (${files.length}개)</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr><th>파일명</th><th>유형</th><th>크기</th><th>레코드</th><th>업로드일</th><th></th></tr>
+                    </thead>
+                    <tbody>${filesHtml || '<tr><td colspan="6" class="text-muted text-center">파일이 없습니다.</td></tr>'}</tbody>
+                </table>
+            </div>
+            ${uploadForm}
+            ${isDraft && files.length > 0 ? `
+                <div class="text-center mt-3">
+                    <button class="btn btn-success btn-lg" onclick="applySnapshotFromModal(${s.snapshot_id}, '${s.snapshot_name}')">
+                        <i class="fas fa-check-circle"></i> 이 스냅샷 적용하기
+                    </button>
+                    <div class="small text-muted mt-1">기존 분석 데이터가 이 스냅샷의 데이터로 교체됩니다.</div>
+                </div>
+            ` : ''}
+        `;
+
+        // 기존 모달 제거 후 새로 생성
+        const modalEl = document.getElementById('snapshotDetailModal');
+        const existingModal = bootstrap.Modal.getInstance(modalEl);
+        if (existingModal) existingModal.dispose();
+        new bootstrap.Modal(modalEl).show();
+    });
+}
+
+function detectDataType(filename) {
+    const f = filename.toLowerCase();
+    // 패턴 순서 중요: 구체적인 것부터 매칭
+    if (f.includes('top_1_') || f.includes('top_1%') || f.includes('_1__most_cited'))
+        return '1%';
+    if (f.includes('top_10_') || f.includes('top_10%') || f.includes('_10__most_cited') || f.includes('_10__journals'))
+        return '10%';
+    if (f.includes('top_25_') || f.includes('top_25%') || f.includes('_25__journals'))
+        return '25%';
+    if (f.includes('sdg') || f.includes('sustainable_development'))
+        return 'SDGs';
+    if (f.includes('international_collaboration') || f.includes('international_collab'))
+        return 'International';
+    if (f.includes('cited_by_patent') || f.includes('patent_cit'))
+        return 'patent';
+    if (f.includes('cited_by_polic') || f.includes('policy_cit'))
+        return 'policy';
+    if (f.includes('single_author') || f.includes('coauthor') || f.includes('co-author'))
+        return 'coauthored';
+    // 기본: Publications_at_... 만 있으면 전체논문데이터
+    return '전체논문데이터';
+}
+
+async function uploadMultipleToSnapshot(snapshotId) {
+    const fileInput = document.getElementById('uploadFiles');
+    const files = fileInput.files;
+    if (files.length === 0) { alert('파일을 선택해주세요.'); return; }
+
+    const progressDiv = document.getElementById('uploadProgress');
+    const statusEl = document.getElementById('uploadStatus');
+    const progressBar = document.getElementById('uploadProgressBar');
+    const resultsDiv = document.getElementById('uploadResults');
+
+    progressDiv.style.display = 'block';
+    resultsDiv.style.display = 'none';
+
+    let results = [];
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const dataType = detectDataType(file.name);
+        const pct = Math.round((i / files.length) * 100);
+        progressBar.style.width = pct + '%';
+        statusEl.textContent = `(${i+1}/${files.length}) ${file.name} → ${dataType}`;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('data_type', dataType);
+
+        try {
+            const resp = await fetch(`/api/snapshots/${snapshotId}/upload`, { method: 'POST', body: formData });
+            const data = await resp.json();
+            results.push({
+                filename: file.name,
+                dataType: dataType,
+                success: data.success,
+                recordCount: data.record_count || 0,
+                error: data.error || null
+            });
+        } catch(err) {
+            results.push({ filename: file.name, dataType: dataType, success: false, error: err.toString() });
+        }
+    }
+
+    progressBar.style.width = '100%';
+    statusEl.textContent = '완료';
+
+    // 결과 표시
+    let html = '<table class="table table-sm small mt-2"><thead><tr><th>파일명</th><th>감지 유형</th><th>결과</th></tr></thead><tbody>';
+    results.forEach(r => {
+        const badge = r.success
+            ? `<span class="badge bg-success">성공 (${r.recordCount}건)</span>`
+            : `<span class="badge bg-danger">실패: ${r.error}</span>`;
+        html += `<tr><td>${r.filename}</td><td><span class="badge bg-info">${r.dataType}</span></td><td>${badge}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    resultsDiv.innerHTML = html;
+    resultsDiv.style.display = 'block';
+
+    // 파일 목록 갱신
+    setTimeout(() => showSnapshotDetail(snapshotId), 1500);
+}
+
+function doApplySnapshot(snapshotId, name, btn) {
+    if (!confirm(`"${name}" 스냅샷을 적용하시겠습니까?\n\n기존 분석 데이터가 이 스냅샷의 데이터로 교체됩니다.\n연구자 점수도 재계산됩니다.`)) return;
+
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 적용 중...';
+    btn.disabled = true;
+
+    fetch(`/api/snapshots/${snapshotId}/apply`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(`적용 완료!\n\n논문: ${data.total_publications}건\n저자: ${data.total_authors}명\n신규: ${data.inserted}건, 업데이트: ${data.updated}건`);
+            location.reload();
+        } else {
+            alert('오류: ' + data.error);
+            btn.innerHTML = origHtml;
+            btn.disabled = false;
+        }
+    })
+    .catch(err => {
+        alert('적용 실패: ' + err);
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+    });
+}
+
+function applySnapshot(snapshotId, name) {
+    const btn = event.target.closest('button');
+    doApplySnapshot(snapshotId, name, btn);
+}
+
+function applySnapshotFromModal(snapshotId, name) {
+    const btn = event.target.closest('button');
+    doApplySnapshot(snapshotId, name, btn);
+}
+
+function deleteSnapshot(snapshotId, name) {
+    if (!confirm(`"${name}" 스냅샷을 삭제하시겠습니까?`)) return;
+
+    fetch(`/api/snapshots/${snapshotId}/delete`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { location.reload(); }
+        else { alert('오류: ' + data.error); }
+    });
+}
+
+function deleteSnapshotFile(snapshotId, fileId) {
+    if (!confirm('이 파일을 삭제하시겠습니까?')) return;
+
+    fetch(`/api/snapshots/${snapshotId}/file/${fileId}/delete`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { showSnapshotDetail(snapshotId); }
+        else { alert('오류: ' + data.error); }
+    });
+}
+</script>
+{% endblock %}

@@ -32,6 +32,21 @@
                 <i class="fas fa-car"></i> <span data-i18n="strategic_field.mobility">미래 모빌리티</span>
             </button>
         </li>
+        <li class="nav-item ms-3 border-start ps-3" role="presentation">
+            <button class="nav-link" id="esg-e-tab" data-bs-toggle="tab" data-bs-target="#esg-e" type="button" onclick="switchCategory('ESG-E(환경)')">
+                <i class="fas fa-leaf text-success"></i> <span data-i18n="strategic_field.esg_e">ESG-E(환경)</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="esg-s-tab" data-bs-toggle="tab" data-bs-target="#esg-s" type="button" onclick="switchCategory('ESG-S(사회)')">
+                <i class="fas fa-users text-primary"></i> <span data-i18n="strategic_field.esg_s">ESG-S(사회)</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="esg-g-tab" data-bs-toggle="tab" data-bs-target="#esg-g" type="button" onclick="switchCategory('ESG-G(지배구조)')">
+                <i class="fas fa-balance-scale text-warning"></i> <span data-i18n="strategic_field.esg_g">ESG-G(지배구조)</span>
+            </button>
+        </li>
     </ul>
 
     <div class="tab-content" id="categoryTabContent">
@@ -40,6 +55,9 @@
         <div class="tab-pane fade" id="bio" role="tabpanel"></div>
         <div class="tab-pane fade" id="agri" role="tabpanel"></div>
         <div class="tab-pane fade" id="mobility" role="tabpanel"></div>
+        <div class="tab-pane fade" id="esg-e" role="tabpanel"></div>
+        <div class="tab-pane fade" id="esg-s" role="tabpanel"></div>
+        <div class="tab-pane fade" id="esg-g" role="tabpanel"></div>
     </div>
 </div>
 
@@ -142,7 +160,10 @@ const categoryMap = {
     '에너지': 'energy',
     '바이오': 'bio',
     '농생명': 'agri',
-    '미래모빌리티': 'mobility'
+    '미래모빌리티': 'mobility',
+    'ESG-E(환경)': 'esg-e',
+    'ESG-S(사회)': 'esg-s',
+    'ESG-G(지배구조)': 'esg-g'
 };
 
 // 분야명 번역 헬퍼 함수
