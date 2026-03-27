@@ -33,17 +33,6 @@
                 <span id="navbar-institution-name" data-institution="{{ session.get('institution', '') }}">{{ session.get('institution_name', 'ORAP') }}</span>
             </a>
             <div class="navbar-nav me-auto">
-                <!-- 숨김 처리: 홈, 분석방관리, 분석, 도움말 메뉴
-                <a class="nav-link" href="{{ url_for('index') }}">
-                    <i class="fas fa-home"></i> Home
-                </a>
-                <a class="nav-link" href="{{ url_for('manage_rooms') }}">
-                    <i class="fas fa-plus-circle"></i> 분석방 관리
-                </a>
-                <a class="nav-link" href="{{ url_for('analysis') }}">
-                    <i class="fas fa-chart-bar"></i> 분석
-                </a>
-                -->
                 <a class="nav-link" href="{{ url_for('researcher_ranking') }}">
                     <i class="fas fa-trophy"></i> <span data-i18n="nav.researcher_ranking">연구자 랭킹</span>
                 </a>
@@ -66,21 +55,6 @@
                 <a class="nav-link" href="{{ url_for('survey_analysis') }}">
                     <i class="fas fa-chart-pie"></i> <span data-i18n="nav.survey_analysis">설문분석</span>
                 </a>
-                -->
-                <!-- 숨김 처리: 도움말 메뉴
-                <div class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="helpDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="fas fa-question-circle"></i> 도움말
-                    </a>
-                    <ul class="dropdown-menu" aria-labelledby="helpDropdown">
-                        <li><a class="dropdown-item" href="{{ url_for('help_stage1') }}">
-                            <i class="fas fa-info-circle"></i> 우수논문 1단계 후보추출방법
-                        </a></li>
-                        <li><a class="dropdown-item" href="{{ url_for('help_stage2') }}">
-                            <i class="fas fa-info-circle"></i> 우수논문 2단계 후보추출방법
-                        </a></li>
-                    </ul>
-                </div>
                 -->
             </div>
             <!-- 기관 전환, 관리자, 로그아웃 -->

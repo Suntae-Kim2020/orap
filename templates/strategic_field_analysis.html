@@ -203,6 +203,8 @@ function loadConfig() {
 function switchCategory(category) {
     currentCategory = category;
     currentSubcategory = null;
+    currentResearcherIds = [];
+    currentAnalysisType = 'overview';
     renderCategoryContent(category);
 
     // 첫 번째 하위 분야 자동 분석
@@ -417,6 +419,7 @@ function selectSubcategory(subcategory, btn, event) {
     }
 
     currentSubcategory = subcategory;
+    currentResearcherIds = [];
     const tabId = categoryMap[currentCategory];
     document.querySelectorAll(`#subcategoryTabs-${tabId} button`).forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
