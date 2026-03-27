@@ -1829,7 +1829,7 @@ def api_bibliometric_ranking():
         for pub in publications:
             author_ids_str = pub['scopus_author_ids'] or ''
             try:
-                    cite_count = int(pub['citations'] or 0)
+                    cite_count = int(float(pub['citations'] or 0))
             except (ValueError, TypeError):
                     cite_count = 0
             for aid in author_ids_str.replace(';', '|').split('|'):
@@ -1981,7 +1981,7 @@ def api_bibliometric_detail(scopus_id):
         papers = []
         for p in papers_raw:
             try:
-                cites = int(p['citations'] or 0)
+                cites = int(float(p['citations'] or 0))
             except (ValueError, TypeError):
                 cites = 0
             eid = p['eid'] or ''
@@ -2442,7 +2442,7 @@ def api_potential_researchers():
             scopus_ids_str = pub['scopus_author_ids'] or ''
             scopus_ids = [sid.strip() for sid in scopus_ids_str.replace('|', ' ').split() if sid.strip()]
             try:
-                year = int(pub['year']) if pub['year'] else 0
+                year = int(float(pub['year'])) if pub['year'] else 0
             except:
                 year = 0
 
@@ -3307,7 +3307,7 @@ def api_research_trajectory():
     author_year_fwci = {}    # {scopus_id: {year: [fwci_vals]}}
     for pub in cursor.fetchall():
         try:
-            yr = int(pub['year']) if pub['year'] else None
+            yr = int(float(pub['year'])) if pub['year'] else None
         except (ValueError, TypeError):
             yr = None
         if yr is None:
@@ -4289,7 +4289,7 @@ def api_field_analysis_trend():
             continue
 
         try:
-            year = int(pub['year'])
+            year = int(float(pub['year']))
         except (ValueError, TypeError):
             continue
 
@@ -5675,7 +5675,7 @@ def api_strategic_field_analysis():
     yearly_trend = []
     for row in trend_rows:
         try:
-            year_val = int(row['year'])
+            year_val = int(float(row['year']))
             yearly_trend.append({
                 'year': year_val,
                 'paper_count': row['paper_count'],
@@ -6937,6 +6937,20 @@ def api_apply_snapshot(snapshot_id):
                 total_insert += len(batch_rows)
 
             conn.commit()
+
+        # 3-1. SDG 플래그 보정: SDG 파일이 요약 파일인 경우 컬럼 데이터로 세팅
+        cursor.execute("""UPDATE publication SET is_SDG = 1
+            WHERE sustainable_development_goals_2025 IS NOT NULL
+            AND sustainable_development_goals_2025 != ''
+            AND sustainable_development_goals_2025 != '-'
+            AND (is_SDG IS NULL OR is_SDG = 0)""")
+
+        # 3-2. 산학협력 플래그 보정: sector 컬럼에 Corporate 포함 시 세팅
+        cursor.execute("""UPDATE publication SET is_academic_corporate = 1
+            WHERE sector LIKE '%Corporate%'
+            AND (is_academic_corporate IS NULL OR is_academic_corporate = 0)""")
+
+        conn.commit()
 
         # 4. 논문/저자 수 집계
         cursor.execute("SELECT COUNT(*) FROM publication")

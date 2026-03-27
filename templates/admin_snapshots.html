@@ -79,7 +79,7 @@
                                 <button class="btn btn-outline-info" onclick="showSnapshotDetail({{ s.snapshot_id }})" title="상세">
                                     <i class="fas fa-eye"></i>
                                 </button>
-                                {% if s.status == 'draft' %}
+                                {% if s.status != 'applied' %}
                                 <button class="btn btn-outline-success" onclick="applySnapshot({{ s.snapshot_id }}, '{{ s.snapshot_name }}')" title="적용">
                                     <i class="fas fa-check"></i>
                                 </button>
