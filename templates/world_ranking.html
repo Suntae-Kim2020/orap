@@ -1,0 +1,707 @@
+{% extends "base.html" %}
+{% block title %}세계대학평가 - ORAP{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-start">
+        <div>
+            <h2><i class="fas fa-globe-americas"></i> <span data-i18n="world_ranking.title">세계대학평가 대시보드</span></h2>
+            <p class="text-muted" data-i18n="world_ranking.subtitle">QS, THE, ARWU 평가 지표를 기반으로 대학 연구 역량을 분석합니다</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <label class="form-label mb-0 fw-bold small">비교 기관:</label>
+            {% for key, name in institutions.items() %}
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="inst_{{ key }}" value="{{ key }}"
+                       {{ 'checked' if key == current_institution else '' }} onchange="onInstitutionChange()">
+                <label class="form-check-label small" for="inst_{{ key }}">{{ name }}</label>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- 로딩 -->
+<div id="wrLoading" class="text-center py-5" style="display:none;">
+    <div class="spinner-border text-primary"></div>
+    <p class="mt-2">지표 계산 중...</p>
+</div>
+
+<div id="wrContent" style="display:none;">
+
+<!-- 평가기관별 탭 -->
+<ul class="nav nav-tabs mb-4" role="tablist">
+    <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabQS" type="button">
+            <i class="fas fa-star text-primary"></i> QS
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabTHE" type="button">
+            <i class="fas fa-university text-success"></i> THE
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabARWU" type="button">
+            <i class="fas fa-trophy text-warning"></i> ARWU
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabTrends" type="button">
+            <i class="fas fa-chart-line text-info"></i> 연도별 추이
+        </button>
+    </li>
+</ul>
+
+<!-- 랭킹 설명 (탭 바로 아래) -->
+<div id="rankingDescription" class="mb-4"></div>
+
+<div class="tab-content">
+
+<!-- 종합 지표 카드 -->
+<div class="row mb-4" id="overviewCards">
+</div>
+
+<!-- QS 탭 -->
+<div class="tab-pane fade show active" id="tabQS">
+    <div class="row" id="qsContent"></div>
+    <div id="qsInstitutionMetrics"></div>
+</div>
+
+<!-- THE 탭 -->
+<div class="tab-pane fade" id="tabTHE">
+    <div class="row" id="theContent"></div>
+    <div id="theInstitutionMetrics"></div>
+</div>
+
+<!-- ARWU 탭 -->
+<div class="tab-pane fade" id="tabARWU">
+    <div class="row" id="arwuContent"></div>
+</div>
+
+<!-- 연도별 추이 탭 -->
+<div class="tab-pane fade" id="tabTrends">
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header py-2"><i class="fas fa-chart-line"></i> 논문 수 및 인용수 추이</div>
+                <div class="card-body"><canvas id="chartPubsCitations"></canvas></div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header py-2"><i class="fas fa-chart-line"></i> 논문당 인용수 및 FWCI 추이</div>
+                <div class="card-body"><canvas id="chartFwci"></canvas></div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header py-2"><i class="fas fa-chart-line"></i> 국제공동연구 비율 추이</div>
+                <div class="card-body"><canvas id="chartIntl"></canvas></div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header py-2"><i class="fas fa-chart-line"></i> Top 10% / Top 25% 비율 추이</div>
+                <div class="card-body"><canvas id="chartTopPct"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</div><!-- tab-content -->
+</div><!-- wrContent -->
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let wrCharts = {};
+let wrAllData = {}; // 기관별 캐시: { inst: { main, arwuPub, arwuHcr, trends } }
+let PERIODS = {};
+const INST_NAMES = {{ institutions | tojson }};
+const CURRENT_INST = '{{ current_institution }}';
+const INST_COLORS = { 'jbnu': '#0d6efd', 'korea': '#dc3545' }; // 기관별 색상
+
+function getSelectedInstitutions() {
+    return Array.from(document.querySelectorAll('input[id^="inst_"]:checked')).map(cb => cb.value);
+}
+
+function onInstitutionChange() {
+    loadWrData();
+}
+
+function fetchInstData(inst) {
+    const base = `/api/world_ranking_metrics?institution=${inst}`;
+    return fetch(base).then(r => r.json()).then(initData => {
+        const dataYear = initData.max_data_year || (new Date().getFullYear() - 1);
+        if (!PERIODS.qs) {
+            PERIODS = {
+                qs:       { from: dataYear - 4, to: dataYear, label: `${dataYear - 4}~${dataYear} (최근 5년)` },
+                the:      { from: dataYear - 4, to: dataYear, label: `${dataYear - 4}~${dataYear} (최근 5년)` },
+                arwu_pub: { from: dataYear, to: dataYear, label: `${dataYear} (직전 1년)` },
+                arwu_hcr: { from: dataYear - 9, to: dataYear, label: `${dataYear - 9}~${dataYear} (최근 10년)` },
+            };
+        }
+        return Promise.all([
+            fetch(`${base}&year_from=${PERIODS.qs.from}&year_to=${PERIODS.qs.to}`).then(r => r.json()),
+            fetch(`${base}&year_from=${PERIODS.arwu_pub.from}&year_to=${PERIODS.arwu_pub.to}`).then(r => r.json()),
+            fetch(`${base}&year_from=${PERIODS.arwu_hcr.from}&year_to=${PERIODS.arwu_hcr.to}`).then(r => r.json()),
+            Promise.resolve(initData),
+        ]).then(([mainData, arwuPubData, arwuHcrData, trendsData]) => {
+            return { main: mainData, arwuPub: arwuPubData, arwuHcr: arwuHcrData, trends: trendsData };
+        });
+    });
+}
+
+function loadWrData() {
+    document.getElementById('wrLoading').style.display = 'block';
+    document.getElementById('wrContent').style.display = 'none';
+    PERIODS = {};
+
+    const selectedInsts = getSelectedInstitutions();
+    if (selectedInsts.length === 0) {
+        alert('최소 1개 기관을 선택해주세요.');
+        document.getElementById('wrLoading').style.display = 'none';
+        return;
+    }
+
+    Promise.all(selectedInsts.map(inst => fetchInstData(inst).then(data => ({ inst, data }))))
+    .then(results => {
+        wrAllData = {};
+        results.forEach(r => { wrAllData[r.inst] = r.data; });
+
+        const isCompare = selectedInsts.length > 1;
+        const primaryInst = selectedInsts[0];
+        const primaryData = wrAllData[primaryInst];
+
+        if (isCompare) {
+            renderCompareOverview(selectedInsts, PERIODS.qs.label);
+            renderCompareQS(selectedInsts, PERIODS.qs.label);
+            renderCompareInstitutionMetrics(selectedInsts, 'qs');
+            renderCompareTHE(selectedInsts, PERIODS.the.label);
+            renderCompareInstitutionMetrics(selectedInsts, 'the');
+            renderCompareARWU(selectedInsts, PERIODS.arwu_pub.label, PERIODS.arwu_hcr.label);
+        } else {
+            renderOverview(primaryData.main.overview, PERIODS.qs.label);
+            renderQS(primaryData.main.qs, PERIODS.qs.label);
+            renderInstitutionMetrics(primaryData.main.institution_metrics, 'qs');
+            renderTHE(primaryData.main.the, PERIODS.the.label);
+            renderInstitutionMetrics(primaryData.main.institution_metrics, 'the');
+            const ap = primaryData.arwuPub.arwu || { top1_count:0, top1_rate:0, total_pubs:0, author_count:0, per_capita_output:0, per_capita_citations:0 };
+            const ah = primaryData.arwuHcr.arwu || ap;
+            renderARWU(ap, ah, PERIODS.arwu_pub.label, PERIODS.arwu_hcr.label);
+        }
+        if (isCompare) {
+            renderCompareTrends(selectedInsts);
+        } else {
+            renderTrends(primaryData.trends.trends);
+        }
+        document.getElementById('wrLoading').style.display = 'none';
+        document.getElementById('wrContent').style.display = 'block';
+    }).catch(err => {
+        alert('오류: ' + err);
+        document.getElementById('wrLoading').style.display = 'none';
+    });
+}
+
+// 비교 테이블 헬퍼
+function compareRow(label, key, unit, insts, dataMap, fmt) {
+    let cells = insts.map(inst => {
+        const val = dataMap[inst] != null ? dataMap[inst] : '-';
+        const formatted = fmt ? fmt(val) : val;
+        return `<td class="text-center"><strong>${formatted}</strong>${unit ? ' ' + unit : ''}</td>`;
+    }).join('');
+    return `<tr><td>${label}</td>${cells}</tr>`;
+}
+
+function renderCompareOverview(insts, periodLabel) {
+    const overviews = {};
+    insts.forEach(inst => { overviews[inst] = wrAllData[inst].main.overview; });
+
+    let headers = insts.map(inst => `<th class="text-center" style="color:${INST_COLORS[inst] || '#333'}">${INST_NAMES[inst]}</th>`).join('');
+
+    const getVal = (key) => {
+        const m = {};
+        insts.forEach(inst => { m[inst] = overviews[inst][key]; });
+        return m;
+    };
+    const fmtNum = v => typeof v === 'number' ? v.toLocaleString() : v;
+    const fmtPct = v => typeof v === 'number' ? v + '%' : v;
+    const fmtDec = v => typeof v === 'number' ? v.toFixed(2) : v;
+
+    document.getElementById('overviewCards').innerHTML = `
+        <div class="col-12">
+        <div class="table-responsive">
+        <table class="table table-bordered table-hover">
+            <thead class="table-dark"><tr><th>지표</th>${headers}</tr></thead>
+            <tbody>
+                ${compareRow('총 논문수', 'total_pubs', '편', insts, getVal('total_pubs'), fmtNum)}
+                ${compareRow('총 인용수', 'total_citations', '회', insts, getVal('total_citations'), v => Math.round(v).toLocaleString())}
+                ${compareRow('논문당 평균 인용수 <small class="text-primary">(QS)</small>', 'avg_citations', '회', insts, getVal('avg_citations'), fmtDec)}
+                ${compareRow('대학 평균 FWCI <small class="text-danger">(THE)</small>', 'avg_fwci', '', insts, getVal('avg_fwci'), fmtDec)}
+                ${compareRow('국제공동연구 비율 <small class="text-primary">(QS·THE)</small>', 'intl_rate', '', insts, getVal('intl_rate'), fmtPct)}
+                ${compareRow('Top 10% 논문 비율 <small class="text-success">(THE)</small>', 'top10_rate', '', insts, getVal('top10_rate'), fmtPct)}
+                ${compareRow('Top 25% 저널 비율', 'top25_rate', '', insts, getVal('top25_rate'), fmtPct)}
+                ${compareRow('오픈액세스 비율', 'oa_rate', '', insts, getVal('oa_rate'), fmtPct)}
+                ${compareRow('SDG 연구 비율 <small class="text-primary">(QS)</small>', 'sdg_rate', '', insts, getVal('sdg_rate'), fmtPct)}
+                ${compareRow('전임교원 수', 'author_count', '명', insts, getVal('author_count'), fmtNum)}
+                ${compareRow('교원당 논문수', 'per_capita_pubs', '편/인', insts, getVal('per_capita_pubs'), fmtDec)}
+                ${compareRow('교원당 인용수', 'per_capita_citations', '회/인', insts, getVal('per_capita_citations'), fmtDec)}
+            </tbody>
+        </table>
+        </div></div>`;
+}
+
+function renderCompareQS(insts, periodLabel) {
+    const data = {};
+    insts.forEach(inst => { data[inst] = wrAllData[inst].main.qs; });
+    let headers = insts.map(inst => `<th class="text-center" style="color:${INST_COLORS[inst] || '#333'}">${INST_NAMES[inst]}</th>`).join('');
+    const getVal = (key) => { const m = {}; insts.forEach(inst => { m[inst] = data[inst][key]; }); return m; };
+
+    document.getElementById('qsContent').innerHTML = `
+        <div class="col-12"><div class="table-responsive">
+        <table class="table table-bordered table-hover">
+            <thead class="table-primary"><tr><th>QS 지표</th>${headers}</tr></thead>
+            <tbody>
+                ${compareRow('논문당 인용수 (20%)', 'citations_per_paper', '회', insts, getVal('citations_per_paper'), v => typeof v === 'number' ? v.toFixed(2) : v)}
+                ${compareRow('국제공동연구 비율 (5%)', 'intl_collab_rate', '', insts, getVal('intl_collab_rate'), v => v + '%')}
+                ${compareRow('협력 국가 수', 'unique_countries', '개국', insts, getVal('unique_countries'))}
+            </tbody>
+        </table>
+        </div></div>`;
+}
+
+function renderCompareTHE(insts, periodLabel) {
+    const data = {};
+    insts.forEach(inst => { data[inst] = wrAllData[inst].main.the; });
+    let headers = insts.map(inst => `<th class="text-center" style="color:${INST_COLORS[inst] || '#333'}">${INST_NAMES[inst]}</th>`).join('');
+
+    document.getElementById('theContent').innerHTML = `
+        <div class="col-12"><div class="table-responsive">
+        <table class="table table-bordered table-hover">
+            <thead class="table-success"><tr><th>THE 지표</th>${headers}</tr></thead>
+            <tbody>
+                ${compareRow('연구 생산성 (편/인)', '', '', insts,
+                    (() => { const m = {}; insts.forEach(i => { m[i] = data[i].research_productivity; }); return m; })(),
+                    v => typeof v === 'number' ? v.toFixed(1) : v)}
+                ${compareRow('인용 영향력 (FWCI)', '', '', insts,
+                    (() => { const m = {}; insts.forEach(i => { m[i] = data[i].citation_impact_fwci; }); return m; })(),
+                    v => typeof v === 'number' ? v.toFixed(2) : v)}
+                ${compareRow('국제적 시각 (%)', '', '', insts,
+                    (() => { const m = {}; insts.forEach(i => { m[i] = data[i].intl_outlook; }); return m; })(),
+                    v => v + '%')}
+                ${compareRow('특허인용 논문', '', '', insts,
+                    (() => { const m = {}; insts.forEach(i => { m[i] = data[i].industry_proxy.patent_cited_count + '편 (' + data[i].industry_proxy.patent_cited_rate + '%)'; }); return m; })())}
+            </tbody>
+        </table>
+        </div></div>`;
+}
+
+function renderCompareARWU(insts, pubLabel, hcrLabel) {
+    const pubData = {}, hcrData = {};
+    insts.forEach(inst => {
+        pubData[inst] = wrAllData[inst].arwuPub.arwu || { top1_count:0, total_pubs:0, per_capita_output:0, per_capita_citations:0, author_count:0 };
+        hcrData[inst] = wrAllData[inst].arwuHcr.arwu || pubData[inst];
+    });
+    let headers = insts.map(inst => `<th class="text-center" style="color:${INST_COLORS[inst] || '#333'}">${INST_NAMES[inst]}</th>`).join('');
+
+    document.getElementById('arwuContent').innerHTML = `
+        <div class="col-12 mb-3">
+            <span class="badge bg-warning text-dark fs-6 me-2"><i class="fas fa-calendar-alt"></i> HCR: ${hcrLabel}</span>
+            <span class="badge bg-warning text-dark fs-6"><i class="fas fa-calendar-alt"></i> SCIE/SSCI: ${pubLabel}</span>
+        </div>
+        <div class="col-12"><div class="table-responsive">
+        <table class="table table-bordered table-hover">
+            <thead class="table-warning"><tr><th>ARWU 지표</th>${headers}</tr></thead>
+            <tbody>
+                ${compareRow('Top 1% 피인용 논문 (HCR)', '', '', insts,
+                    (() => { const m = {}; insts.forEach(i => { m[i] = hcrData[i].top1_count.toLocaleString() + '편'; }); return m; })())}
+                ${compareRow('총 논문수 (SCIE/SSCI)', '', '', insts,
+                    (() => { const m = {}; insts.forEach(i => { m[i] = pubData[i].total_pubs.toLocaleString() + '편'; }); return m; })())}
+                ${compareRow('교원당 논문수', '', '', insts,
+                    (() => { const m = {}; insts.forEach(i => { m[i] = pubData[i].per_capita_output; }); return m; })(),
+                    v => typeof v === 'number' ? v.toFixed(1) + ' 편/인' : v)}
+                ${compareRow('교원당 인용수', '', '', insts,
+                    (() => { const m = {}; insts.forEach(i => { m[i] = pubData[i].per_capita_citations; }); return m; })(),
+                    v => typeof v === 'number' ? v.toFixed(1) + ' 회/인' : v)}
+            </tbody>
+        </table>
+        </div></div>`;
+}
+
+// 탭 전환 시 대시보드 갱신
+const RANKING_DESCRIPTIONS = {
+    '#tabQS': `<div class="alert alert-primary">
+        <h6 class="alert-heading"><i class="fas fa-info-circle"></i> QS World University Rankings</h6>
+        <p class="mb-1 small">QS 순위는 학술 명성(30%), 고용주 명성(15%), 교수당 인용수(20%), 교수/학생 비율(10%), 국제 교수 비율(5%), 국제 학생 비율(5%), 국제연구 네트워크(5%), 취업성과(5%), 지속가능성(5%) 등으로 평가합니다.</p>
+        <p class="mb-0 small"><i class="fas fa-calendar-alt"></i> <strong>분석 기간: 최근 5년</strong> — 논문당 인용수는 최근 5년간 발표된 논문의 인용수를 기준으로 산출합니다.</p>
+    </div>`,
+    '#tabTHE': `<div class="alert alert-success">
+        <h6 class="alert-heading"><i class="fas fa-info-circle"></i> THE World University Rankings</h6>
+        <p class="mb-1 small">THE 순위는 교육(29.5%), 연구환경(29%), 연구품질(30%), 국제적 시각(7.5%), 산업체 수입(4%) 등으로 평가합니다. 연구품질 지표에는 인용 영향력(FWCI), 연구 우수성(Top 10% 논문), 연구 강점(Top 1% 논문)이 포함됩니다.</p>
+        <p class="mb-0 small"><i class="fas fa-calendar-alt"></i> <strong>분석 기간: 최근 5년</strong> — 인용 영향력(FWCI)은 최근 5년간 논문의 분야 보정 인용수를 기준으로 산출합니다.</p>
+    </div>`,
+    '#tabARWU': `<div class="alert alert-warning">
+        <h6 class="alert-heading"><i class="fas fa-info-circle"></i> ARWU (Academic Ranking of World Universities)</h6>
+        <p class="mb-1 small">ARWU(상하이 랭킹)는 노벨상/필즈상 수상 동문(10%) 및 교수(20%), Highly Cited Researchers(20%), Nature/Science 논문(20%), SCIE/SSCI 논문(20%), 1인당 학술 성과(10%)로 평가합니다. 연구 성과 중심의 평가 체계입니다.</p>
+        <p class="mb-0 small"><i class="fas fa-calendar-alt"></i> <strong>분석 기간: SCIE/SSCI 논문은 직전 1년, HCR(Highly Cited Researchers)은 최근 10년</strong> 기준으로 평가합니다.</p>
+    </div>`,
+    '#tabTrends': ''
+};
+
+// 초기 QS 설명 표시
+document.getElementById('rankingDescription').innerHTML = RANKING_DESCRIPTIONS['#tabQS'];
+
+document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
+    tab.addEventListener('shown.bs.tab', function(e) {
+        const target = e.target.getAttribute('data-bs-target');
+        document.getElementById('rankingDescription').innerHTML = RANKING_DESCRIPTIONS[target] || '';
+        const insts = getSelectedInstitutions();
+        if (Object.keys(wrAllData).length === 0) return;
+        const isCompare = insts.length > 1;
+        const primary = wrAllData[insts[0]];
+
+        if (isCompare) {
+            if (target === '#tabQS') renderCompareOverview(insts, PERIODS.qs.label);
+            else if (target === '#tabTHE') renderCompareOverview(insts, PERIODS.the.label);
+            else if (target === '#tabARWU') renderCompareOverview(insts, PERIODS.arwu_pub.label + ' / HCR: ' + PERIODS.arwu_hcr.label);
+            else if (target === '#tabTrends') renderCompareOverview(insts, '전체');
+        } else {
+            if (target === '#tabQS') renderOverview(primary.main.overview, PERIODS.qs.label);
+            else if (target === '#tabTHE') renderOverview(primary.main.overview, PERIODS.the.label);
+            else if (target === '#tabARWU') renderOverview((primary.arwuPub.overview || primary.main.overview), PERIODS.arwu_pub.label + ' / HCR: ' + PERIODS.arwu_hcr.label);
+            else if (target === '#tabTrends') renderOverview(primary.trends.overview, '전체');
+        }
+    });
+});
+
+function metricCard(icon, label, value, unit, color, desc) {
+    return `<div class="col-lg-4 col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <small class="text-muted">${label}</small>
+                    <i class="fas ${icon} fa-lg text-${color} opacity-50"></i>
+                </div>
+                <h3 class="mb-1 text-${color}">${value}<small class="fs-6 text-muted ms-1">${unit}</small></h3>
+                ${desc ? `<small class="text-muted">${desc}</small>` : ''}
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderOverview(o, periodLabel) {
+    document.getElementById('overviewCards').innerHTML =
+        metricCard('fa-file-alt', '총 논문수', o.total_pubs.toLocaleString(), '편', 'primary', '')
+        + metricCard('fa-quote-right', '총 인용수', Math.round(o.total_citations).toLocaleString(), '회', 'info', '')
+        + metricCard('fa-chart-bar', '논문당 평균 인용수', o.avg_citations, '회', 'success', 'QS 핵심 지표')
+        + metricCard('fa-bullseye', '대학 평균 FWCI', o.avg_fwci, '', 'danger', '1.0 = 세계 평균 (THE 핵심 지표)')
+        + metricCard('fa-globe', '국제공동연구 비율', o.intl_rate, '%', 'primary', 'QS·THE 공통 지표')
+        + metricCard('fa-award', 'Top 10% 논문 비율', o.top10_rate, '%', 'warning', 'THE 연구 우수성 지표')
+        + metricCard('fa-journal-whills', 'Top 25% 저널 비율', o.top25_rate, '%', 'success', '')
+        + metricCard('fa-lock-open', '오픈액세스 비율', o.oa_rate, '%', 'info', '')
+        + metricCard('fa-leaf', 'SDG 연구 비율', o.sdg_rate, '%', 'success', 'QS 지속가능성 지표');
+}
+
+function indicatorCard(title, value, unit, color, explanation, details) {
+    return `<div class="col-md-6 mb-3">
+        <div class="card h-100 border-${color}">
+            <div class="card-header bg-${color} ${color === 'warning' ? '' : 'text-white'} py-2">
+                <strong>${title}</strong>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <h2 class="text-${color}">${value}<small class="fs-5 text-muted ms-1">${unit}</small></h2>
+                </div>
+                <div class="alert alert-light border small mb-2">
+                    <i class="fas fa-info-circle text-${color}"></i> <strong>이 지표는?</strong><br>
+                    ${explanation}
+                </div>
+                ${details || ''}
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderQS(qs, periodLabel) {
+    let countriesHtml = '';
+    if (qs.top_countries && qs.top_countries.length > 0) {
+        countriesHtml = '<h6 class="mt-3"><i class="fas fa-flag"></i> 주요 협력 국가 (Top 15)</h6><div class="row">';
+        qs.top_countries.forEach((c, i) => {
+            const width = Math.round(c.count / qs.top_countries[0].count * 100);
+            countriesHtml += `<div class="col-md-6"><div class="d-flex align-items-center mb-1">
+                <span class="small" style="width:120px;">${i+1}. ${c.country}</span>
+                <div class="progress flex-grow-1 me-2" style="height:16px;">
+                    <div class="progress-bar bg-primary" style="width:${width}%"></div>
+                </div>
+                <span class="small fw-bold">${c.count}</span>
+            </div></div>`;
+        });
+        countriesHtml += '</div>';
+    }
+
+    document.getElementById('qsContent').innerHTML =
+        indicatorCard('논문당 인용수 (Citations per Paper)', qs.citations_per_paper, '회',
+            'primary',
+            'QS 순위의 <strong>20%</strong>를 차지하는 핵심 지표입니다. <strong>최근 5년간</strong> 발표된 논문의 평균 인용수를 측정합니다. 연구의 질적 영향력을 나타내며, 이 값이 높을수록 연구가 학술 커뮤니티에서 많이 인용되고 있음을 의미합니다.')
+        + indicatorCard('국제연구 네트워크 (International Research Network)',
+            qs.intl_collab_rate + '% <small class="text-muted">(' + qs.unique_countries + '개국)</small>', '',
+            'primary',
+            'QS 순위의 <strong>5%</strong>를 차지합니다. 해외 기관과의 공동연구 비율과 협력 국가 다양성을 평가합니다. 국제 공동연구 논문은 단독 연구보다 평균 인용수가 높아 다른 지표에도 긍정적 영향을 줍니다.',
+            countriesHtml);
+}
+
+function renderTHE(the, periodLabel) {
+    document.getElementById('theContent').innerHTML =
+        indicatorCard('연구 생산성 (Research Productivity)', the.research_productivity, '편/인',
+            'success',
+            'THE의 연구환경(29%) 평가에 반영됩니다. <strong>최근 5년간</strong> 전임교원 1인당 논문 수로, 대학의 연구 활동 활발성을 나타냅니다. 논문 수가 많을수록 연구 인프라와 지원 체계가 잘 갖춰져 있음을 시사합니다.')
+        + indicatorCard('인용 영향력 (Citation Impact, FWCI)', the.citation_impact_fwci, '',
+            'success',
+            'THE 연구품질(30%)의 핵심 지표입니다. <strong>최근 5년간</strong> 논문의 FWCI(Field-Weighted Citation Impact)로, 동일 분야·연도·문헌유형 대비 인용 비율입니다. <strong>1.0이 세계 평균</strong>이며, 1.5 이상이면 세계 평균의 1.5배 인용을 받고 있다는 의미입니다.',
+            `<div class="text-center"><span class="badge ${the.citation_impact_fwci >= 1.5 ? 'bg-success' : the.citation_impact_fwci >= 1.0 ? 'bg-primary' : 'bg-warning'} fs-6">${the.citation_impact_fwci >= 1.5 ? '세계 평균 이상 (우수)' : the.citation_impact_fwci >= 1.0 ? '세계 평균 수준' : '세계 평균 미만'}</span></div>`)
+        + indicatorCard('국제적 시각 (International Outlook)', the.intl_outlook, '%',
+            'success',
+            'THE 순위의 <strong>7.5%</strong>를 차지합니다. 국제 공동연구 비율, 국제 학생/교수 비율로 평가됩니다. 국제 협력은 연구의 다양성과 글로벌 영향력을 높이는 핵심 요소입니다.')
+        + indicatorCard('산업체 연계 (Industry Income Proxy)',
+            the.industry_proxy.patent_cited_count + '편 <small class="text-muted">(' + the.industry_proxy.patent_cited_rate + '%)</small>', '',
+            'success',
+            'THE 순위의 <strong>4%</strong>를 차지합니다. 특허에 인용된 논문 수와 산학협력 논문 비율로 산업체 기여도를 측정합니다. 특허 인용은 연구가 실제 산업 혁신에 활용되고 있음을 보여주는 객관적 증거입니다.',
+            `<div class="small text-muted mt-2"><i class="fas fa-industry"></i> 산학협력 논문: ${the.industry_proxy.corporate_count}편 (${the.industry_proxy.corporate_rate}%)</div>`);
+}
+
+function renderARWU(arwuPub, arwuHcr, pubPeriodLabel, hcrPeriodLabel) {
+    document.getElementById('arwuContent').innerHTML =
+        `<div class="col-12 mb-3">
+            <span class="badge bg-warning text-dark fs-6 me-2"><i class="fas fa-calendar-alt"></i> HCR: ${hcrPeriodLabel}</span>
+            <span class="badge bg-warning text-dark fs-6"><i class="fas fa-calendar-alt"></i> SCIE/SSCI: ${pubPeriodLabel}</span>
+        </div>`
+        + indicatorCard('Highly Cited 후보 (Top 1% 피인용 논문)', arwuHcr.top1_count.toLocaleString() + '편 <small class="text-muted">(' + arwuHcr.top1_rate + '%)</small>', '',
+            'warning',
+            `ARWU 순위의 <strong>20%</strong>를 차지하는 핵심 지표입니다. Clarivate의 Highly Cited Researchers(HCR) 선정 기준은 <strong>${hcrPeriodLabel}</strong> 해당 분야 상위 1% 피인용 논문을 다수 보유한 연구자입니다. Top 1% 논문이 많을수록 HCR 후보가 나올 가능성이 높습니다.`,
+            arwuHcr.top1_count === 0 ? '<div class="alert alert-secondary small"><i class="fas fa-exclamation-triangle"></i> 현재 Top 1% 피인용 데이터가 없습니다. SciVal에서 해당 데이터를 다운로드하여 스냅샷에 추가해주세요.</div>' : '')
+        + indicatorCard('총 논문 수 (SCIE/SSCI)', arwuPub.total_pubs.toLocaleString(), '편',
+            'warning',
+            `ARWU 순위의 <strong>20%</strong>를 차지합니다. <strong>${pubPeriodLabel}</strong> SCIE(Science Citation Index Expanded) 및 SSCI(Social Sciences Citation Index) 등재 논문 총수입니다. Scopus 등재 논문을 기준으로 산출합니다.`)
+        + indicatorCard('교원당 논문 수 (Per Capita Output)', arwuPub.per_capita_output, '편/인',
+            'warning',
+            `ARWU 순위의 <strong>10%</strong>를 차지합니다. <strong>${pubPeriodLabel}</strong> 전임교원 1인당 학술 성과로, 대학의 연구 효율성을 측정합니다.`,
+            `<div class="small text-muted mt-2"><i class="fas fa-users"></i> 전임교원: ${arwuPub.author_count}명 | 교원당 인용수: ${arwuPub.per_capita_citations}회</div>`)
+        + indicatorCard('교원당 인용수 (Per Capita Citations)', arwuPub.per_capita_citations, '회/인',
+            'warning',
+            `<strong>${pubPeriodLabel}</strong> 연구자 1인당 평균 인용수입니다. 연구의 질적 영향력과 양적 생산성을 동시에 반영합니다.`);
+}
+
+function destroyChart(id) {
+    if (wrCharts[id]) { wrCharts[id].destroy(); wrCharts[id] = null; }
+}
+
+function renderCompareInstitutionMetrics(insts, tab) {
+    const allMetrics = {};
+    insts.forEach(inst => { allMetrics[inst] = wrAllData[inst].main.institution_metrics || {}; });
+    const m = (inst, key) => allMetrics[inst][key] ? allMetrics[inst][key].value : null;
+    const fmtN = v => v != null ? (typeof v === 'number' ? Math.round(v).toLocaleString() : v) : '-';
+    const fmtW = v => v != null ? (v >= 100000000 ? Math.round(v/100000000).toLocaleString() + '억원' : Math.round(v/10000).toLocaleString() + '만원') : '-';
+
+    let headers = insts.map(inst => `<th class="text-center" style="color:${INST_COLORS[inst] || '#333'}">${INST_NAMES[inst]}</th>`).join('');
+
+    const cRow = (label, key, fmt) => {
+        let cells = insts.map(inst => `<td class="text-center"><strong>${fmt(m(inst, key))}</strong></td>`).join('');
+        return `<tr><td>${label}</td>${cells}</tr>`;
+    };
+
+    let rows = '';
+    if (tab === 'qs') {
+        rows = cRow('전임교원 수', 'full_time_faculty', fmtN)
+            + cRow('재학생 수', 'total_students', fmtN)
+            + cRow('교원1인당 학생수 <small class="text-primary">(10%)</small>', 'student_faculty_ratio', v => v != null ? v.toFixed(1) : '-')
+            + cRow('외국인 전임교원 비율 <small class="text-primary">(5%)</small>', 'international_faculty_ratio', v => v != null ? v + '%' : '-')
+            + cRow('외국학생 비율 <small class="text-primary">(5%)</small>', 'international_student_ratio', v => v != null ? v + '%' : '-')
+            + cRow('취업률 <small class="text-primary">(5%)</small>', 'employment_rate', v => v != null ? v + '%' : '-');
+    } else if (tab === 'the') {
+        rows = cRow('전임교원 수', 'full_time_faculty', fmtN)
+            + cRow('연구비 총액', 'research_funding', v => fmtW(v ? v * 1000 : null))
+            + cRow('교원1인당 연구비', 'research_funding_per_faculty', v => fmtW(v ? v * 1000 : null))
+            + cRow('기술이전 수입 <small class="text-success">(4%)</small>', 'tech_transfer_revenue', fmtW)
+            + cRow('산학협력수익 <small class="text-success">(4%)</small>', 'industry_revenue', fmtW)
+            + cRow('특허 등록 (국내/해외)', 'patent_domestic_granted', (v) => {
+                const inst = insts[0]; // 간단히 첫번째만... 실제로는 별도 처리 필요
+                return fmtN(v);
+            })
+            + cRow('외국인 교원 비율 <small class="text-success">(7.5%)</small>', 'international_faculty_ratio', v => v != null ? v + '%' : '-')
+            + cRow('외국학생 비율 <small class="text-success">(7.5%)</small>', 'international_student_ratio', v => v != null ? v + '%' : '-');
+    }
+
+    const el = document.getElementById(tab + 'InstitutionMetrics');
+    if (el) {
+        el.innerHTML = `<div class="card mt-4 border-secondary">
+            <div class="card-header bg-secondary text-white py-2">
+                <i class="fas fa-university"></i> 대학공시자료 기반 비교 <small>(대학정보공시)</small>
+            </div><div class="card-body p-0"><div class="table-responsive">
+            <table class="table table-bordered table-hover mb-0">
+                <thead class="table-secondary"><tr><th>공시 지표</th>${headers}</tr></thead>
+                <tbody>${rows}</tbody>
+            </table></div></div></div>`;
+    }
+}
+
+function renderInstitutionMetrics(metrics, tab) {
+    if (!metrics || Object.keys(metrics).length === 0) {
+        const el = document.getElementById(tab + 'InstitutionMetrics');
+        if (el) el.innerHTML = '';
+        return;
+    }
+    const m = (key) => metrics[key] ? metrics[key].value : null;
+    const fmt = (v) => v != null ? (typeof v === 'number' ? Math.round(v).toLocaleString() : v) : '-';
+    const fmtWon = (v) => v != null ? (v >= 100000000 ? Math.round(v / 100000000).toLocaleString() + '억원' : Math.round(v / 10000).toLocaleString() + '만원') : '-';
+
+    let html = `<div class="card mt-4 border-secondary">
+        <div class="card-header bg-secondary text-white py-2">
+            <i class="fas fa-university"></i> 대학공시자료 기반 지표 <small>(대학정보공시, 기준연도 2024)</small>
+        </div><div class="card-body"><div class="row">`;
+
+    if (tab === 'qs') {
+        html += `
+            ${metricCard('fa-chalkboard-teacher', '전임교원 수', fmt(m('full_time_faculty')), '명', 'primary', '교수당 인용수 산출 기준')}
+            ${metricCard('fa-user-graduate', '재학생 수', fmt(m('total_students')), '명', 'info', '')}
+            ${metricCard('fa-users', '교원1인당 학생수', m('student_faculty_ratio') != null ? m('student_faculty_ratio').toFixed(1) : '-', '명', 'danger', 'QS 교수/학생 비율 (10%)')}
+            ${metricCard('fa-globe-europe', '외국인 전임교원', fmt(m('international_faculty')), '명 (' + fmt(m('international_faculty_ratio')) + '%)', 'primary', 'QS 국제 교수 비율 (5%)')}
+            ${metricCard('fa-passport', '외국학생', fmt(m('international_students')), '명 (' + fmt(m('international_student_ratio')) + '%)', 'primary', 'QS 국제 학생 비율 (5%)')}
+            ${metricCard('fa-briefcase', '취업률', fmt(m('employment_rate')), '%', 'success', 'QS 취업성과 (5%)')}`;
+    } else if (tab === 'the') {
+        html += `
+            ${metricCard('fa-chalkboard-teacher', '전임교원 수', fmt(m('full_time_faculty')), '명', 'success', '연구 생산성 산출 기준')}
+            ${metricCard('fa-flask', '연구비 총액', fmtWon(m('research_funding') ? m('research_funding') * 1000 : null), '', 'success', 'THE 연구환경 (29%)')}
+            ${metricCard('fa-flask', '교원1인당 연구비', fmtWon(m('research_funding_per_faculty') ? m('research_funding_per_faculty') * 1000 : null), '', 'success', '')}
+            ${metricCard('fa-exchange-alt', '기술이전 수입', fmtWon(m('tech_transfer_revenue')), '', 'success', 'THE 산업체 수입 (4%)')}
+            ${metricCard('fa-building', '산학협력수익', fmtWon(m('industry_revenue')), '', 'success', 'THE 산업체 수입 (4%)')}
+            ${metricCard('fa-copyright', '특허 등록', fmt(m('patent_domestic_granted')) + ' (국내) / ' + fmt(m('patent_intl_granted')) + ' (해외)', '건', 'success', '')}
+            ${metricCard('fa-globe-europe', '외국인 교원 비율', fmt(m('international_faculty_ratio')), '%', 'success', 'THE 국제적 시각 (7.5%)')}
+            ${metricCard('fa-passport', '외국학생 비율', fmt(m('international_student_ratio')), '%', 'success', 'THE 국제적 시각 (7.5%)')}
+            ${metricCard('fa-money-bill', '운영수익 총계', fmtWon(m('total_revenue')), '', 'success', '대학 재정 규모')}`;
+    }
+
+    html += '</div></div></div>';
+    const el = document.getElementById(tab + 'InstitutionMetrics');
+    if (el) el.innerHTML = html;
+}
+
+function renderCompareTrends(insts) {
+    // 공통 연도 범위 (첫 기관 기준)
+    const firstTrends = wrAllData[insts[0]].trends.trends;
+    const labels = firstTrends.years;
+    const colors = { 'jbnu': { main: '#0d6efd', light: 'rgba(13,110,253,0.15)' }, 'korea': { main: '#dc3545', light: 'rgba(220,53,69,0.15)' } };
+    const dashStyle = [[], [6, 4]]; // 실선, 점선
+
+    // 1. 논문 수 비교
+    destroyChart('pubsCitations');
+    const pubsDatasets = insts.map((inst, idx) => ({
+        label: INST_NAMES[inst] + ' 논문 수',
+        data: wrAllData[inst].trends.trends.pubs,
+        backgroundColor: (colors[inst] || colors['jbnu']).light,
+        borderColor: (colors[inst] || colors['jbnu']).main,
+        borderWidth: 2
+    }));
+    wrCharts['pubsCitations'] = new Chart(document.getElementById('chartPubsCitations'), {
+        type: 'bar', data: { labels, datasets: pubsDatasets },
+        options: { responsive: true }
+    });
+
+    // 2. FWCI 비교
+    destroyChart('fwci');
+    const fwciDatasets = insts.map((inst, idx) => ({
+        label: INST_NAMES[inst] + ' FWCI',
+        data: wrAllData[inst].trends.trends.avg_fwci,
+        borderColor: (colors[inst] || colors['jbnu']).main,
+        borderDash: dashStyle[idx] || [],
+        fill: false, tension: 0.3
+    }));
+    wrCharts['fwci'] = new Chart(document.getElementById('chartFwci'), {
+        type: 'line', data: { labels, datasets: fwciDatasets },
+        options: { responsive: true }
+    });
+
+    // 3. 국제공동연구 비율 비교
+    destroyChart('intl');
+    const intlDatasets = insts.map((inst, idx) => ({
+        label: INST_NAMES[inst],
+        data: wrAllData[inst].trends.trends.intl_rate,
+        borderColor: (colors[inst] || colors['jbnu']).main,
+        borderDash: dashStyle[idx] || [],
+        fill: false, tension: 0.3
+    }));
+    wrCharts['intl'] = new Chart(document.getElementById('chartIntl'), {
+        type: 'line', data: { labels, datasets: intlDatasets },
+        options: { responsive: true, scales: { y: { min: 0, max: 100 } } }
+    });
+
+    // 4. Top 10% 비율 비교
+    destroyChart('topPct');
+    const topDatasets = insts.map((inst, idx) => ({
+        label: INST_NAMES[inst] + ' Top 10%',
+        data: wrAllData[inst].trends.trends.top10_rate,
+        borderColor: (colors[inst] || colors['jbnu']).main,
+        borderDash: dashStyle[idx] || [],
+        fill: false, tension: 0.3
+    }));
+    wrCharts['topPct'] = new Chart(document.getElementById('chartTopPct'), {
+        type: 'line', data: { labels, datasets: topDatasets },
+        options: { responsive: true, scales: { y: { min: 0 } } }
+    });
+}
+
+function renderTrends(t) {
+    // 1. 논문 수 & 인용수
+    destroyChart('pubsCitations');
+    wrCharts['pubsCitations'] = new Chart(document.getElementById('chartPubsCitations'), {
+        type: 'bar',
+        data: {
+            labels: t.years,
+            datasets: [
+                { label: '논문 수', data: t.pubs, backgroundColor: 'rgba(54,162,235,0.6)', yAxisID: 'y' },
+                { label: '인용수', data: t.citations, type: 'line', borderColor: '#ff6384', backgroundColor: 'transparent', yAxisID: 'y1' }
+            ]
+        },
+        options: { responsive: true, scales: { y: { position: 'left' }, y1: { position: 'right', grid: { drawOnChartArea: false } } } }
+    });
+
+    // 2. 논문당 인용수 & FWCI
+    destroyChart('fwci');
+    wrCharts['fwci'] = new Chart(document.getElementById('chartFwci'), {
+        type: 'line',
+        data: {
+            labels: t.years,
+            datasets: [
+                { label: '논문당 인용수', data: t.citations_per_paper, borderColor: '#36a2eb', fill: false, yAxisID: 'y' },
+                { label: 'FWCI', data: t.avg_fwci, borderColor: '#ff6384', fill: false, yAxisID: 'y1' }
+            ]
+        },
+        options: { responsive: true, scales: { y: { position: 'left' }, y1: { position: 'right', grid: { drawOnChartArea: false } } } }
+    });
+
+    // 3. 국제공동연구 비율
+    destroyChart('intl');
+    wrCharts['intl'] = new Chart(document.getElementById('chartIntl'), {
+        type: 'line',
+        data: { labels: t.years, datasets: [{ label: '국제공동연구 비율 (%)', data: t.intl_rate, borderColor: '#4bc0c0', fill: true, backgroundColor: 'rgba(75,192,192,0.1)' }] },
+        options: { responsive: true, scales: { y: { min: 0, max: 100 } } }
+    });
+
+    // 4. Top 10% / Top 25%
+    destroyChart('topPct');
+    wrCharts['topPct'] = new Chart(document.getElementById('chartTopPct'), {
+        type: 'line',
+        data: {
+            labels: t.years,
+            datasets: [
+                { label: 'Top 10% 논문 비율 (%)', data: t.top10_rate, borderColor: '#ff9f40', fill: false },
+                { label: 'Top 25% 저널 비율 (%)', data: t.top25_rate, borderColor: '#9966ff', fill: false }
+            ]
+        },
+        options: { responsive: true, scales: { y: { min: 0 } } }
+    });
+}
+
+// 페이지 초기화
+loadWrData();
+</script>
+{% endblock %}

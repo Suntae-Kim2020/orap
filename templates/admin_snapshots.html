@@ -224,7 +224,7 @@ function showSnapshotDetail(snapshotId) {
             </tr>`;
         });
 
-        let uploadForm = isDraft ? `
+        let uploadForm = `
             <div class="card mt-3">
                 <div class="card-header py-2"><i class="fas fa-upload"></i> 파일 업로드 <small class="text-light">(복수 선택 가능, 파일명으로 유형 자동 감지)</small></div>
                 <div class="card-body">
@@ -246,7 +246,7 @@ function showSnapshotDetail(snapshotId) {
                     <div id="uploadResults" class="mt-2" style="display:none;"></div>
                 </div>
             </div>
-        ` : '';
+        `;
 
         document.getElementById('detailTitle').textContent = s.snapshot_name;
         document.getElementById('snapshotDetailContent').innerHTML = `
@@ -293,6 +293,12 @@ function showSnapshotDetail(snapshotId) {
 }
 
 function detectDataType(filename) {
+    // 대학공시자료 감지
+    const disclosureKeywords = ['전임교원', '외국인 전임교원', '외국학생', '재적 학생', '기술이전',
+        '운영(손익)', '운영계산서', '연구비 수혜', '특허 출원', '취업 현황', '전체 교원',
+        '졸업생', '재무상태표', '대학회계', '발전기금', '직원 현황', '장서 보유', '성적 분포', '학점 교류'];
+    if (disclosureKeywords.some(kw => filename.includes(kw))) return '대학공시자료';
+
     const f = filename.toLowerCase();
     // 패턴 순서 중요: 구체적인 것부터 매칭
     if (f.includes('top_1_') || f.includes('top_1%') || f.includes('_1__most_cited'))
@@ -348,6 +354,7 @@ async function uploadMultipleToSnapshot(snapshotId) {
                 dataType: dataType,
                 success: data.success,
                 recordCount: data.record_count || 0,
+                disclosureMetrics: data.disclosure_metrics || 0,
                 error: data.error || null
             });
         } catch(err) {
@@ -362,7 +369,7 @@ async function uploadMultipleToSnapshot(snapshotId) {
     let html = '<table class="table table-sm small mt-2"><thead><tr><th>파일명</th><th>감지 유형</th><th>결과</th></tr></thead><tbody>';
     results.forEach(r => {
         const badge = r.success
-            ? `<span class="badge bg-success">성공 (${r.recordCount}건)</span>`
+            ? `<span class="badge bg-success">성공 ${r.dataType === '대학공시자료' ? '(' + (r.disclosureMetrics || 0) + '개 지표)' : '(' + r.recordCount + '건)'}</span>`
             : `<span class="badge bg-danger">실패: ${r.error}</span>`;
         html += `<tr><td>${r.filename}</td><td><span class="badge bg-info">${r.dataType}</span></td><td>${badge}</td></tr>`;
     });

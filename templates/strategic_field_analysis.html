@@ -1330,7 +1330,7 @@ function renderStrategyResult(data, strategyType) {
     if (strategyType === 'trajectory') {
         html += `<th>${i18n.t('strategic_field.career_years')}</th>`;
     } else if (strategyType === 'societal') {
-        html += `<th>${i18n.t('strategic_field.sdg')}</th><th>${i18n.t('strategic_field.oa')}</th>`;
+        html += `<th>SDG 논문</th><th>SDG 비율</th><th>OA 논문</th><th>OA 비율</th>`;
     } else {
         html += `<th>${i18n.t('strategic_field.top_journal_pct')}</th>`;
     }
@@ -1356,9 +1356,10 @@ function renderStrategyResult(data, strategyType) {
             if (strategyType === 'trajectory') {
                 html += `<td>${r.career_years}</td>`;
             } else if (strategyType === 'societal') {
-                const sdgBadge = r.has_sdg ? '<span class="badge bg-success">O</span>' : '<span class="badge bg-secondary">X</span>';
-                const oaBadge = r.has_oa ? '<span class="badge bg-success">O</span>' : '<span class="badge bg-secondary">X</span>';
-                html += `<td>${sdgBadge}</td><td>${oaBadge}</td>`;
+                html += `<td><strong>${r.sdg_count || 0}</strong>편</td>`;
+                html += `<td>${r.sdg_rate || 0}%</td>`;
+                html += `<td><strong>${r.oa_count || 0}</strong>편</td>`;
+                html += `<td>${r.oa_rate || 0}%</td>`;
             } else {
                 html += `<td><strong>${r.top_journal_pct}%</strong></td>`;
             }
@@ -1366,7 +1367,7 @@ function renderStrategyResult(data, strategyType) {
             html += '</tr>';
         });
     } else {
-        const colSpan = strategyType === 'societal' ? 8 : 7;
+        const colSpan = strategyType === 'societal' ? 11 : 7;
         html += `<tr><td colspan="${colSpan}" class="text-center text-muted">${i18n.t('strategic_field.no_data')}</td></tr>`;
     }
 
@@ -1445,9 +1446,9 @@ function downloadStrategyCSV(strategyType) {
             csv += `${idx + 1},"${r.name}",${r.scopus_author_id},${r.scholarly_output},${r.citations},${r.fwci},${r.h_index},${r.career_years}\n`;
         });
     } else if (strategyType === 'societal') {
-        csv += '순위,연구자명,Scopus ID,논문수,인용수,FWCI,h-index,SDG,OA\n';
+        csv += '순위,연구자명,Scopus ID,논문수,인용수,FWCI,h-index,SDG논문,SDG비율(%),OA논문,OA비율(%)\n';
         data.researchers.forEach((r, idx) => {
-            csv += `${idx + 1},"${r.name}",${r.scopus_author_id},${r.scholarly_output},${r.citations},${r.fwci},${r.h_index},${r.has_sdg ? 'O' : 'X'},${r.has_oa ? 'O' : 'X'}\n`;
+            csv += `${idx + 1},"${r.name}",${r.scopus_author_id},${r.scholarly_output},${r.citations},${r.fwci},${r.h_index},${r.sdg_count || 0},${r.sdg_rate || 0},${r.oa_count || 0},${r.oa_rate || 0}\n`;
         });
     } else {
         csv += '순위,연구자명,Scopus ID,논문수,인용수,FWCI,h-index,Top저널%\n';
@@ -1663,6 +1664,6 @@ function downloadResearchersCSV() {
 }
 
 // 탭 로깅 설정
-setupTabLogging('연구분야분석');
+if (typeof setupTabLogging === 'function') setupTabLogging('연구분야분석');
 </script>
 {% endblock %}

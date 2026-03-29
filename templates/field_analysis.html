@@ -936,6 +936,6 @@ if (window.i18n && window.i18n.ready) {
 }
 
 // 탭 로깅 설정
-setupTabLogging('학문분야분석');
+if (typeof setupTabLogging === 'function') setupTabLogging('학문분야분석');
 </script>
 {% endblock %}

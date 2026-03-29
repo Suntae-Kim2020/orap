@@ -871,6 +871,6 @@ function downloadCollabCSV() {
 }
 
 // 탭 로깅 설정
-setupTabLogging('분석 모듈');
+if (typeof setupTabLogging === 'function') setupTabLogging('분석 모듈');
 </script>
 {% endblock %}

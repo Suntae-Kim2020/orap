@@ -13,7 +13,7 @@ from deep_translator import GoogleTranslator
 
 app = Flask(__name__)
 app.secret_key = 'orap-secret-key-2024-secure'
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 
 # 기관별 데이터베이스 매핑
 INSTITUTION_DB = {
@@ -5244,6 +5244,197 @@ def strategic_field_analysis():
     return render_template('strategic_field_analysis.html')
 
 
+@app.route('/world_ranking')
+@login_required
+def world_ranking():
+    """세계대학평가 페이지"""
+    log_activity('페이지 조회', '세계대학평가')
+    return render_template('world_ranking.html',
+                           institutions=INSTITUTION_NAMES,
+                           current_institution=session.get('institution', 'jbnu'))
+
+
+@app.route('/api/world_ranking_metrics')
+@login_required
+def api_world_ranking_metrics():
+    """세계대학평가 지표 API"""
+    try:
+        institution = request.args.get('institution') or None
+        conn = get_db_connection(institution=institution)
+        cursor = conn.cursor()
+        affiliation = get_institution_affiliation(institution=institution)
+        year_from = request.args.get('year_from', type=int)
+        year_to = request.args.get('year_to', type=int)
+
+        # 연도 필터
+        year_filter = ""
+        year_params = []
+        if year_from and year_to:
+            year_filter = "AND CAST(year AS INTEGER) >= ? AND CAST(year AS INTEGER) <= ?"
+            year_params = [year_from, year_to]
+
+        # 1. 종합 지표
+        cursor.execute(f"""
+            SELECT
+                COUNT(*) as total_pubs,
+                COALESCE(SUM(CAST(citations AS REAL)), 0) as total_citations,
+                COALESCE(AVG(CAST(citations AS REAL)), 0) as avg_citations,
+                COALESCE(AVG(CAST(field_weighted_citation_impact AS REAL)), 0) as avg_fwci,
+                SUM(CASE WHEN is_international = 1 THEN 1 ELSE 0 END) as intl_count,
+                SUM(CASE WHEN is_10 = 1 THEN 1 ELSE 0 END) as top10_count,
+                SUM(CASE WHEN is_25 = 1 THEN 1 ELSE 0 END) as top25_count,
+                SUM(CASE WHEN open_access IS NOT NULL AND open_access != '' AND open_access != '-' THEN 1 ELSE 0 END) as oa_count,
+                SUM(CASE WHEN is_SDG = 1 THEN 1 ELSE 0 END) as sdg_count,
+                SUM(CASE WHEN is_1 = 1 THEN 1 ELSE 0 END) as top1_count,
+                SUM(CASE WHEN is_patent_cited = 1 THEN 1 ELSE 0 END) as patent_cited_count,
+                SUM(CASE WHEN is_policy_cited = 1 THEN 1 ELSE 0 END) as policy_cited_count,
+                SUM(CASE WHEN is_academic_corporate = 1 THEN 1 ELSE 0 END) as corporate_count
+            FROM publication
+            WHERE 1=1 {year_filter}
+        """, year_params)
+        row = cursor.fetchone()
+        overview = {k: (v if v is not None else 0) for k, v in dict(row).items()}
+        total = overview['total_pubs'] or 1
+
+        overview['intl_rate'] = round(overview['intl_count'] / total * 100, 1)
+        overview['top10_rate'] = round(overview['top10_count'] / total * 100, 1)
+        overview['top25_rate'] = round(overview['top25_count'] / total * 100, 1)
+        overview['oa_rate'] = round(overview['oa_count'] / total * 100, 1)
+        overview['sdg_rate'] = round(overview['sdg_count'] / total * 100, 1)
+        overview['top1_rate'] = round(overview['top1_count'] / total * 100, 1)
+        overview['patent_cited_rate'] = round(overview['patent_cited_count'] / total * 100, 1)
+        overview['corporate_rate'] = round(overview['corporate_count'] / total * 100, 1)
+        overview['avg_citations'] = round(overview['avg_citations'], 2)
+        overview['avg_fwci'] = round(overview['avg_fwci'], 2)
+
+        # 2. 전임교원 수 (per capita) - 공시자료 우선, 없으면 author 테이블
+        faculty_count = None
+        try:
+            cursor.execute("SELECT metric_value FROM institution_metrics WHERE metric_key = 'full_time_faculty' ORDER BY metric_year DESC LIMIT 1")
+            row = cursor.fetchone()
+            if row:
+                faculty_count = int(row[0])
+        except Exception:
+            pass
+        if not faculty_count:
+            cursor.execute("SELECT COUNT(*) FROM author WHERE primary_affiliation LIKE ?", (f'%{affiliation}%',))
+            faculty_count = cursor.fetchone()[0]
+            overview['faculty_source'] = 'author_table'
+        else:
+            overview['faculty_source'] = 'disclosure'
+        overview['author_count'] = faculty_count
+        overview['per_capita_pubs'] = round(total / faculty_count, 1) if faculty_count > 0 else 0
+        overview['per_capita_citations'] = round(overview['total_citations'] / faculty_count, 1) if faculty_count > 0 else 0
+
+        # 3. 국제협력 국가 분포
+        cursor.execute(f"""
+            SELECT country_region FROM publication
+            WHERE is_international = 1 AND country_region IS NOT NULL AND country_region != ''
+            {year_filter}
+        """, year_params)
+        country_counts = {}
+        for r in cursor.fetchall():
+            countries = r[0].replace('|', ';').split(';')
+            for c in countries:
+                c = c.strip()
+                if c and c != '-':
+                    country_counts[c] = country_counts.get(c, 0) + 1
+        # 자기 국가 제외, 상위 15개
+        country_counts.pop('South Korea', None)
+        country_counts.pop('Korea', None)
+        top_countries = sorted(country_counts.items(), key=lambda x: x[1], reverse=True)[:15]
+
+        # 3-1. 데이터 최대 연도 (ARWU 기준연도 산정용)
+        cursor.execute("SELECT MAX(CAST(year AS INTEGER)) FROM publication WHERE year IS NOT NULL")
+        max_data_year = cursor.fetchone()[0] or (datetime.now().year - 1)
+
+        # 4. 연도별 추이
+        cursor.execute("""
+            SELECT
+                CAST(year AS INTEGER) as yr,
+                COUNT(*) as pubs,
+                COALESCE(SUM(CAST(citations AS REAL)), 0) as citations,
+                COALESCE(AVG(CAST(field_weighted_citation_impact AS REAL)), 0) as avg_fwci,
+                SUM(CASE WHEN is_international = 1 THEN 1 ELSE 0 END) as intl,
+                SUM(CASE WHEN is_10 = 1 THEN 1 ELSE 0 END) as top10,
+                SUM(CASE WHEN is_25 = 1 THEN 1 ELSE 0 END) as top25,
+                SUM(CASE WHEN open_access IS NOT NULL AND open_access != '' AND open_access != '-' THEN 1 ELSE 0 END) as oa,
+                SUM(CASE WHEN is_SDG = 1 THEN 1 ELSE 0 END) as sdg,
+                SUM(CASE WHEN is_patent_cited = 1 THEN 1 ELSE 0 END) as patent_cited
+            FROM publication
+            WHERE year IS NOT NULL AND CAST(year AS INTEGER) > 2000
+            GROUP BY yr ORDER BY yr
+        """)
+        trends = {'years': [], 'pubs': [], 'citations': [], 'avg_fwci': [],
+                  'intl_rate': [], 'top10_rate': [], 'top25_rate': [], 'oa_rate': [],
+                  'citations_per_paper': []}
+        for r in cursor.fetchall():
+            yr_pubs = r['pubs'] or 1
+            trends['years'].append(r['yr'])
+            trends['pubs'].append(r['pubs'])
+            trends['citations'].append(round(r['citations'], 0))
+            trends['avg_fwci'].append(round(r['avg_fwci'], 2))
+            trends['intl_rate'].append(round(r['intl'] / yr_pubs * 100, 1))
+            trends['top10_rate'].append(round(r['top10'] / yr_pubs * 100, 1))
+            trends['top25_rate'].append(round(r['top25'] / yr_pubs * 100, 1))
+            trends['oa_rate'].append(round(r['oa'] / yr_pubs * 100, 1))
+            trends['citations_per_paper'].append(round(r['citations'] / yr_pubs, 2))
+
+        # 5. 대학공시 지표 조회
+        inst_metrics = {}
+        try:
+            cursor.execute("SELECT metric_key, metric_value, metric_unit FROM institution_metrics ORDER BY metric_year DESC")
+            for r in cursor.fetchall():
+                if r['metric_key'] not in inst_metrics:
+                    inst_metrics[r['metric_key']] = {'value': r['metric_value'], 'unit': r['metric_unit']}
+            # 비율 자동 계산 (별도 파일에서 교원수/학생수가 따로 들어온 경우)
+            if 'international_faculty' in inst_metrics and 'full_time_faculty' in inst_metrics and 'international_faculty_ratio' not in inst_metrics:
+                ratio = round(inst_metrics['international_faculty']['value'] / max(1, inst_metrics['full_time_faculty']['value']) * 100, 1)
+                inst_metrics['international_faculty_ratio'] = {'value': ratio, 'unit': '%'}
+            if 'international_students' in inst_metrics and 'total_students' in inst_metrics and 'international_student_ratio' not in inst_metrics:
+                ratio = round(inst_metrics['international_students']['value'] / max(1, inst_metrics['total_students']['value']) * 100, 1)
+                inst_metrics['international_student_ratio'] = {'value': ratio, 'unit': '%'}
+        except Exception:
+            pass
+
+        conn.close()
+
+        return jsonify({
+            'overview': overview,
+            'max_data_year': max_data_year,
+            'institution_metrics': inst_metrics,
+            'qs': {
+                'citations_per_paper': overview['avg_citations'],
+                'intl_collab_rate': overview['intl_rate'],
+                'unique_countries': len(country_counts),
+                'top_countries': [{'country': c, 'count': n} for c, n in top_countries]
+            },
+            'the': {
+                'research_productivity': overview['per_capita_pubs'],
+                'citation_impact_fwci': overview['avg_fwci'],
+                'intl_outlook': overview['intl_rate'],
+                'industry_proxy': {
+                    'patent_cited_count': overview['patent_cited_count'],
+                    'patent_cited_rate': overview['patent_cited_rate'],
+                    'corporate_count': overview['corporate_count'],
+                    'corporate_rate': overview['corporate_rate']
+                }
+            },
+            'arwu': {
+                'top1_count': overview['top1_count'],
+                'top1_rate': overview['top1_rate'],
+                'total_pubs': overview['total_pubs'],
+                'author_count': faculty_count,
+                'per_capita_output': overview['per_capita_pubs'],
+                'per_capita_citations': overview['per_capita_citations']
+            },
+            'trends': trends
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
 @app.route('/api/strategic_field_config')
 def api_strategic_field_config():
     """연구분야 키워드 설정 조회"""
@@ -5914,15 +6105,34 @@ def api_strategic_field_strategy():
         """, ids_list)
 
     elif strategy_type == 'societal':
-        # 사회적 기여: SDG, OA 비율
+        # 사회적 기여: SDG, OA 논문 편수 (한번 스캔으로 집계)
+        # 먼저 publication 스캔 (author 쿼리 전에)
+        target_ids = set(ids_list)
+        societal_counts = {sid: {'sdg_count': 0, 'oa_count': 0, 'total': 0} for sid in ids_list}
+
+        cursor.execute("""
+            SELECT scopus_author_ids, is_SDG, open_access
+            FROM publication
+            WHERE scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+        """)
+        for pub in cursor.fetchall():
+            pub_author_ids = [aid.strip() for aid in pub['scopus_author_ids'].replace(';', '|').split('|') if aid.strip()]
+            is_sdg = pub['is_SDG'] == 1
+            is_oa = pub['open_access'] is not None and pub['open_access'] != '' and pub['open_access'] != '-'
+            for aid in pub_author_ids:
+                if aid in target_ids:
+                    societal_counts[aid]['total'] += 1
+                    if is_sdg:
+                        societal_counts[aid]['sdg_count'] += 1
+                    if is_oa:
+                        societal_counts[aid]['oa_count'] += 1
+
+        # author 쿼리 (publication 스캔 후에)
         cursor.execute(f"""
             SELECT a.scopus_author_id, a.name, a.orcid, a.scholarly_output, a.citations,
-                   a.field_weighted_citation_impact as fwci, a.h_index,
-                   rs.has_sdg, rs.has_oa
+                   a.field_weighted_citation_impact as fwci, a.h_index
             FROM author a
-            LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
             WHERE a.scopus_author_id IN ({placeholders})
-            ORDER BY rs.has_sdg DESC, a.field_weighted_citation_impact DESC
         """, ids_list)
 
     else:  # field
@@ -5957,8 +6167,11 @@ def api_strategic_field_strategy():
             career_years = (row_dict.get('most_recent_publication', 2025) or 2025) - (row_dict.get('oldest_publication', 2020) or 2020) + 1
             result['career_years'] = career_years
         elif strategy_type == 'societal':
-            result['has_sdg'] = row_dict.get('has_sdg', 0) == 1
-            result['has_oa'] = row_dict.get('has_oa', 0) == 1
+            sc = societal_counts.get(row_dict['scopus_author_id'], {'sdg_count': 0, 'oa_count': 0, 'total': 0})
+            result['sdg_count'] = sc['sdg_count']
+            result['oa_count'] = sc['oa_count']
+            result['sdg_rate'] = round(sc['sdg_count'] / max(1, sc['total']) * 100, 1)
+            result['oa_rate'] = round(sc['oa_count'] / max(1, sc['total']) * 100, 1)
         else:
             result['top_journal_pct'] = round(row_dict.get('top_journal_pct', 0) or 0, 1)
 
@@ -6518,6 +6731,154 @@ def api_activity_logs():
 # 데이터 스냅샷 관리
 # ========================================
 
+def parse_disclosure_file(filepath, original_filename):
+    """대학공시자료 엑셀 파일에서 핵심 지표 추출"""
+    import unicodedata
+    fname = unicodedata.normalize('NFC', original_filename)
+    metrics = {}
+
+    try:
+        df = pd.read_excel(filepath, header=None)
+    except Exception:
+        return None
+
+    # 기준연도 추출 (첫 행에서)
+    year_str = str(df.iloc[0, 0]) if pd.notna(df.iloc[0, 0]) else ''
+    metric_year = 2024  # 기본값
+    import re
+    year_match = re.search(r'(\d{4})년', year_str)
+    if year_match:
+        metric_year = int(year_match.group(1)) - 1  # 2025년 공시 = 2024년 기준
+
+    if '전임교원 1인당 학생 수' in fname:
+        # 합계 행 찾기
+        for i in range(len(df)):
+            if str(df.iloc[i, 0]).strip() == '합 계':
+                vals = [v for v in df.iloc[i].values if pd.notna(v)]
+                if len(vals) >= 13:
+                    metrics['full_time_faculty'] = {'value': int(float(vals[7])), 'unit': '명'}
+                    metrics['student_faculty_ratio'] = {'value': float(vals[12]), 'unit': '명/인'}
+                    metrics['total_students'] = {'value': int(float(vals[6])), 'unit': '명'}  # 계 재학생(A')
+                break
+
+    elif '전공계열별 외국인 전임교원' in fname:
+        for i in range(len(df)):
+            if str(df.iloc[i, 0]).strip() == '합 계':
+                vals = [v for v in df.iloc[i].values if pd.notna(v)]
+                if len(vals) >= 2:
+                    intl_faculty = int(float(vals[1])) + int(float(vals[2]))
+                    metrics['international_faculty'] = {'value': intl_faculty, 'unit': '명'}
+                break
+
+    elif '외국학생 현황' in fname:
+        for i in range(len(df)):
+            if str(df.iloc[i, 0]).strip() == '합 계':
+                vals = [v for v in df.iloc[i].values if pd.notna(v)]
+                if len(vals) >= 2:
+                    metrics['international_students'] = {'value': int(float(vals[1])), 'unit': '명'}
+                break
+
+    elif '재적 학생 현황' in fname:
+        for i in range(len(df)):
+            val0 = str(df.iloc[i, 0]).strip() if pd.notna(df.iloc[i, 0]) else ''
+            if val0 in ('소계', '합 계') and i >= 5:
+                vals = [v for v in df.iloc[i].values if pd.notna(v)]
+                if len(vals) >= 2:
+                    metrics['total_students_enrolled'] = {'value': int(float(vals[0])), 'unit': '명'}
+                    if len(vals) >= 3:
+                        metrics['enrolled_students'] = {'value': int(float(vals[-1])), 'unit': '명'}
+                break
+
+    elif '기술이전 수입료' in fname:
+        for i in range(3, len(df)):
+            vals = [v for v in df.iloc[i].values if pd.notna(v)]
+            if len(vals) >= 4 and '전북대' in str(vals[1]) + str(vals[0]):
+                metrics['tech_transfer_count'] = {'value': int(float(vals[2])), 'unit': '건'}
+                metrics['tech_transfer_revenue'] = {'value': int(float(vals[3])), 'unit': '원'}
+                break
+            elif len(vals) >= 4:
+                try:
+                    metrics['tech_transfer_count'] = {'value': int(float(vals[2])), 'unit': '건'}
+                    metrics['tech_transfer_revenue'] = {'value': int(float(vals[3])), 'unit': '원'}
+                    break
+                except (ValueError, TypeError):
+                    continue
+
+    elif '운영(손익) 계산서' in fname or '운영계산서' in fname:
+        for i in range(len(df)):
+            val0 = str(df.iloc[i, 0]).strip() if pd.notna(df.iloc[i, 0]) else ''
+            val1 = df.iloc[i, 1] if len(df.columns) > 1 and pd.notna(df.iloc[i, 1]) else None
+            if '산학협력수익' in val0 and val1 is not None:
+                metrics['industry_revenue'] = {'value': int(float(str(val1).replace(',', ''))), 'unit': '원'}
+            if '운영수익총계' in val0 and val1 is not None:
+                metrics['total_revenue'] = {'value': int(float(str(val1).replace(',', ''))), 'unit': '원'}
+
+    elif '연구비 수혜 실적' in fname:
+        for i in range(len(df)):
+            if str(df.iloc[i, 0]).strip() == '합 계':
+                vals = [v for v in df.iloc[i].values if pd.notna(v)]
+                if len(vals) >= 6:
+                    try:
+                        metrics['research_funding'] = {'value': int(float(vals[4])) + int(float(vals[5])), 'unit': '천원'}
+                        metrics['research_funding_per_faculty'] = {'value': int(float(vals[-4])) + int(float(vals[-3])), 'unit': '천원'}
+                    except (ValueError, TypeError, IndexError):
+                        pass
+                break
+
+    elif '특허 출원 및 등록' in fname:
+        for i in range(3, len(df)):
+            vals = [v for v in df.iloc[i].values if pd.notna(v)]
+            if len(vals) >= 6:
+                try:
+                    metrics['patent_domestic_filed'] = {'value': int(float(vals[2])), 'unit': '건'}
+                    metrics['patent_domestic_granted'] = {'value': int(float(vals[3])), 'unit': '건'}
+                    metrics['patent_intl_filed'] = {'value': int(float(vals[4])), 'unit': '건'}
+                    metrics['patent_intl_granted'] = {'value': int(float(vals[5])), 'unit': '건'}
+                    break
+                except (ValueError, TypeError):
+                    continue
+
+    elif '졸업생의 취업 현황' in fname or '취업 현황' in fname:
+        for i in range(len(df)):
+            if str(df.iloc[i, 0]).strip() == '합계':
+                vals = [v for v in df.iloc[i].values if pd.notna(v)]
+                # 취업률 찾기
+                for v in vals:
+                    try:
+                        fv = float(v)
+                        if 10 < fv < 100:  # 취업률로 보이는 값
+                            metrics['employment_rate'] = {'value': fv, 'unit': '%'}
+                            break
+                    except (ValueError, TypeError):
+                        continue
+                break
+
+    if not metrics:
+        return None
+
+    # 비율 계산
+    if 'international_faculty' in metrics and 'full_time_faculty' in metrics:
+        ratio = round(metrics['international_faculty']['value'] / max(1, metrics['full_time_faculty']['value']) * 100, 1)
+        metrics['international_faculty_ratio'] = {'value': ratio, 'unit': '%'}
+
+    if 'international_students' in metrics and 'total_students' in metrics:
+        ratio = round(metrics['international_students']['value'] / max(1, metrics['total_students']['value']) * 100, 1)
+        metrics['international_student_ratio'] = {'value': ratio, 'unit': '%'}
+
+    return {'year': metric_year, 'metrics': metrics}
+
+
+def is_disclosure_file(filename):
+    """대학공시자료 파일인지 판별"""
+    import unicodedata
+    normalized = unicodedata.normalize('NFC', filename)
+    keywords = ['전임교원', '외국인 전임교원', '외국학생', '재적 학생', '기술이전',
+                '운영(손익)', '운영계산서', '연구비 수혜', '특허 출원', '취업 현황',
+                '전체 교원', '졸업생', '재무상태표', '대학회계', '발전기금', '직원 현황',
+                '장서 보유', '성적 분포', '학점 교류', '예산서', '결산', '자금계산서']
+    return any(kw in normalized for kw in keywords)
+
+
 def detect_data_type_from_file(filepath, original_filename=''):
     """파일명 + CSV 1행 헤더로 데이터 유형 자동 감지"""
     # 1차: 파일명으로 판별
@@ -6704,10 +7065,6 @@ def api_snapshot_upload(snapshot_id):
         if not snapshot:
             conn.close()
             return jsonify({'error': 'Snapshot not found'}), 404
-        if snapshot['status'] == 'applied':
-            conn.close()
-            return jsonify({'error': '이미 적용된 스냅샷에는 파일을 추가할 수 없습니다.'}), 400
-
         file = request.files.get('file')
         if not file or not allowed_file(file.filename):
             conn.close()
@@ -6726,21 +7083,47 @@ def api_snapshot_upload(snapshot_id):
         file.save(filepath)
         file_size = os.path.getsize(filepath)
 
-        # 데이터 유형 자동 감지 (클라이언트 감지값이 없거나 기본값이면 서버에서 재감지)
-        if not data_type or data_type == '전체논문데이터':
-            data_type = detect_data_type_from_file(filepath, file.filename)
+        # 대학공시자료 파일 감지 (원본 파일명 + 확장자로 판별)
+        original_name = file.filename
+        disclosure_result = None
+        is_xlsx = original_name.lower().endswith('.xlsx') or original_name.lower().endswith('.xls')
+        if is_xlsx and is_disclosure_file(original_name):
+            data_type = '대학공시자료'
+            disclosure_result = parse_disclosure_file(filepath, file.filename)
+            record_count = len(disclosure_result['metrics']) if disclosure_result else 0
 
-        # 레코드 수 추정 (CSV 라인 수)
-        record_count = 0
-        try:
-            with open(filepath, 'r', encoding='utf-8-sig') as f:
-                record_count = max(0, sum(1 for _ in f) - 20)  # 헤더 20줄 제외
-        except Exception:
+            # 공시자료 지표를 institution_metrics에 저장
+            if disclosure_result:
+                cursor = conn.cursor()
+                cursor.execute("""CREATE TABLE IF NOT EXISTS institution_metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    metric_year INTEGER NOT NULL, metric_key TEXT NOT NULL,
+                    metric_value REAL, metric_unit TEXT,
+                    source TEXT DEFAULT '대학공시',
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(metric_year, metric_key))""")
+                for key, val in disclosure_result['metrics'].items():
+                    cursor.execute("""INSERT OR REPLACE INTO institution_metrics
+                        (metric_year, metric_key, metric_value, metric_unit)
+                        VALUES (?, ?, ?, ?)""",
+                        (disclosure_result['year'], key, val['value'], val['unit']))
+                conn.commit()
+        else:
+            # 논문 데이터 유형 자동 감지
+            if not data_type or data_type == '전체논문데이터':
+                data_type = detect_data_type_from_file(filepath, file.filename)
+
+            # 레코드 수 추정 (CSV 라인 수)
+            record_count = 0
             try:
-                with open(filepath, 'r', encoding='cp949') as f:
+                with open(filepath, 'r', encoding='utf-8-sig') as f:
                     record_count = max(0, sum(1 for _ in f) - 20)
             except Exception:
-                pass
+                try:
+                    with open(filepath, 'r', encoding='cp949') as f:
+                        record_count = max(0, sum(1 for _ in f) - 20)
+                except Exception:
+                    pass
 
         cursor = conn.cursor()
         cursor.execute("""
@@ -6755,7 +7138,9 @@ def api_snapshot_upload(snapshot_id):
             'file_id': cursor.lastrowid,
             'filename': file.filename,
             'file_size': file_size,
-            'record_count': record_count
+            'record_count': record_count,
+            'data_type': data_type,
+            'disclosure_metrics': len(disclosure_result['metrics']) if disclosure_result else 0
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -6935,6 +7320,44 @@ def api_apply_snapshot(snapshot_id):
         cursor.execute("""UPDATE publication SET is_academic_corporate = 1
             WHERE sector LIKE '%Corporate%'
             AND (is_academic_corporate IS NULL OR is_academic_corporate = 0)""")
+
+        # 3-3. Top 1% 피인용 플래그 보정
+        cursor.execute("""UPDATE publication SET is_1 = 1
+            WHERE outputs_in_top_citation_percentiles_per_percentile IS NOT NULL
+            AND CAST(outputs_in_top_citation_percentiles_per_percentile AS REAL) <= 1
+            AND (is_1 IS NULL OR is_1 = 0)""")
+
+        # 3-3b. Top 10% 피인용 플래그 보정
+        cursor.execute("""UPDATE publication SET is_10 = 1
+            WHERE outputs_in_top_citation_percentiles_per_percentile IS NOT NULL
+            AND CAST(outputs_in_top_citation_percentiles_per_percentile AS REAL) <= 10
+            AND (is_10 IS NULL OR is_10 = 0)""")
+
+        # 3-4. Top 25% 저널 플래그 보정: CiteScore percentile <= 25
+        cursor.execute("""UPDATE publication SET is_25 = 1
+            WHERE citescore_percentile_publication_year IS NOT NULL
+            AND citescore_percentile_publication_year != ''
+            AND CAST(citescore_percentile_publication_year AS REAL) <= 25
+            AND (is_25 IS NULL OR is_25 = 0)""")
+
+        # 3-5. 국제협력 플래그 보정
+        cursor.execute("""UPDATE publication SET is_international = 1
+            WHERE country_region IS NOT NULL AND country_region != ''
+            AND country_region != 'South Korea' AND country_region != '-'
+            AND country_region LIKE '%|%'
+            AND (is_international IS NULL OR is_international = 0)""")
+
+        # 3-6. 특허인용 플래그 보정: main_patent_families > 0
+        cursor.execute("""UPDATE publication SET is_patent_cited = 1
+            WHERE main_patent_families IS NOT NULL
+            AND CAST(main_patent_families AS REAL) > 0
+            AND (is_patent_cited IS NULL OR is_patent_cited = 0)""")
+
+        # 3-7. 정책인용 플래그 보정: policy_citations > 0
+        cursor.execute("""UPDATE publication SET is_policy_cited = 1
+            WHERE policy_citations IS NOT NULL
+            AND CAST(policy_citations AS REAL) > 0
+            AND (is_policy_cited IS NULL OR is_policy_cited = 0)""")
 
         conn.commit()
 

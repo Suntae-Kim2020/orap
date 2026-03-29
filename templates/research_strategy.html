@@ -924,6 +924,6 @@ function downloadPortfolioCSV() {
 }
 
 // 탭 로깅 설정
-setupTabLogging('연구 전략');
+if (typeof setupTabLogging === 'function') setupTabLogging('연구 전략');
 </script>
 {% endblock %}
