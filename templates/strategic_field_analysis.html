@@ -10,54 +10,11 @@
         <small><i class="fas fa-database"></i> <span data-i18n="analysis_modules.data_note">본 분석은 Scopus 등재 논문 및 전북대학교 소속 연구자만을 대상으로 합니다.</span></small>
     </p>
 
-    <!-- 대분류 탭 -->
+    <!-- 대분류 탭 (JS에서 동적 생성) -->
     <ul class="nav nav-tabs mb-4" id="categoryTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="energy-tab" data-bs-toggle="tab" data-bs-target="#energy" type="button" onclick="switchCategory('에너지')">
-                <i class="fas fa-bolt"></i> <span data-i18n="strategic_field.energy">에너지</span>
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="bio-tab" data-bs-toggle="tab" data-bs-target="#bio" type="button" onclick="switchCategory('바이오')">
-                <i class="fas fa-dna"></i> <span data-i18n="strategic_field.bio">바이오</span>
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="agri-tab" data-bs-toggle="tab" data-bs-target="#agri" type="button" onclick="switchCategory('농생명')">
-                <i class="fas fa-seedling"></i> <span data-i18n="strategic_field.agri">농생명</span>
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="mobility-tab" data-bs-toggle="tab" data-bs-target="#mobility" type="button" onclick="switchCategory('미래모빌리티')">
-                <i class="fas fa-car"></i> <span data-i18n="strategic_field.mobility">미래 모빌리티</span>
-            </button>
-        </li>
-        <li class="nav-item ms-3 border-start ps-3" role="presentation">
-            <button class="nav-link" id="esg-e-tab" data-bs-toggle="tab" data-bs-target="#esg-e" type="button" onclick="switchCategory('ESG-E(환경)')">
-                <i class="fas fa-leaf text-success"></i> <span data-i18n="strategic_field.esg_e">ESG-E(환경)</span>
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="esg-s-tab" data-bs-toggle="tab" data-bs-target="#esg-s" type="button" onclick="switchCategory('ESG-S(사회)')">
-                <i class="fas fa-users text-primary"></i> <span data-i18n="strategic_field.esg_s">ESG-S(사회)</span>
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="esg-g-tab" data-bs-toggle="tab" data-bs-target="#esg-g" type="button" onclick="switchCategory('ESG-G(지배구조)')">
-                <i class="fas fa-balance-scale text-warning"></i> <span data-i18n="strategic_field.esg_g">ESG-G(지배구조)</span>
-            </button>
-        </li>
     </ul>
 
     <div class="tab-content" id="categoryTabContent">
-        <!-- 각 탭은 동일한 구조 사용 -->
-        <div class="tab-pane fade show active" id="energy" role="tabpanel"></div>
-        <div class="tab-pane fade" id="bio" role="tabpanel"></div>
-        <div class="tab-pane fade" id="agri" role="tabpanel"></div>
-        <div class="tab-pane fade" id="mobility" role="tabpanel"></div>
-        <div class="tab-pane fade" id="esg-e" role="tabpanel"></div>
-        <div class="tab-pane fade" id="esg-s" role="tabpanel"></div>
-        <div class="tab-pane fade" id="esg-g" role="tabpanel"></div>
     </div>
 </div>
 
@@ -182,12 +139,65 @@ document.addEventListener('DOMContentLoaded', function() {
     loadConfig();
 });
 
+// 카테고리 아이콘/색상 매핑
+const CATEGORY_ICONS = {
+    '에너지': { icon: 'fa-bolt', color: '' },
+    '바이오': { icon: 'fa-dna', color: '' },
+    '농생명': { icon: 'fa-seedling', color: '' },
+    '미래모빌리티': { icon: 'fa-car', color: '' },
+    'ESG-E(환경)': { icon: 'fa-leaf', color: 'text-success' },
+    'ESG-S(사회)': { icon: 'fa-users', color: 'text-primary' },
+    'ESG-G(지배구조)': { icon: 'fa-balance-scale', color: 'text-warning' },
+};
+
+function buildCategoryTabs(categories) {
+    const tabsEl = document.getElementById('categoryTabs');
+    const contentEl = document.getElementById('categoryTabContent');
+    let tabsHtml = '';
+    let panesHtml = '';
+    let isFirst = true;
+    let hasStrategic = false;
+
+    categories.forEach(cat => {
+        const tabId = categoryMap[cat] || cat.toLowerCase().replace(/[^a-z]/g, '');
+        if (!categoryMap[cat]) categoryMap[cat] = tabId;
+        const iconInfo = CATEGORY_ICONS[cat] || { icon: 'fa-folder', color: '' };
+        const isESG = cat.startsWith('ESG');
+
+        // 전략분야→ESG 구분선
+        if (isESG && hasStrategic && !tabsHtml.includes('border-start')) {
+            tabsHtml += `<li class="nav-item ms-3 border-start ps-3" role="presentation">`;
+        } else {
+            tabsHtml += `<li class="nav-item" role="presentation">`;
+        }
+        if (!isESG) hasStrategic = true;
+
+        tabsHtml += `<button class="nav-link ${isFirst ? 'active' : ''}" id="${tabId}-tab" data-bs-toggle="tab" data-bs-target="#${tabId}" type="button" onclick="switchCategory('${cat}')">
+            <i class="fas ${iconInfo.icon} ${iconInfo.color}"></i> ${cat}
+        </button></li>`;
+
+        panesHtml += `<div class="tab-pane fade ${isFirst ? 'show active' : ''}" id="${tabId}" role="tabpanel"></div>`;
+        isFirst = false;
+    });
+
+    tabsEl.innerHTML = tabsHtml;
+    contentEl.innerHTML = panesHtml;
+}
+
 // 설정 로드
 function loadConfig() {
     fetch('/api/strategic_field_config')
         .then(r => r.json())
         .then(data => {
             fieldConfig = data;
+
+            // DB에 있는 카테고리로 탭 동적 생성
+            const categories = Object.keys(data);
+            if (categories.length > 0) {
+                buildCategoryTabs(categories);
+                currentCategory = categories[0];
+            }
+
             renderCategoryContent(currentCategory);
 
             // 첫 번째 하위 분야 자동 분석

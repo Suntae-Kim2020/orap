@@ -26,7 +26,7 @@ def _load_institutions():
     """institutions 테이블에서 기관 정보 로드"""
     inst_db, inst_names, inst_affiliations = {}, {}, {}
     try:
-        conn = sqlite3.connect(USERS_DB)
+        conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='institutions'")
         if cursor.fetchone():
@@ -173,6 +173,33 @@ def init_institution_db(db_file):
             (name, description, is_system, is_default, total_core, total_supplementary,
              pct_fwci, pct_top10, pct_top_journal, pct_intl_collab, pct_sdg, pct_oa, pct_topic)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', presets)
+
+    # strategic_field_config (ESG 공통)
+    cursor.execute('''CREATE TABLE IF NOT EXISTS strategic_field_config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category TEXT NOT NULL, subcategory TEXT NOT NULL, keywords TEXT,
+        display_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)''')
+
+    cursor.execute("SELECT COUNT(*) FROM strategic_field_config WHERE category LIKE 'ESG%'")
+    if cursor.fetchone()[0] == 0:
+        esg_fields = [
+            ('ESG-E(환경)', '기후변화·탄소', '["climate change", "carbon", "CO2", "greenhouse gas", "GHG", "decarbonization", "net zero", "carbon neutral"]', 1),
+            ('ESG-E(환경)', '재생에너지', '["renewable energy", "solar energy", "wind energy", "clean energy", "green energy", "sustainable energy"]', 2),
+            ('ESG-E(환경)', '환경오염·정화', '["pollution", "water treatment", "air quality", "soil contamination", "waste management", "remediation"]', 3),
+            ('ESG-E(환경)', '생태계·생물다양성', '["biodiversity", "ecosystem", "conservation", "endangered species", "habitat", "ecological"]', 4),
+            ('ESG-E(환경)', '순환경제·자원', '["circular economy", "recycling", "waste reduction", "resource efficiency", "upcycling", "sustainable materials"]', 5),
+            ('ESG-S(사회)', '공중보건·의료', '["public health", "healthcare", "disease prevention", "epidemiology", "global health", "health equity"]', 1),
+            ('ESG-S(사회)', '교육·인재양성', '["education", "STEM education", "e-learning", "higher education", "workforce development", "human capital"]', 2),
+            ('ESG-S(사회)', '사회적 형평성', '["social equity", "inequality", "diversity", "inclusion", "gender equality", "social justice"]', 3),
+            ('ESG-S(사회)', '식품안전·식량', '["food safety", "food security", "nutrition", "agriculture", "crop", "sustainable food"]', 4),
+            ('ESG-S(사회)', '지역사회·삶의질', '["community development", "quality of life", "well-being", "urban planning", "rural development", "social welfare"]', 5),
+            ('ESG-G(지배구조)', '연구윤리·투명성', '["research ethics", "transparency", "open science", "reproducibility", "data sharing", "peer review"]', 1),
+            ('ESG-G(지배구조)', '산학협력·기술이전', '["industry-academia", "technology transfer", "patent", "commercialization", "startup", "spin-off"]', 2),
+            ('ESG-G(지배구조)', '데이터 거버넌스', '["data governance", "data privacy", "cybersecurity", "information security", "GDPR", "data protection"]', 3),
+            ('ESG-G(지배구조)', 'AI 윤리·규제', '["AI ethics", "responsible AI", "algorithmic fairness", "bias", "regulation", "trustworthy AI"]', 4),
+        ]
+        cursor.executemany('INSERT INTO strategic_field_config (category, subcategory, keywords, display_order) VALUES (?, ?, ?, ?)', esg_fields)
 
     conn.commit()
     conn.close()
@@ -7036,6 +7063,69 @@ def parse_disclosure_file(filepath, original_filename):
     return {'year': metric_year, 'metrics': metrics}
 
 
+def is_authors_file(filename):
+    """All_Authors CSV 파일인지 판별"""
+    import unicodedata
+    normalized = unicodedata.normalize('NFC', filename)
+    return 'All_Authors' in normalized or 'all_authors' in normalized.lower()
+
+
+def import_authors_csv(filepath, conn):
+    """All_Authors CSV를 author 테이블에 import"""
+    df = None
+    for enc in ['utf-8-sig', 'cp949']:
+        try:
+            df = pd.read_csv(filepath, encoding=enc, header=None, skiprows=19, low_memory=False)
+            break
+        except Exception:
+            continue
+    if df is None:
+        return 0
+
+    # 13컬럼 또는 12컬럼
+    if len(df.columns) < 12:
+        return 0
+
+    cursor = conn.cursor()
+    count = 0
+    for _, row in df.iterrows():
+        try:
+            name = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else None
+            if not name:
+                continue
+            scholarly_output = int(float(row.iloc[1])) if pd.notna(row.iloc[1]) else 0
+            most_recent = int(float(row.iloc[2])) if pd.notna(row.iloc[2]) else None
+            citations = int(float(row.iloc[3])) if pd.notna(row.iloc[3]) else 0
+            citations_per_pub = float(row.iloc[4]) if pd.notna(row.iloc[4]) else 0
+            fwci = float(row.iloc[5]) if pd.notna(row.iloc[5]) else 0
+            h_index = int(float(row.iloc[6])) if pd.notna(row.iloc[6]) else 0
+            top_10_pct = int(float(row.iloc[7])) if pd.notna(row.iloc[7]) else 0
+            oldest = int(float(row.iloc[8])) if pd.notna(row.iloc[8]) else None
+            scopus_id = str(int(float(row.iloc[9]))).strip() if pd.notna(row.iloc[9]) else None
+            profile_url = str(row.iloc[10]).strip() if pd.notna(row.iloc[10]) else None
+            affiliation = str(row.iloc[11]).strip() if pd.notna(row.iloc[11]) else None
+            orcid = str(row.iloc[12]).strip() if len(df.columns) > 12 and pd.notna(row.iloc[12]) else None
+
+            if not scopus_id:
+                continue
+
+            cursor.execute("""INSERT OR REPLACE INTO author
+                (scopus_author_id, name, scholarly_output, most_recent_publication,
+                 citations, citations_per_publication, field_weighted_citation_impact,
+                 h_index, output_in_top_10_percentile, oldest_publication,
+                 scopus_author_profile, primary_affiliation, orcid)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (scopus_id, name, scholarly_output, most_recent, citations,
+                 citations_per_pub, fwci, h_index, top_10_pct, oldest,
+                 profile_url, affiliation, orcid))
+            count += 1
+        except Exception:
+            continue
+
+    conn.commit()
+    return count
+
+
 def is_disclosure_file(filename):
     """대학공시자료 파일인지 판별"""
     import unicodedata
@@ -7324,11 +7414,36 @@ def api_snapshot_upload(snapshot_id):
         file.save(filepath)
         file_size = os.path.getsize(filepath)
 
-        # 대학공시자료 파일 감지 (원본 파일명 + 확장자로 판별)
+        # 파일 유형 자동 감지
         original_name = file.filename
         disclosure_result = None
+        authors_count = 0
         is_xlsx = original_name.lower().endswith('.xlsx') or original_name.lower().endswith('.xls')
-        if is_xlsx and is_disclosure_file(original_name):
+
+        # All_Authors CSV 감지
+        if is_authors_file(original_name):
+            data_type = '저자데이터'
+            authors_count = import_authors_csv(filepath, conn)
+            record_count = authors_count
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO snapshot_files (snapshot_id, filename, original_filename, data_type, file_size, record_count)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (snapshot_id, safe_name, file.filename, data_type, file_size, record_count))
+            conn.commit()
+            conn.close()
+            return jsonify({
+                'success': True,
+                'file_id': cursor.lastrowid,
+                'filename': file.filename,
+                'file_size': file_size,
+                'record_count': record_count,
+                'data_type': data_type,
+                'disclosure_metrics': 0
+            })
+
+        # 대학공시자료 감지
+        elif is_xlsx and is_disclosure_file(original_name):
             data_type = '대학공시자료'
             disclosure_result = parse_disclosure_file(filepath, file.filename)
             record_count = len(disclosure_result['metrics']) if disclosure_result else 0

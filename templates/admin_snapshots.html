@@ -293,6 +293,9 @@ function showSnapshotDetail(snapshotId) {
 }
 
 function detectDataType(filename) {
+    // 저자 데이터 감지
+    if (filename.includes('All_Authors') || filename.toLowerCase().includes('all_authors')) return '저자데이터';
+
     // 대학공시자료 감지
     const disclosureKeywords = ['전임교원', '외국인 전임교원', '외국학생', '재적 학생', '기술이전',
         '운영(손익)', '운영계산서', '연구비 수혜', '특허 출원', '취업 현황', '전체 교원',
