@@ -111,31 +111,14 @@
         </div>
 
         <div class="institution-cards">
-            <a href="{{ url_for('select_institution_action', institution='jbnu') }}" class="institution-card jbnu">
+            {% for key, name in institutions.items() %}
+            <a href="{{ url_for('select_institution_action', institution=key) }}" class="institution-card">
                 <div class="icon">
                     <i class="fas fa-university"></i>
                 </div>
-                <h3 data-i18n="institution.jbnu_name">전북대학교</h3>
-                <p>Jeonbuk National University</p>
-                <div class="stats">
-                    <span><i class="fas fa-users"></i> <span data-i18n="institution.researchers">연구자</span> 9,391<span data-i18n="institution.person_unit">명</span></span>
-                    <span><i class="fas fa-file-alt"></i> <span data-i18n="institution.papers">논문</span> 24,566<span data-i18n="institution.count_unit">건</span></span>
-                    <span><i class="fas fa-calendar"></i> 2015-2024</span>
-                </div>
+                <h3>{{ name }}</h3>
             </a>
-
-            <a href="{{ url_for('select_institution_action', institution='korea') }}" class="institution-card korea">
-                <div class="icon">
-                    <i class="fas fa-university"></i>
-                </div>
-                <h3 data-i18n="institution.korea_name">고려대학교</h3>
-                <p>Korea University</p>
-                <div class="stats">
-                    <span><i class="fas fa-users"></i> <span data-i18n="institution.researchers">연구자</span> 26,749<span data-i18n="institution.person_unit">명</span></span>
-                    <span><i class="fas fa-file-alt"></i> <span data-i18n="institution.papers">논문</span> 61,541<span data-i18n="institution.count_unit">건</span></span>
-                    <span><i class="fas fa-calendar"></i> 2015-2024</span>
-                </div>
-            </a>
+            {% endfor %}
         </div>
     </div>
 

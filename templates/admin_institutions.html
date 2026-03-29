@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}기관 관리 - ORAP{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <div>
+            <h2><i class="fas fa-building"></i> 기관 관리</h2>
+            <p class="text-muted">분석 대상 대학(기관)을 추가하고 관리합니다</p>
+        </div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addInstModal">
+            <i class="fas fa-plus"></i> 새 기관 추가
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>기관 코드</th>
+                        <th>기관명</th>
+                        <th>영문 소속명</th>
+                        <th>DB 파일</th>
+                        <th>상태</th>
+                        <th>생성일</th>
+                        <th>관리</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inst in institutions %}
+                    <tr>
+                        <td><code>{{ inst.inst_key }}</code></td>
+                        <td><strong>{{ inst.inst_name }}</strong></td>
+                        <td>{{ inst.affiliation }}</td>
+                        <td><small class="text-muted">{{ inst.db_file }}</small></td>
+                        <td>
+                            {% if inst.is_active %}
+                                <span class="badge bg-success">활성</span>
+                            {% else %}
+                                <span class="badge bg-secondary">비활성</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ inst.created_at[:10] if inst.created_at else '-' }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-{{ 'warning' if inst.is_active else 'success' }}"
+                                    onclick="toggleInstitution('{{ inst.inst_key }}', {{ inst.is_active }})">
+                                <i class="fas fa-{{ 'pause' if inst.is_active else 'play' }}"></i>
+                                {{ '비활성화' if inst.is_active else '활성화' }}
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 새 기관 추가 모달 -->
+<div class="modal fade" id="addInstModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus"></i> 새 기관 추가</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">기관 코드 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="instKey" placeholder="예: snu, kaist, yonsei">
+                    <small class="text-muted">영문 소문자, DB 파일명으로 사용됩니다</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">기관명 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="instName" placeholder="예: 서울대학교">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">영문 소속명 (Scopus 기준) <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="instAffiliation" placeholder="예: Seoul National University">
+                    <small class="text-muted">Scopus 논문의 primary_affiliation과 일치해야 합니다</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="addInstitution()">추가</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function addInstitution() {
+    const inst_key = document.getElementById('instKey').value.trim().toLowerCase();
+    const inst_name = document.getElementById('instName').value.trim();
+    const affiliation = document.getElementById('instAffiliation').value.trim();
+
+    if (!inst_key || !inst_name || !affiliation) {
+        alert('모든 필드를 입력해주세요.');
+        return;
+    }
+
+    if (!/^[a-z][a-z0-9_]*$/.test(inst_key)) {
+        alert('기관 코드는 영문 소문자로 시작하고, 영문/숫자/밑줄만 사용 가능합니다.');
+        return;
+    }
+
+    fetch('/api/institutions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inst_key, inst_name, affiliation })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(`기관 추가 완료: ${inst_name} (${inst_key}.db)`);
+            location.reload();
+        } else {
+            alert('오류: ' + data.error);
+        }
+    });
+}
+
+function toggleInstitution(instKey, currentStatus) {
+    const action = currentStatus ? '비활성화' : '활성화';
+    if (!confirm(`이 기관을 ${action}하시겠습니까?`)) return;
+
+    fetch(`/api/institutions/${instKey}/toggle`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { location.reload(); }
+        else { alert('오류: ' + data.error); }
+    });
+}
+</script>
+{% endblock %}

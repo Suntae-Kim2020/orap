@@ -16,20 +16,167 @@ app.secret_key = 'orap-secret-key-2024-secure'
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 
 # 기관별 데이터베이스 매핑
-INSTITUTION_DB = {
-    'jbnu': 'jbnu.db',
-    'korea': 'korea.db'
+# 기관 정보 (DB에서 로드, 초기값은 하드코딩)
+_DEFAULT_INSTITUTIONS = {
+    'jbnu': {'name': '전북대학교', 'affiliation': 'Jeonbuk National University', 'db_file': 'jbnu.db'},
+    'korea': {'name': '고려대학교', 'affiliation': 'Korea University', 'db_file': 'korea.db'},
 }
 
-INSTITUTION_NAMES = {
-    'jbnu': '전북대학교',
-    'korea': '고려대학교'
-}
+def _load_institutions():
+    """institutions 테이블에서 기관 정보 로드"""
+    inst_db, inst_names, inst_affiliations = {}, {}, {}
+    try:
+        conn = sqlite3.connect(USERS_DB)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='institutions'")
+        if cursor.fetchone():
+            cursor.execute("SELECT inst_key, inst_name, affiliation, db_file FROM institutions WHERE is_active = 1")
+            for row in cursor.fetchall():
+                inst_db[row[0]] = row[3]
+                inst_names[row[0]] = row[1]
+                inst_affiliations[row[0]] = row[2]
+        conn.close()
+    except Exception:
+        pass
+    # DB에 없으면 기본값 사용
+    if not inst_db:
+        for key, info in _DEFAULT_INSTITUTIONS.items():
+            inst_db[key] = info['db_file']
+            inst_names[key] = info['name']
+            inst_affiliations[key] = info['affiliation']
+    return inst_db, inst_names, inst_affiliations
 
-INSTITUTION_AFFILIATIONS = {
-    'jbnu': 'Jeonbuk National University',
-    'korea': 'Korea University'
-}
+INSTITUTION_DB, INSTITUTION_NAMES, INSTITUTION_AFFILIATIONS = _load_institutions()
+
+def reload_institutions():
+    """기관 정보 다시 로드 (추가/삭제 후)"""
+    global INSTITUTION_DB, INSTITUTION_NAMES, INSTITUTION_AFFILIATIONS
+    INSTITUTION_DB, INSTITUTION_NAMES, INSTITUTION_AFFILIATIONS = _load_institutions()
+
+def init_institution_db(db_file):
+    """새 기관 DB 파일 생성 및 테이블 초기화"""
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(app_dir, db_file)
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # publication 테이블
+    cursor.execute('''CREATE TABLE IF NOT EXISTS publication (
+        record_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT, authors TEXT, number_of_authors TEXT, scopus_author_ids TEXT,
+        year TEXT, full_date TEXT, scopus_source_title TEXT, volume TEXT, issue TEXT, pages TEXT,
+        article_number TEXT, issn TEXT, source_id TEXT, source_type TEXT, language TEXT,
+        publisher TEXT, institution_ids TEXT, sector TEXT,
+        snip_publication_year TEXT, snip_percentile_publication_year TEXT,
+        citescore_publication_year TEXT, citescore_percentile_publication_year TEXT,
+        sjr_publication_year TEXT, sjr_percentile_publication_year TEXT,
+        field_weighted_view_impact TEXT, views TEXT, citations TEXT,
+        field_weighted_citation_impact TEXT, field_citation_average TEXT,
+        outputs_in_top_citation_percentiles_per_percentile TEXT,
+        field_weighted_outputs_in_top_citation_percentiles_per_percentile TEXT,
+        main_patent_families TEXT, policy_citations TEXT, reference TEXT, abstract TEXT,
+        doi TEXT, publication_type TEXT, open_access TEXT, eid TEXT, pubmed_id TEXT,
+        institutions TEXT, number_of_institutions TEXT, scopus_affiliation_ids TEXT,
+        scopus_affiliation_names TEXT, scopus_author_id_first_author TEXT,
+        scopus_author_id_last_author TEXT, scopus_author_id_corresponding_author TEXT,
+        scopus_author_id_single_author TEXT, country_region TEXT,
+        number_of_countries_regions TEXT,
+        all_science_journal_classification_asjc_code TEXT,
+        all_science_journal_classification_asjc_field_name TEXT,
+        quacquarelli_symonds_qs_subject_area_code TEXT,
+        quacquarelli_symonds_qs_subject_area_field_name TEXT,
+        quacquarelli_symonds_qs_subject_code TEXT,
+        quacquarelli_symonds_qs_subject_field_name TEXT,
+        times_higher_education_the_code TEXT, times_higher_education_the_field_name TEXT,
+        anzsrc_for_2020_parent_code TEXT, anzsrc_for_2020_parent_name TEXT,
+        anzsrc_for_2020_code TEXT, anzsrc_for_2020_name TEXT,
+        sustainable_development_goals_2025 TEXT,
+        topic_cluster_name TEXT, topic_cluster_number TEXT, topic_cluster_prominence_percentile TEXT,
+        topic_name TEXT, topic_number TEXT, topic_prominence_percentile TEXT,
+        publication_link_to_topic_strength TEXT,
+        is_paper INTEGER DEFAULT 0, is_1 INTEGER DEFAULT 0, is_10 INTEGER DEFAULT 0,
+        is_25 INTEGER DEFAULT 0, is_SDG INTEGER DEFAULT 0, is_international INTEGER DEFAULT 0,
+        is_patent_cited INTEGER DEFAULT 0, is_policy_cited INTEGER DEFAULT 0,
+        is_coauthored INTEGER DEFAULT 0, is_academic_corporate INTEGER DEFAULT 0,
+        j_point REAL DEFAULT 0, a_point REAL DEFAULT 0, s_point REAL DEFAULT 0, t_point REAL DEFAULT 0
+    )''')
+
+    # author 테이블
+    cursor.execute('''CREATE TABLE IF NOT EXISTS author (
+        author_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scopus_author_id TEXT UNIQUE, name TEXT, scholarly_output INTEGER,
+        most_recent_publication INTEGER, citations INTEGER, citations_per_publication REAL,
+        field_weighted_citation_impact REAL, h_index INTEGER, output_in_top_10_percentile INTEGER,
+        oldest_publication INTEGER, scopus_author_profile TEXT, primary_affiliation TEXT,
+        orcid TEXT, created_at TEXT, updated_at TEXT
+    )''')
+
+    # researcher_score 테이블
+    cursor.execute('''CREATE TABLE IF NOT EXISTS researcher_score (
+        score_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        author_id INTEGER, scopus_author_id TEXT, name TEXT, scholarly_output INTEGER,
+        citations INTEGER, h_index INTEGER, profile_url TEXT,
+        fwci_mean REAL, fwci_median REAL,
+        score_fwci_mean REAL, score_fwci_median REAL,
+        score_top_cited REAL, score_top_journal REAL, score_intl_collab REAL,
+        score_core_mean REAL, score_core_median REAL,
+        score_sdg REAL, score_oa REAL, score_prominence REAL, score_secondary REAL,
+        score_total_mean REAL, score_total_median REAL,
+        top_10_pct_count INTEGER, intl_collab_count INTEGER, intl_collab_fwci REAL,
+        top_journal_pct REAL, has_sdg INTEGER, has_oa INTEGER, avg_topic_prominence REAL
+    )''')
+
+    # 기타 필수 테이블
+    cursor.execute('''CREATE TABLE IF NOT EXISTS data_snapshot (
+        snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_name TEXT NOT NULL, description TEXT,
+        collection_date TEXT NOT NULL, year_from INTEGER NOT NULL, year_to INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft', applied_at TEXT, applied_by TEXT,
+        total_publications INTEGER DEFAULT 0, total_authors INTEGER DEFAULT 0,
+        created_at TEXT, created_by TEXT)''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS snapshot_files (
+        file_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_id INTEGER NOT NULL, filename TEXT NOT NULL, original_filename TEXT NOT NULL,
+        data_type TEXT NOT NULL DEFAULT 'publication', file_size INTEGER DEFAULT 0,
+        record_count INTEGER DEFAULT 0, upload_date TEXT,
+        FOREIGN KEY (snapshot_id) REFERENCES data_snapshot(snapshot_id))''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS institution_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        metric_year INTEGER NOT NULL, metric_key TEXT NOT NULL,
+        metric_value REAL, metric_unit TEXT,
+        source TEXT DEFAULT '대학공시',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(metric_year, metric_key))''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS scoring_presets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, description TEXT,
+        is_system INTEGER DEFAULT 0, is_default INTEGER DEFAULT 0,
+        total_core INTEGER DEFAULT 80, total_supplementary INTEGER DEFAULT 10,
+        pct_fwci INTEGER DEFAULT 25, pct_top10 INTEGER DEFAULT 25,
+        pct_top_journal INTEGER DEFAULT 25, pct_intl_collab INTEGER DEFAULT 25,
+        pct_sdg INTEGER DEFAULT 30, pct_oa INTEGER DEFAULT 30, pct_topic INTEGER DEFAULT 40,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+
+    # 시스템 프리셋
+    cursor.execute('SELECT COUNT(*) FROM scoring_presets WHERE is_system = 1')
+    if cursor.fetchone()[0] == 0:
+        presets = [
+            ('기본 설정', '균형 잡힌 기본 가중치', 1, 1, 80, 10, 25, 25, 25, 25, 30, 30, 40),
+            ('인용 중심', 'FWCI와 Top 10% 강조', 1, 0, 80, 10, 35, 35, 15, 15, 30, 30, 40),
+            ('국제협력 중심', '국제공동연구 강조', 1, 0, 80, 10, 20, 20, 20, 40, 30, 30, 40),
+            ('품질 중심', '상위저널 게재 강조', 1, 0, 80, 10, 30, 20, 35, 15, 30, 30, 40),
+        ]
+        cursor.executemany('''INSERT INTO scoring_presets
+            (name, description, is_system, is_default, total_core, total_supplementary,
+             pct_fwci, pct_top10, pct_top_journal, pct_intl_collab, pct_sdg, pct_oa, pct_topic)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', presets)
+
+    conn.commit()
+    conn.close()
+    return db_path
 
 # 사용자 데이터베이스 초기화
 USERS_DB = 'users.db'
@@ -53,6 +200,25 @@ def init_users_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # institutions 테이블 생성
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS institutions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            inst_key TEXT UNIQUE NOT NULL,
+            inst_name TEXT NOT NULL,
+            affiliation TEXT NOT NULL,
+            db_file TEXT NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    # 기본 기관 삽입
+    for key, info in _DEFAULT_INSTITUTIONS.items():
+        cursor.execute('SELECT id FROM institutions WHERE inst_key = ?', (key,))
+        if not cursor.fetchone():
+            cursor.execute('INSERT INTO institutions (inst_key, inst_name, affiliation, db_file) VALUES (?, ?, ?, ?)',
+                           (key, info['name'], info['affiliation'], info['db_file']))
 
     # 초기 사용자 추가 (존재하지 않는 경우만)
     initial_users = [
@@ -672,7 +838,7 @@ def select_institution():
     """기관 선택 페이지"""
     if not session.get('authenticated'):
         return redirect(url_for('login'))
-    return render_template('select_institution.html')
+    return render_template('select_institution.html', institutions=INSTITUTION_NAMES)
 
 
 @app.route('/select_institution/<institution>')
@@ -6810,7 +6976,9 @@ def parse_disclosure_file(filepath, original_filename):
             val1 = df.iloc[i, 1] if len(df.columns) > 1 and pd.notna(df.iloc[i, 1]) else None
             if '산학협력수익' in val0 and val1 is not None:
                 metrics['industry_revenue'] = {'value': int(float(str(val1).replace(',', ''))), 'unit': '원'}
-            if '운영수익총계' in val0 and val1 is not None:
+            if ('운영수익총계' in val0 or '수익합계' in val0) and val1 is not None and 'total_revenue' not in metrics:
+                metrics['total_revenue'] = {'value': int(float(str(val1).replace(',', ''))), 'unit': '원'}
+            if val0 == '운영수익' and val1 is not None and 'total_revenue' not in metrics:
                 metrics['total_revenue'] = {'value': int(float(str(val1).replace(',', ''))), 'unit': '원'}
 
     elif '연구비 수혜 실적' in fname:
@@ -6932,6 +7100,79 @@ def detect_data_type_from_file(filepath, original_filename=''):
         pass
 
     return '전체논문데이터'
+
+
+# ========================================
+# 기관 관리
+# ========================================
+
+@app.route('/admin/institutions')
+@super_admin_required
+def admin_institutions():
+    """기관 관리 페이지"""
+    conn = sqlite3.connect(USERS_DB)
+    conn.row_factory = sqlite3.Row
+    institutions = conn.execute("SELECT * FROM institutions ORDER BY id").fetchall()
+    conn.close()
+    return render_template('admin_institutions.html', institutions=[dict(i) for i in institutions])
+
+
+@app.route('/api/institutions', methods=['POST'])
+@super_admin_required
+def api_add_institution():
+    """새 기관 추가"""
+    try:
+        data = request.get_json()
+        inst_key = data.get('inst_key', '').strip().lower()
+        inst_name = data.get('inst_name', '').strip()
+        affiliation = data.get('affiliation', '').strip()
+
+        if not inst_key or not inst_name or not affiliation:
+            return jsonify({'error': '기관 코드, 기관명, 영문 소속명은 필수입니다.'}), 400
+
+        # 중복 체크
+        conn = sqlite3.connect(USERS_DB)
+        if conn.execute("SELECT id FROM institutions WHERE inst_key = ?", (inst_key,)).fetchone():
+            conn.close()
+            return jsonify({'error': '이미 존재하는 기관 코드입니다.'}), 400
+
+        db_file = f'{inst_key}.db'
+        conn.execute("INSERT INTO institutions (inst_key, inst_name, affiliation, db_file) VALUES (?, ?, ?, ?)",
+                     (inst_key, inst_name, affiliation, db_file))
+        conn.commit()
+        conn.close()
+
+        # DB 파일 생성 + 테이블 초기화
+        init_institution_db(db_file)
+
+        # 기관 정보 다시 로드
+        reload_institutions()
+
+        return jsonify({'success': True, 'inst_key': inst_key, 'db_file': db_file})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/institutions/<inst_key>/toggle', methods=['POST'])
+@super_admin_required
+def api_toggle_institution(inst_key):
+    """기관 활성/비활성 토글"""
+    try:
+        conn = sqlite3.connect(USERS_DB)
+        inst = conn.execute("SELECT * FROM institutions WHERE inst_key = ?", (inst_key,)).fetchone()
+        if not inst:
+            conn.close()
+            return jsonify({'error': 'Institution not found'}), 404
+
+        new_status = 0 if inst[5] == 1 else 1  # is_active 토글
+        conn.execute("UPDATE institutions SET is_active = ? WHERE inst_key = ?", (new_status, inst_key))
+        conn.commit()
+        conn.close()
+
+        reload_institutions()
+        return jsonify({'success': True, 'is_active': new_status})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 def ensure_snapshot_tables(conn):
