@@ -5984,7 +5984,8 @@ def api_strategic_field_analysis():
                 researcher_stats[aid]['fwci_sum'] += row['avg_fwci']
                 researcher_stats[aid]['fwci_count'] += 1
 
-    # 전북대 소속 연구자만 필터링 (author 테이블에 있는 연구자)
+    # 해당 기관 소속 연구자만 필터링
+    affiliation = get_institution_affiliation()
     all_author_ids = list(researcher_stats.keys())
     jbnu_author_ids = set()
     if all_author_ids:
@@ -5992,7 +5993,8 @@ def api_strategic_field_analysis():
         for i in range(0, len(all_author_ids), 1000):
             batch = all_author_ids[i:i+1000]
             placeholders = ','.join(['?'] * len(batch))
-            cursor.execute(f"SELECT scopus_author_id FROM author WHERE scopus_author_id IN ({placeholders})", batch)
+            cursor.execute(f"SELECT scopus_author_id FROM author WHERE scopus_author_id IN ({placeholders}) AND primary_affiliation LIKE ?",
+                           batch + [f'%{affiliation}%'])
             jbnu_author_ids.update(r['scopus_author_id'] for r in cursor.fetchall())
 
     # 전북대 소속 연구자만 남기기
@@ -7195,6 +7197,90 @@ def detect_data_type_from_file(filepath, original_filename=''):
 # ========================================
 # 기관 관리
 # ========================================
+
+@app.route('/admin/research_fields')
+@admin_required
+def admin_research_fields():
+    """연구분야 관리 페이지"""
+    log_activity('페이지 조회', '연구분야 관리')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT category FROM strategic_field_config ORDER BY category")
+    categories = [r['category'] for r in cursor.fetchall()]
+
+    # 카테고리별 서브카테고리 수
+    cat_info = []
+    for cat in categories:
+        cursor.execute("SELECT COUNT(*) FROM strategic_field_config WHERE category = ?", (cat,))
+        count = cursor.fetchone()[0]
+        is_esg = cat.startswith('ESG')
+        cat_info.append({'category': cat, 'subcategory_count': count, 'is_esg': is_esg})
+
+    conn.close()
+    return render_template('admin_research_fields.html', categories=cat_info,
+                           institution=session.get('institution', 'jbnu'),
+                           institution_name=session.get('institution_name', ''))
+
+
+@app.route('/api/research_field_category', methods=['POST'])
+@admin_required
+def api_add_research_field_category():
+    """연구분야 대분류 카테고리 추가"""
+    try:
+        data = request.get_json()
+        category = data.get('category', '').strip()
+        subcategories = data.get('subcategories', [])
+
+        if not category:
+            return jsonify({'error': '카테고리명은 필수입니다.'}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 중복 체크
+        cursor.execute("SELECT COUNT(*) FROM strategic_field_config WHERE category = ?", (category,))
+        if cursor.fetchone()[0] > 0:
+            conn.close()
+            return jsonify({'error': '이미 존재하는 카테고리입니다.'}), 400
+
+        # 서브카테고리 추가
+        if subcategories:
+            for i, sub in enumerate(subcategories):
+                sub_name = sub.get('name', '').strip()
+                keywords = json.dumps(sub.get('keywords', []))
+                if sub_name:
+                    cursor.execute("""INSERT INTO strategic_field_config (category, subcategory, keywords, display_order)
+                                      VALUES (?, ?, ?, ?)""", (category, sub_name, keywords, i + 1))
+        else:
+            # 빈 카테고리 (서브카테고리 없이 생성)
+            cursor.execute("""INSERT INTO strategic_field_config (category, subcategory, keywords, display_order)
+                              VALUES (?, ?, '[]', 1)""", (category, '기본'))
+
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/research_field_category/<path:category>', methods=['DELETE'])
+@admin_required
+def api_delete_research_field_category(category):
+    """연구분야 대분류 카테고리 삭제 (ESG 보호)"""
+    try:
+        if category.startswith('ESG'):
+            return jsonify({'error': 'ESG 카테고리는 삭제할 수 없습니다.'}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM strategic_field_config WHERE category = ?", (category,))
+        deleted = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'deleted': deleted})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/admin/institutions')
 @super_admin_required

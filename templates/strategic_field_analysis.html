@@ -158,8 +158,8 @@ function buildCategoryTabs(categories) {
     let isFirst = true;
     let hasStrategic = false;
 
-    categories.forEach(cat => {
-        const tabId = categoryMap[cat] || cat.toLowerCase().replace(/[^a-z]/g, '');
+    categories.forEach((cat, idx) => {
+        const tabId = categoryMap[cat] || 'cat_' + idx;
         if (!categoryMap[cat]) categoryMap[cat] = tabId;
         const iconInfo = CATEGORY_ICONS[cat] || { icon: 'fa-folder', color: '' };
         const isESG = cat.startsWith('ESG');

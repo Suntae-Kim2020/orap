@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}연구분야 관리 - ORAP{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <div>
+            <h2><i class="fas fa-tags"></i> 연구분야 관리</h2>
+            <p class="text-muted">{{ institution_name }} - 연구분야분석 탭에 표시되는 대분류 카테고리를 관리합니다</p>
+        </div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+            <i class="fas fa-plus"></i> 연구분야 추가
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>연구분야 (탭)</th>
+                        <th>하위 분야 수</th>
+                        <th>유형</th>
+                        <th>관리</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cat in categories %}
+                    <tr>
+                        <td>
+                            <strong>{{ cat.category }}</strong>
+                        </td>
+                        <td>{{ cat.subcategory_count }}개</td>
+                        <td>
+                            {% if cat.is_esg %}
+                                <span class="badge bg-success">ESG (공통)</span>
+                            {% else %}
+                                <span class="badge bg-primary">전략분야</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if cat.is_esg %}
+                                <span class="text-muted small">삭제 불가</span>
+                            {% else %}
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteCategory('{{ cat.category }}')">
+                                    <i class="fas fa-trash"></i> 삭제
+                                </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not categories %}
+                    <tr><td colspan="4" class="text-center text-muted py-4">등록된 연구분야가 없습니다.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="alert alert-info mt-4">
+    <i class="fas fa-info-circle"></i>
+    <strong>안내:</strong> 여기서 대분류 카테고리(탭)를 추가/삭제합니다.
+    하위 분야와 키워드는 <a href="{{ url_for('strategic_field_analysis') }}">연구분야분석</a> 페이지의 "키워드 설정"에서 관리합니다.
+    ESG 카테고리는 모든 기관 공통으로 삭제할 수 없습니다.
+</div>
+
+<!-- 연구분야 추가 모달 -->
+<div class="modal fade" id="addCategoryModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus"></i> 연구분야 추가</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">연구분야명 (탭에 표시) <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="categoryName" placeholder="예: 반도체, AI·빅데이터, 신소재">
+                </div>
+                <div class="alert alert-info small mb-0">
+                    <i class="fas fa-info-circle"></i> 하위 분야와 키워드는 탭 추가 후 <strong>연구분야분석</strong> 페이지에서 설정합니다.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="createCategory()">추가</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function createCategory() {
+    const category = document.getElementById('categoryName').value.trim();
+    if (!category) { alert('연구분야명을 입력해주세요.'); return; }
+
+    fetch('/api/research_field_category', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category, subcategories: [] })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(`연구분야 "${category}" 추가 완료`);
+            location.reload();
+        } else {
+            alert('오류: ' + data.error);
+        }
+    });
+}
+
+function deleteCategory(category) {
+    if (!confirm(`"${category}" 연구분야를 삭제하시겠습니까?\n\n하위 분야와 키워드도 모두 삭제됩니다.`)) return;
+
+    fetch(`/api/research_field_category/${encodeURIComponent(category)}`, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { location.reload(); }
+        else { alert('오류: ' + data.error); }
+    });
+}
+</script>
+{% endblock %}
