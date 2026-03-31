@@ -5594,6 +5594,127 @@ def api_ai_analysis():
 
         prompt = tab_prompts.get(tab, tab_prompts['QS'])
 
+        # ORAP 시스템 기능 + 실제 데이터 수집
+        orap_data = ''
+        try:
+            inst_key = None
+            for k, v in INSTITUTION_NAMES.items():
+                if v == current_inst:
+                    inst_key = k
+                    break
+            if inst_key:
+                orap_conn = get_db_connection(institution=inst_key)
+                orap_cur = orap_conn.cursor()
+
+                # 연구자 통계
+                orap_cur.execute("SELECT COUNT(*) FROM author WHERE primary_affiliation LIKE ?", (f'%{get_institution_affiliation(institution=inst_key)}%',))
+                total_authors = orap_cur.fetchone()[0]
+
+                orap_cur.execute("SELECT COUNT(*) FROM researcher_score WHERE scholarly_output >= 10")
+                scored_authors = orap_cur.fetchone()[0]
+
+                # Top 연구자 (FWCI 상위 5명)
+                orap_cur.execute("""SELECT name, scholarly_output, fwci_median, h_index, score_total_median
+                    FROM researcher_score WHERE scholarly_output >= 10
+                    ORDER BY fwci_median DESC LIMIT 5""")
+                top_fwci = orap_cur.fetchall()
+
+                # 국제협력 활발 연구자
+                orap_cur.execute("""SELECT name, intl_collab_count, intl_collab_fwci, scholarly_output
+                    FROM researcher_score WHERE intl_collab_count >= 5 AND scholarly_output >= 10
+                    ORDER BY intl_collab_count DESC LIMIT 5""")
+                top_intl = orap_cur.fetchall()
+
+                # Top 1% 논문 보유 연구자 수
+                orap_cur.execute("""SELECT COUNT(DISTINCT scopus_author_ids) FROM publication
+                    WHERE is_1 = 1 AND scopus_author_ids IS NOT NULL""")
+                top1_authors = orap_cur.fetchone()[0]
+
+                # SDG 논문 현황
+                orap_cur.execute("SELECT COUNT(*) FROM publication WHERE is_SDG = 1")
+                sdg_pubs = orap_cur.fetchone()[0]
+
+                # 산학협력 논문
+                orap_cur.execute("SELECT COUNT(*) FROM publication WHERE is_academic_corporate = 1")
+                corp_pubs = orap_cur.fetchone()[0]
+
+                # 특허/정책 인용
+                orap_cur.execute("SELECT COUNT(*) FROM publication WHERE is_patent_cited = 1")
+                patent_pubs = orap_cur.fetchone()[0]
+                orap_cur.execute("SELECT COUNT(*) FROM publication WHERE is_policy_cited = 1")
+                policy_pubs = orap_cur.fetchone()[0]
+
+                # 전략 연구분야 현황
+                field_info = ''
+                try:
+                    orap_cur.execute("SELECT DISTINCT category FROM strategic_field_config ORDER BY category")
+                    fields = [r[0] for r in orap_cur.fetchall()]
+                    field_info = ', '.join(fields)
+                except Exception:
+                    pass
+
+                orap_conn.close()
+
+                # 데이터 텍스트 구성
+                orap_data = f"""
+
+[{current_inst} ORAP 시스템 현황 데이터]
+- 등록 연구자: {total_authors}명 (점수 산출 대상: {scored_authors}명)
+- Top 1% 피인용 논문 보유 연구자: {top1_authors}명
+- SDG 관련 논문: {sdg_pubs}편
+- 산학협력 논문: {corp_pubs}편
+- 특허 인용 논문: {patent_pubs}편, 정책 인용 논문: {policy_pubs}편
+- 분석 가능 연구분야: {field_info}
+
+[FWCI 상위 연구자 TOP 5]
+"""
+                for r in top_fwci:
+                    orap_data += f"  - {r['name']}: 논문 {r['scholarly_output']}편, FWCI {r['fwci_median']:.2f}, h-index {r['h_index']}, 종합점수 {r['score_total_median']:.1f}\n"
+
+                orap_data += "\n[국제협력 활발 연구자 TOP 5]\n"
+                for r in top_intl:
+                    orap_data += f"  - {r['name']}: 국제협력 {r['intl_collab_count']}편, 국제협력FWCI {r['intl_collab_fwci']:.2f}, 총 논문 {r['scholarly_output']}편\n"
+
+        except Exception:
+            pass
+
+        prompt += f"""
+
+[참고: ORAP 시스템에서 활용 가능한 기능]
+{current_inst}는 ORAP(Office of Research Affairs Platform) 시스템을 운영하고 있습니다.
+전략 제안 시 아래 기능을 활용한 구체적 실행 방안도 함께 제시해주세요.
+
+1. **연구자 랭킹** (메뉴: 연구자 랭킹)
+   - 점수 기반: FWCI(35점), Top10% 피인용(20점), 상위저널(15점), 국제협력FWCI(10점), SDG(3점), OA(2점), Prominence(5점) = 90점 만점
+   - 계량서지학: h-index, g-index, i10-index, m-index(경력 보정), hg-index(기하평균)
+   → 활용법: "연구자 랭킹 > 계량서지학 탭에서 m-index 상위 신진 연구자를 식별하여 집중 지원"
+
+2. **분석 모듈** (메뉴: 분석 모듈)
+   - 잠재연구자 발굴: 최근 3년 성장률 높은 연구자, 고FWCI·저생산성 연구자, 주목받는 토픽 연구자
+   - 공동연구 분석: 국제협력 없는 고성과자(지원 대상), 협력 활발+고인용(롤모델/멘토), 분야별 협력 허브
+   - 연구궤적: 3년 연속 성장/하락 연구자, 조기경보 대상
+   → 활용법: "분석 모듈 > 잠재연구자에서 성장률 상위 연구자를 선별, 연구비 우선 지원"
+
+3. **연구 전략** (메뉴: 연구 전략)
+   - 성장궤적: 연도별 논문 증가 추세, 경력 대비 생산성
+   - 사회적 기여: 연구자별 SDG 논문 편수/비율, OA 논문 편수/비율
+   - 전략 포트폴리오: 산학협력(sector=Corporate) 논문 현황
+   → 활용법: "연구 전략 > 사회적 기여에서 SDG 논문 비율이 높은 연구자를 QS 지속가능성 지표 개선에 활용"
+
+4. **학문분야분석** (메뉴: 학문분야분석)
+   - ASJC 분야별 논문수, FWCI, 국제협력 비율, Top10% 비율, 연도별 추이
+   → 활용법: "학문분야분석에서 FWCI가 세계 평균(1.0) 이상인 강점 분야를 식별하여 집중 육성"
+
+5. **연구분야분석** (메뉴: 연구분야분석)
+   - 전략분야(에너지, 반도체 등) + ESG(환경/사회/지배구조) 키워드 기반 논문 분석
+   - 분야별 연구자 랭킹, 연구 전략, 기관 간 공동연구자 매칭
+   → 활용법: "연구분야분석 > 공동연구자 탭에서 벤치마킹 대학과의 공동연구 가능 연구자를 식별"
+
+{orap_data}
+
+위 데이터와 기능을 기반으로 "어떤 메뉴에서 어떤 분석을 수행하여 어떤 연구자/분야를 식별하고, 그 결과를 활용해 구체적으로 무엇을 실행해야 순위가 향상되는지" 단계별로 제안해주세요.
+"""
+
         from openai import OpenAI
         client = OpenAI(api_key=os.getenv('OPENAI_API_KEY', ''))
 
@@ -5608,11 +5729,59 @@ def api_ai_analysis():
         )
 
         analysis = response.choices[0].message.content
+
+        # DB에 캐시 저장
+        try:
+            inst_key = None
+            bench_key = None
+            for k, v in INSTITUTION_NAMES.items():
+                if v == current_inst:
+                    inst_key = k
+                if compare_insts and v == compare_insts[0]:
+                    bench_key = k
+            if inst_key and bench_key:
+                cache_conn = sqlite3.connect('users.db')
+                cache_conn.execute("""CREATE TABLE IF NOT EXISTS ai_analysis_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    inst_key TEXT NOT NULL, bench_inst_key TEXT NOT NULL,
+                    ranking_system TEXT NOT NULL, analysis_text TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(inst_key, bench_inst_key, ranking_system))""")
+                cache_conn.execute("""INSERT OR REPLACE INTO ai_analysis_cache
+                    (inst_key, bench_inst_key, ranking_system, analysis_text, created_at)
+                    VALUES (?, ?, ?, ?, datetime('now'))""",
+                    (inst_key, bench_key, tab, analysis))
+                cache_conn.commit()
+                cache_conn.close()
+        except Exception:
+            pass
+
         return jsonify({'success': True, 'analysis': analysis, 'tab': tab})
 
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
+@app.route('/api/ai_analysis_cache')
+@login_required
+def api_ai_analysis_cache():
+    """AI 분석 캐시 조회"""
+    inst_key = request.args.get('inst_key', '')
+    bench_key = request.args.get('bench_key', '')
+    tab = request.args.get('tab', '')
+    try:
+        conn = sqlite3.connect('users.db')
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("""SELECT analysis_text, created_at FROM ai_analysis_cache
+            WHERE inst_key = ? AND bench_inst_key = ? AND ranking_system = ?""",
+            (inst_key, bench_key, tab)).fetchone()
+        conn.close()
+        if row:
+            return jsonify({'success': True, 'analysis': row['analysis_text'], 'created_at': row['created_at']})
+        return jsonify({'success': False})
+    except Exception:
+        return jsonify({'success': False})
 
 
 @app.route('/api/world_ranking_metrics')
