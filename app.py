@@ -3,6 +3,18 @@ from functools import wraps
 import sqlite3
 import pandas as pd
 import os
+
+# .env 파일 로드
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+if os.path.exists(env_path):
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, val = line.split('=', 1)
+                key = key.replace('export ', '').strip()
+                val = val.strip().strip('"').strip("'")
+                os.environ[key] = val
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import csv
@@ -5434,7 +5446,7 @@ def api_researcher_scores_custom():
 def strategic_field_analysis():
     """연구분야분석 페이지"""
     log_activity('페이지 조회', '연구분야분석')
-    return render_template('strategic_field_analysis.html')
+    return render_template('strategic_field_analysis.html', institutions=INSTITUTION_NAMES)
 
 
 @app.route('/world_ranking')
@@ -5445,6 +5457,162 @@ def world_ranking():
     return render_template('world_ranking.html',
                            institutions=INSTITUTION_NAMES,
                            current_institution=session.get('institution', 'jbnu'))
+
+
+@app.route('/api/ai_analysis', methods=['POST'])
+@login_required
+def api_ai_analysis():
+    """AI 분석 API - OpenAI로 대시보드 데이터 분석"""
+    try:
+        data = request.get_json()
+        password = data.get('password', '')
+        if password != 'kst1234!':
+            return jsonify({'error': '비밀번호가 올바르지 않습니다.'}), 403
+
+        tab = data.get('tab', 'QS')
+        table_data = data.get('table_data', '')
+        institution_name = data.get('institution_name', '')
+        current_inst = data.get('current_institution', '')
+        compare_insts = data.get('compare_institutions', [])
+
+        if not table_data:
+            return jsonify({'error': '분석할 데이터가 없습니다.'}), 400
+
+        # 비교 대상 안내
+        ranking_history = data.get('ranking_history', '')
+        compare_context = ''
+        if compare_insts:
+            benchmark = ', '.join(compare_insts)
+            compare_context = f"""
+이 데이터는 {current_inst}(분석 대상)와 벤치마킹 대학({benchmark})의 비교 데이터입니다.
+{current_inst}의 관점에서 분석하고, 벤치마킹 대학 대비 뒤처지는 지표를 중심으로 개선 전략을 제시해주세요.
+각 지표별로 {current_inst}가 벤치마킹 대학보다 얼마나 차이가 나는지 구체적 수치로 비교해주세요.
+"""
+        else:
+            compare_context = f"이 데이터는 {current_inst}의 지표입니다.\n"
+
+        # 순위 이력 자동 조회 (DB에서)
+        ranking_context = ''
+        try:
+            all_insts = [current_inst] + compare_insts
+            inst_keys = []
+            for name in all_insts:
+                for k, v in INSTITUTION_NAMES.items():
+                    if v == name:
+                        inst_keys.append(k)
+                        break
+
+            ranking_conn = sqlite3.connect('users.db')
+            ranking_conn.row_factory = sqlite3.Row
+            ranking_lines = []
+            for inst_key in inst_keys:
+                inst_name = INSTITUTION_NAMES.get(inst_key, inst_key)
+                rows = ranking_conn.execute(
+                    "SELECT ranking_year, ranking_value FROM institution_rankings WHERE inst_key = ? AND ranking_system = ? ORDER BY ranking_year DESC LIMIT 3",
+                    (inst_key, tab)).fetchall()
+                if rows:
+                    years_str = ', '.join([f"{r['ranking_year']}년 {r['ranking_value']}위" for r in rows])
+                    ranking_lines.append(f"{inst_name}: {years_str}")
+            ranking_conn.close()
+
+            if ranking_lines:
+                ranking_context = f"""
+[최근 대학 순위 ({tab} 기준, 관리자 입력)]
+{chr(10).join(ranking_lines)}
+
+위 순위는 관리자가 입력한 정확한 데이터입니다. 이 순위를 기준으로 분석하세요.
+순위 변동 추이를 반드시 고려하여:
+- 순위가 하락한 경우: 하락 원인을 분석하고 반등 전략 제시
+- 순위가 정체된 경우: 돌파구를 위한 전략 제시
+- 순위가 상승한 경우: 상승 모멘텀을 유지·강화할 전략 제시
+현재 순위에서 목표 순위까지 단계별(예: 500위→400위→300위) 달성 전략을 구체적으로 제시해주세요.
+"""
+        except Exception:
+            pass
+
+        # 탭별 프롬프트
+        tab_prompts = {
+            'QS': f"""당신은 QS World University Rankings 전문 컨설턴트입니다.
+{compare_context}{ranking_context}
+아래는 QS 순위 관련 지표 데이터입니다.
+
+{table_data}
+
+{current_inst}의 QS 순위 향상을 위해 다음을 분석해주세요:
+
+1. **벤치마킹 비교 분석**: 각 지표별 벤치마킹 대학과의 격차 (수치 비교)
+2. **시급한 개선 과제**: 벤치마킹 대학 대비 가장 뒤처지는 지표 TOP 3과 원인 분석
+3. **지표별 개선 전략**: 논문당 인용수(20%), 교수/학생 비율(10%), 국제 교수(5%), 국제 학생(5%), 국제연구네트워크(5%), 취업성과(5%), 지속가능성(5%) 각각에 대한 실행 방안
+4. **단기 액션플랜** (1-2년): 바로 실행 가능한 과제
+5. **중장기 로드맵** (3-5년): 구조적 변화가 필요한 과제
+6. **기대 효과**: 개선 시 예상 순위 변동 시나리오
+
+한국어로 작성하고, 구체적 수치를 근거로 제시해주세요. 표 형식을 활용해주세요.""",
+
+            'THE': f"""당신은 THE World University Rankings 전문 컨설턴트입니다.
+{compare_context}{ranking_context}
+아래는 THE 순위 관련 지표 데이터입니다.
+
+{table_data}
+
+{current_inst}의 THE 순위 향상을 위해 다음을 분석해주세요:
+
+1. **벤치마킹 비교 분석**: 각 지표별 벤치마킹 대학과의 격차 (수치 비교)
+2. **시급한 개선 과제**: 벤치마킹 대학 대비 가장 뒤처지는 지표 TOP 3과 원인 분석
+3. **지표별 개선 전략**: 교육(29.5%), 연구환경(29%), 연구품질(30%), 국제적시각(7.5%), 산업체수입(4%) 각각에 대해
+   - FWCI 개선 방안 (세계 평균 1.0 대비 현재 위치)
+   - Top 10% 논문 비율 확대 전략
+   - 연구비 확보 및 산학협력 강화
+   - 외국인 교수/학생 유치 전략
+4. **단기 액션플랜** (1-2년): 바로 실행 가능한 과제
+5. **중장기 로드맵** (3-5년): 구조적 변화가 필요한 과제
+6. **기대 효과**: 개선 시 예상 순위 변동 시나리오
+
+한국어로 작성하고, 구체적 수치를 근거로 제시해주세요. 표 형식을 활용해주세요.""",
+
+            'ARWU': f"""당신은 ARWU (Academic Ranking of World Universities) 전문 컨설턴트입니다.
+{compare_context}{ranking_context}
+아래는 ARWU 순위 관련 지표 데이터입니다.
+
+{table_data}
+
+{current_inst}의 ARWU 순위 향상을 위해 다음을 분석해주세요:
+
+1. **벤치마킹 비교 분석**: 각 지표별 벤치마킹 대학과의 격차 (수치 비교)
+2. **시급한 개선 과제**: 벤치마킹 대학 대비 가장 뒤처지는 지표 TOP 3과 원인 분석
+3. **지표별 개선 전략**:
+   - Highly Cited Researchers(20%): HCR 후보 연구자 육성 전략
+   - Nature/Science 논문(20%): 최상위 저널 게재 전략
+   - SCIE/SSCI 논문수(20%): 연구 생산성 향상
+   - 1인당 학술 성과(10%): 교원 연구 효율 제고
+4. **Top 1% 논문 확대 전략**: 현재 수준에서 단계적 목표 설정
+5. **단기 액션플랜** (1-2년)과 **중장기 로드맵** (3-5년)
+6. **기대 효과**: 개선 시 예상 순위 변동 시나리오
+
+한국어로 작성하고, 구체적 수치를 근거로 제시해주세요. 표 형식을 활용해주세요.""",
+        }
+
+        prompt = tab_prompts.get(tab, tab_prompts['QS'])
+
+        from openai import OpenAI
+        client = OpenAI(api_key=os.getenv('OPENAI_API_KEY', ''))
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "당신은 세계대학평가 전문 컨설턴트입니다. 데이터를 기반으로 구체적이고 실행 가능한 분석을 제공합니다."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=3000
+        )
+
+        analysis = response.choices[0].message.content
+        return jsonify({'success': True, 'analysis': analysis, 'tab': tab})
+
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 
 @app.route('/api/world_ranking_metrics')
@@ -6380,149 +6548,102 @@ def api_strategic_field_strategy():
 
 
 @app.route('/api/strategic_field_collaborators')
+@login_required
 def api_strategic_field_collaborators():
-    """
-    전략분야별 기관 간 공동연구자 API
-    - 전북대와 고려대 연구자 간의 공동 저자 관계를 분석
-    - 키워드 기반 논문 검색
-    """
-    import sqlite3 as sqlite3_module
-
+    """연구분야별 기관 간 공동연구자 API"""
     category = request.args.get('category', '')
     subcategory = request.args.get('subcategory', '')
-    year_from = request.args.get('year_from')
-    year_to = request.args.get('year_to')
+    target_institution = request.args.get('target_institution', '')
 
-    if not category or not subcategory:
+    if not category or not subcategory or not target_institution:
         return jsonify({'count': 0, 'collaborators': []})
 
-    # 두 DB 모두 열기 (원본 파일 사용)
-    import os as os_module
-    import json as json_module
-    base_dir = os_module.path.dirname(os_module.path.abspath(__file__))
-    jbnu_db_path = os_module.path.join(base_dir, 'jbnu.db')
-    korea_db_path = os_module.path.join(base_dir, 'korea.db')
+    current_institution = session.get('institution', 'jbnu')
+    if target_institution == current_institution:
+        return jsonify({'count': 0, 'collaborators': [], 'message': '같은 기관은 선택할 수 없습니다.'})
 
-    # 해당 분야의 키워드 조회 (jbnu.db에서 - 설정 테이블이 여기에만 있음)
-    jbnu_config_conn = sqlite3_module.connect(jbnu_db_path)
-    jbnu_config_conn.row_factory = sqlite3_module.Row
-    config_cursor = jbnu_config_conn.cursor()
+    # 현재 기관 DB에서 키워드 + 논문 조회
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    current_affiliation = get_institution_affiliation()
 
-    config_cursor.execute("""
-        SELECT keywords FROM strategic_field_config
-        WHERE category = ? AND subcategory = ?
-    """, (category, subcategory))
+    # 키워드 조회
+    cursor.execute("""SELECT keywords FROM strategic_field_config
+        WHERE category = ? AND subcategory = ?""", (category, subcategory))
+    rows = cursor.fetchall()
+    all_keywords = []
+    for row in rows:
+        if row['keywords']:
+            all_keywords.extend(json.loads(row['keywords']))
 
-    row = config_cursor.fetchone()
-    jbnu_config_conn.close()
-
-    if not row or not row['keywords']:
+    if not all_keywords:
+        conn.close()
         return jsonify({'count': 0, 'collaborators': [], 'message': '키워드 설정이 없습니다.'})
 
-    # 키워드 파싱 (JSON 배열 또는 쉼표 구분)
-    keywords_str = row['keywords']
-    try:
-        keywords = json_module.loads(keywords_str)
-        if isinstance(keywords, list):
-            keywords = [kw.strip().lower() for kw in keywords if kw.strip()]
-        else:
-            keywords = [keywords_str.strip().lower()]
-    except (json_module.JSONDecodeError, TypeError):
-        keywords = [kw.strip().lower() for kw in keywords_str.split(',') if kw.strip()]
-    if not keywords:
-        return jsonify({'count': 0, 'collaborators': [], 'message': '키워드가 없습니다.'})
+    # 키워드 매칭 논문 조회
+    keyword_conditions = " OR ".join(["title LIKE ?"] * len(all_keywords))
+    keyword_params = [f"%{kw}%" for kw in all_keywords]
+    cursor.execute(f"""SELECT title, year, citations, field_weighted_citation_impact, scopus_author_ids
+        FROM publication WHERE ({keyword_conditions})
+        AND scopus_author_ids IS NOT NULL AND scopus_author_ids != ''""", keyword_params)
+    publications = cursor.fetchall()
 
-    try:
-        jbnu_conn = sqlite3_module.connect(jbnu_db_path)
-        jbnu_conn.row_factory = sqlite3_module.Row
-        jbnu_cursor = jbnu_conn.cursor()
+    # 현재 기관 연구자 ID 세트
+    cursor.execute("SELECT scopus_author_id, name FROM author WHERE primary_affiliation LIKE ?", (f'%{current_affiliation}%',))
+    current_authors = {r['scopus_author_id']: r['name'] for r in cursor.fetchall()}
+    conn.close()
 
-        korea_conn = sqlite3_module.connect(korea_db_path)
-        korea_conn.row_factory = sqlite3_module.Row
-        korea_cursor = korea_conn.cursor()
-    except Exception as e:
-        return jsonify({'count': 0, 'collaborators': [], 'error': f'DB 연결 실패: {str(e)}'})
+    # 대상 기관 연구자 ID 세트
+    target_conn = get_db_connection(institution=target_institution)
+    target_cursor = target_conn.cursor()
+    target_affiliation = get_institution_affiliation(institution=target_institution)
+    target_cursor.execute("SELECT scopus_author_id, name FROM author WHERE primary_affiliation LIKE ?", (f'%{target_affiliation}%',))
+    target_authors = {r['scopus_author_id']: r['name'] for r in target_cursor.fetchall()}
+    target_conn.close()
 
-    # 전북대 연구자 목록 (scopus_author_id -> name)
-    jbnu_cursor.execute("SELECT scopus_author_id, name FROM author WHERE scopus_author_id IS NOT NULL")
-    jbnu_authors = {row['scopus_author_id']: row['name'] for row in jbnu_cursor.fetchall()}
+    # 공동연구 매칭
+    collab_pairs = {}  # (current_id, target_id) -> {papers, citations, ...}
 
-    # 고려대 연구자 목록 (scopus_author_id -> name)
-    korea_cursor.execute("SELECT scopus_author_id, name FROM author WHERE scopus_author_id IS NOT NULL AND primary_affiliation = 'Korea University'")
-    korea_authors = {row['scopus_author_id']: row['name'] for row in korea_cursor.fetchall()}
+    for pub in publications:
+        author_ids = [aid.strip() for aid in pub['scopus_author_ids'].replace(';', '|').split('|') if aid.strip()]
 
-    # 연도 조건
-    year_condition = ""
-    if year_from and year_to:
-        year_condition = f"AND CAST(year AS INTEGER) >= {int(year_from)} AND CAST(year AS INTEGER) <= {int(year_to)}"
+        current_in_paper = [aid for aid in author_ids if aid in current_authors]
+        target_in_paper = [aid for aid in author_ids if aid in target_authors]
 
-    # 전북대 논문에서 키워드 매칭 후 공동저자 찾기
-    collaborations = {}  # (jbnu_id, korea_id) -> {pub_count, eids}
+        if current_in_paper and target_in_paper:
+            for cid in current_in_paper:
+                for tid in target_in_paper:
+                    key = (cid, tid)
+                    if key not in collab_pairs:
+                        collab_pairs[key] = {
+                            'current_id': cid,
+                            'current_name': current_authors[cid],
+                            'target_id': tid,
+                            'target_name': target_authors[tid],
+                            'paper_count': 0,
+                            'total_citations': 0,
+                            'papers': []
+                        }
+                    collab_pairs[key]['paper_count'] += 1
+                    try:
+                        collab_pairs[key]['total_citations'] += int(float(pub['citations'] or 0))
+                    except (ValueError, TypeError):
+                        pass
+                    if len(collab_pairs[key]['papers']) < 5:  # 논문 최대 5편
+                        collab_pairs[key]['papers'].append({
+                            'title': pub['title'],
+                            'year': pub['year'],
+                            'citations': pub['citations']
+                        })
 
-    jbnu_cursor.execute(f"""
-        SELECT eid, title, scopus_author_ids
-        FROM publication
-        WHERE scopus_author_ids IS NOT NULL
-              AND title IS NOT NULL
-              {year_condition}
-    """)
-
-    for pub in jbnu_cursor.fetchall():
-        title_lower = (pub['title'] or '').lower()
-
-        # 키워드 매칭 확인
-        matched = any(kw in title_lower for kw in keywords)
-        if not matched:
-            continue
-
-        # 저자 ID 파싱 (파이프 또는 세미콜론으로 구분)
-        raw_ids = (pub['scopus_author_ids'] or '').replace(';', '|')
-        author_ids = [a.strip() for a in raw_ids.split('|') if a.strip()]
-
-        # 전북대 저자와 고려대 저자 식별
-        jbnu_in_pub = [aid for aid in author_ids if aid in jbnu_authors]
-        korea_in_pub = [aid for aid in author_ids if aid in korea_authors and aid not in jbnu_authors]
-
-        # 공동 저자 쌍 기록 (같은 사람 제외)
-        for jbnu_id in jbnu_in_pub:
-            for korea_id in korea_in_pub:
-                if jbnu_id == korea_id:
-                    continue
-                key = (jbnu_id, korea_id)
-                if key not in collaborations:
-                    collaborations[key] = {
-                        'jbnu_id': jbnu_id,
-                        'jbnu_name': jbnu_authors.get(jbnu_id, 'Unknown'),
-                        'korea_id': korea_id,
-                        'korea_name': korea_authors.get(korea_id, 'Unknown'),
-                        'eids': set()
-                    }
-                collaborations[key]['eids'].add(pub['eid'])
-
-    jbnu_conn.close()
-    korea_conn.close()
-
-    # 결과 정리
-    result = []
-    for key, collab in collaborations.items():
-        result.append({
-            'jbnu_id': collab['jbnu_id'],
-            'jbnu_name': collab['jbnu_name'],
-            'korea_id': collab['korea_id'],
-            'korea_name': collab['korea_name'],
-            'pub_count': len(collab['eids']),
-            'jbnu_profile': f"https://www.scopus.com/authid/detail.uri?authorId={collab['jbnu_id']}",
-            'korea_profile': f"https://www.scopus.com/authid/detail.uri?authorId={collab['korea_id']}"
-        })
-
-    # 논문 수 기준 내림차순 정렬
-    result.sort(key=lambda x: (-x['pub_count'], x['jbnu_name']))
+    # 정렬 (논문 수 내림차순)
+    result = sorted(collab_pairs.values(), key=lambda x: x['paper_count'], reverse=True)[:100]
 
     return jsonify({
         'count': len(result),
-        'category': category,
-        'subcategory': subcategory,
-        'keywords': keywords,
+        'current_institution': INSTITUTION_NAMES.get(current_institution, current_institution),
+        'target_institution': INSTITUTION_NAMES.get(target_institution, target_institution),
+        'keywords': all_keywords,
         'collaborators': result
     })
 
@@ -7289,8 +7410,19 @@ def admin_institutions():
     conn = sqlite3.connect(USERS_DB)
     conn.row_factory = sqlite3.Row
     institutions = conn.execute("SELECT * FROM institutions ORDER BY id").fetchall()
+    # 순위 데이터
+    rankings = {}
+    try:
+        rows = conn.execute("SELECT inst_key, ranking_system, ranking_year, ranking_value FROM institution_rankings ORDER BY inst_key, ranking_system, ranking_year DESC").fetchall()
+        for r in rows:
+            key = r['inst_key']
+            if key not in rankings:
+                rankings[key] = []
+            rankings[key].append(dict(r))
+    except Exception:
+        pass
     conn.close()
-    return render_template('admin_institutions.html', institutions=[dict(i) for i in institutions])
+    return render_template('admin_institutions.html', institutions=[dict(i) for i in institutions], rankings=rankings)
 
 
 @app.route('/api/institutions', methods=['POST'])
@@ -7347,6 +7479,45 @@ def api_toggle_institution(inst_key):
 
         reload_institutions()
         return jsonify({'success': True, 'is_active': new_status})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/institution_ranking', methods=['POST'])
+@super_admin_required
+def api_add_institution_ranking():
+    """기관 순위 추가/수정"""
+    try:
+        data = request.get_json()
+        inst_key = data.get('inst_key', '')
+        ranking_system = data.get('ranking_system', '')
+        ranking_year = data.get('ranking_year', 0)
+        ranking_value = data.get('ranking_value', '').strip()
+
+        if not inst_key or not ranking_system or not ranking_year or not ranking_value:
+            return jsonify({'error': '모든 필드를 입력해주세요.'}), 400
+
+        conn = sqlite3.connect(USERS_DB)
+        conn.execute("""INSERT OR REPLACE INTO institution_rankings
+            (inst_key, ranking_system, ranking_year, ranking_value)
+            VALUES (?, ?, ?, ?)""", (inst_key, ranking_system, int(ranking_year), ranking_value))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/institution_ranking/<int:ranking_id>', methods=['DELETE'])
+@super_admin_required
+def api_delete_institution_ranking(ranking_id):
+    """기관 순위 삭제"""
+    try:
+        conn = sqlite3.connect(USERS_DB)
+        conn.execute("DELETE FROM institution_rankings WHERE id = ?", (ranking_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

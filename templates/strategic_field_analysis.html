@@ -1483,139 +1483,111 @@ function downloadCSVFile(csv, filename) {
 }
 
 // 공동연구자 분석 로드
+let selectedTargetInstitution = '';
+
 function loadCollaboratorsAnalysis() {
     const tabId = categoryMap[currentCategory];
     const resultDiv = document.getElementById(`analysisResult-${tabId}`);
-    const key = `${currentCategory}_${currentSubcategory}`;
 
-    // 캐시된 결과 확인
-    if (collaboratorsResults[key]) {
-        renderCollaboratorsResult(collaboratorsResults[key]);
+    // 기관 선택 UI 표시
+    const availableInsts = {{ institutions | tojson }};
+    let instOptions = '';
+    for (const [key, name] of Object.entries(availableInsts)) {
+        if (key !== currentInstitution) {
+            instOptions += `<option value="${key}" ${selectedTargetInstitution === key ? 'selected' : ''}>${name}</option>`;
+        }
+    }
+
+    if (!selectedTargetInstitution && instOptions) {
+        // 첫번째 다른 기관 자동 선택
+        for (const key of Object.keys(availableInsts)) {
+            if (key !== currentInstitution) { selectedTargetInstitution = key; break; }
+        }
+    }
+
+    let selectorHtml = `<div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="row align-items-center">
+                <div class="col-auto"><strong><i class="fas fa-exchange-alt"></i> 공동연구 대상 기관:</strong></div>
+                <div class="col-auto">
+                    <select class="form-select form-select-sm" style="width:200px;" onchange="selectedTargetInstitution=this.value; collaboratorsResults={}; loadCollaboratorsAnalysis();">
+                        ${instOptions}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+    if (!selectedTargetInstitution) {
+        resultDiv.innerHTML = selectorHtml + '<div class="alert alert-warning">비교할 다른 기관이 없습니다.</div>';
         return;
     }
 
-    resultDiv.innerHTML = `<div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">${i18n.t('strategic_field.collaborators_loading')}</p></div>`;
+    const key = `${currentCategory}_${currentSubcategory}_${selectedTargetInstitution}`;
 
-    let url = `/api/strategic_field_collaborators?category=${encodeURIComponent(currentCategory)}&subcategory=${encodeURIComponent(currentSubcategory)}`;
-    if (sfYearFrom && sfYearTo) {
-        url += `&year_from=${sfYearFrom}&year_to=${sfYearTo}`;
+    if (collaboratorsResults[key]) {
+        resultDiv.innerHTML = selectorHtml;
+        resultDiv.insertAdjacentHTML('beforeend', renderCollaboratorsHtml(collaboratorsResults[key]));
+        return;
     }
+
+    resultDiv.innerHTML = selectorHtml + `<div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">공동연구자 분석 중...</p></div>`;
+
+    let url = `/api/strategic_field_collaborators?category=${encodeURIComponent(currentCategory)}&subcategory=${encodeURIComponent(currentSubcategory)}&target_institution=${selectedTargetInstitution}`;
 
     fetch(url)
         .then(r => r.json())
         .then(data => {
             collaboratorsResults[key] = data;
-            renderCollaboratorsResult(data);
+            resultDiv.innerHTML = selectorHtml;
+            resultDiv.insertAdjacentHTML('beforeend', renderCollaboratorsHtml(data));
         })
         .catch(err => {
-            resultDiv.innerHTML = `<div class="alert alert-danger">${i18n.t('strategic_field.collaborators_error')}: ${err.message}</div>`;
+            resultDiv.innerHTML = selectorHtml + `<div class="alert alert-danger">오류: ${err.message}</div>`;
         });
 }
 
-// 공동연구자 결과 렌더링
-function renderCollaboratorsResult(data) {
-    const tabId = categoryMap[currentCategory];
-    const resultDiv = document.getElementById(`analysisResult-${tabId}`);
-
-    // 정렬 아이콘 생성 함수
-    function sortIcon(key) {
-        if (collaboratorsSortKey === key) {
-            return collaboratorsSortAsc ? ' ▲' : ' ▼';
-        }
-        return '';
+function renderCollaboratorsHtml(data) {
+    if (!data.collaborators || data.collaborators.length === 0) {
+        return `<div class="alert alert-secondary"><i class="fas fa-info-circle"></i> ${data.current_institution}와 ${data.target_institution} 간 이 분야의 공동연구가 없습니다.</div>`;
     }
 
-    // 정렬 가능한 헤더 생성
-    function sortableHeader(label, key) {
-        return `<th style="cursor:pointer;user-select:none;white-space:nowrap;" onclick="sortCollaborators('${key}')">${label}<span class="text-muted">${sortIcon(key)}</span></th>`;
-    }
+    let rows = '';
+    data.collaborators.forEach((c, idx) => {
+        const papers = c.papers ? c.papers.map(p => `${p.title} (${p.year})`).join('<br>') : '';
+        rows += `<tr>
+            <td>${idx + 1}</td>
+            <td><a href="https://www.scopus.com/authid/detail.url?authorId=${c.current_id}" target="_blank"><strong>${c.current_name}</strong> <i class="fas fa-external-link-alt small"></i></a></td>
+            <td><a href="https://www.scopus.com/authid/detail.url?authorId=${c.target_id}" target="_blank"><strong>${c.target_name}</strong> <i class="fas fa-external-link-alt small"></i></a></td>
+            <td class="text-center"><span class="badge bg-primary">${c.paper_count}</span></td>
+            <td class="text-center">${(c.total_citations || 0).toLocaleString()}</td>
+            <td><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#papers_${idx}"><i class="fas fa-list"></i></button>
+                <div class="collapse mt-1" id="papers_${idx}"><small class="text-muted">${papers}</small></div></td>
+        </tr>`;
+    });
 
-    // 데이터 정렬
-    let sortedData = [];
-    if (data.collaborators && data.collaborators.length > 0) {
-        sortedData = [...data.collaborators].sort((a, b) => {
-            let va = a[collaboratorsSortKey];
-            let vb = b[collaboratorsSortKey];
-            if (va == null) va = '';
-            if (vb == null) vb = '';
-
-            if (typeof va === 'number' && typeof vb === 'number') {
-                return collaboratorsSortAsc ? va - vb : vb - va;
-            }
-            return collaboratorsSortAsc
-                ? String(va).localeCompare(String(vb), 'ko')
-                : String(vb).localeCompare(String(va), 'ko');
-        });
-    }
-
-    // 로그인한 기관에 따라 컬럼 순서 결정
-    const isKorea = currentInstitution === 'korea';
-    const myInst = isKorea ? i18n.t('strategic_field.korea') : i18n.t('strategic_field.jbnu');
-    const otherInst = isKorea ? i18n.t('strategic_field.jbnu') : i18n.t('strategic_field.korea');
-    const myNameKey = isKorea ? 'korea_name' : 'jbnu_name';
-    const otherNameKey = isKorea ? 'jbnu_name' : 'korea_name';
-
-    let html = `
-        <div class="alert alert-info mb-3">
-            <i class="fas fa-info-circle"></i>
-            <strong>${myInst} - ${otherInst}</strong> ${i18n.t('strategic_field.collab_info')}
-            <br><small>${i18n.t('strategic_field.collab_desc')}</small>
+    return `<div class="card">
+        <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-handshake"></i> ${data.current_institution} ↔ ${data.target_institution} 공동연구 (${data.count}쌍)</span>
         </div>
-
-        <div class="card">
-            <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
-                <span><i class="fas fa-handshake"></i> ${i18n.t('strategic_field.collaborators')} (${data.count}${i18n.t('common.count')})</span>
-                <button class="btn btn-sm btn-outline-light" onclick="downloadCollaboratorsCSV()">
-                    <i class="fas fa-download"></i> CSV
-                </button>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                    <table class="table table-sm table-hover mb-0">
-                        <thead class="table-light sticky-top">
-                            <tr>
-                                <th>#</th>
-                                ${sortableHeader(myInst + ' ' + i18n.t('strategic_field.researcher_name'), myNameKey)}
-                                ${sortableHeader(otherInst + ' ' + i18n.t('strategic_field.researcher_name'), otherNameKey)}
-                                ${sortableHeader(i18n.t('strategic_field.joint_papers'), 'pub_count')}
-                                <th>${myInst} ${i18n.t('strategic_field.profile')}</th>
-                                <th>${otherInst} ${i18n.t('strategic_field.profile')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-    `;
-
-    if (sortedData.length > 0) {
-        sortedData.forEach((c, idx) => {
-            const myName = isKorea ? c.korea_name : c.jbnu_name;
-            const otherName = isKorea ? c.jbnu_name : c.korea_name;
-            const myProfile = isKorea ? c.korea_profile : c.jbnu_profile;
-            const otherProfile = isKorea ? c.jbnu_profile : c.korea_profile;
-
-            html += `
-                <tr>
-                    <td>${idx + 1}</td>
-                    <td><strong>${myName}</strong></td>
-                    <td><strong>${otherName}</strong></td>
-                    <td><span class="badge bg-primary">${c.pub_count}편</span></td>
-                    <td><a href="${myProfile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
-                    <td><a href="${otherProfile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
-                </tr>
-            `;
-        });
-    } else {
-        html += `<tr><td colspan="6" class="text-center text-muted py-4">${i18n.t('strategic_field.no_collab_data')}</td></tr>`;
-    }
-
-    html += `
-                        </tbody>
-                    </table>
-                </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height:500px; overflow-y:auto;">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>#</th>
+                            <th>${data.current_institution} 연구자</th>
+                            <th>${data.target_institution} 연구자</th>
+                            <th class="text-center">공동논문</th>
+                            <th class="text-center">총 인용수</th>
+                            <th>논문 목록</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
             </div>
         </div>
-    `;
-
-    resultDiv.innerHTML = html;
+    </div>`;
 }
 
 // 공동연구자 정렬

@@ -110,6 +110,53 @@
 </div>
 
 </div><!-- tab-content -->
+
+<!-- AI 분석 버튼 + 결과 -->
+<div id="aiAnalysisSection" class="mt-4">
+    <div class="card mb-3">
+        <div class="card-header py-2 bg-dark text-white"><i class="fas fa-robot"></i> AI 분석</div>
+        <div class="card-body py-2">
+            <button class="btn btn-dark" id="aiAnalysisBtn" onclick="requestAiAnalysis()">
+                <i class="fas fa-robot"></i> AI 분석 실행
+            </button>
+            <small class="text-muted ms-2">선택 탭(QS/THE/ARWU) 기준, 관리자가 입력한 순위 데이터를 기반으로 분석합니다</small>
+        </div>
+    </div>
+    <div id="aiAnalysisLoading" class="mt-3" style="display:none;">
+        <div class="d-flex align-items-center">
+            <div class="spinner-border text-dark me-3"></div>
+            <span>AI가 분석 중입니다... (최대 30초 소요)</span>
+        </div>
+    </div>
+    <!-- 비밀번호 모달 -->
+    <div class="modal fade" id="aiPasswordModal" tabindex="-1">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title"><i class="fas fa-lock"></i> AI 분석 비밀번호</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="password" class="form-control" id="aiPassword" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter') submitAiPassword()">
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="button" class="btn btn-sm btn-dark" onclick="submitAiPassword()">확인</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="aiAnalysisResult" class="mt-3" style="display:none;">
+        <div class="card border-dark">
+            <div class="card-header bg-dark text-white">
+                <i class="fas fa-robot"></i> AI 분석 결과 <span id="aiTabLabel"></span>
+            </div>
+            <div class="card-body" id="aiAnalysisContent"></div>
+        </div>
+    </div>
+</div>
+
 </div><!-- wrContent -->
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -707,6 +754,151 @@ function renderTrends(t) {
             ]
         },
         options: { responsive: true, scales: { y: { min: 0 } } }
+    });
+}
+
+// AI 분석
+let currentActiveTab = '#tabQS';
+
+// 탭 변경 시 현재 탭 추적 + 연도별추이에서는 AI 버튼 숨김
+document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
+    tab.addEventListener('shown.bs.tab', function(e) {
+        currentActiveTab = e.target.getAttribute('data-bs-target');
+        const aiSection = document.getElementById('aiAnalysisSection');
+        if (currentActiveTab === '#tabTrends') {
+            aiSection.style.display = 'none';
+        } else {
+            aiSection.style.display = 'block';
+        }
+        // 이전 분석 결과 숨김
+        document.getElementById('aiAnalysisResult').style.display = 'none';
+    });
+});
+
+function formatAiResponse(text) {
+    // 마크다운 테이블 → HTML 테이블
+    let lines = text.split('\n');
+    let html = '';
+    let inTable = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim();
+
+        // 테이블 행 감지 (|로 시작하고 끝남)
+        if (line.startsWith('|') && line.endsWith('|')) {
+            // 구분선 (|---|---|) 건너뜀
+            if (line.replace(/[\|\-\s:]/g, '') === '') continue;
+
+            if (!inTable) {
+                html += '<table class="table table-sm table-bordered mt-2 mb-2"><tbody>';
+                inTable = true;
+            }
+
+            let cells = line.split('|').filter(c => c.trim() !== '');
+            let isHeader = (i + 1 < lines.length && lines[i + 1].trim().replace(/[\|\-\s:]/g, '') === '');
+            let tag = isHeader ? 'th' : 'td';
+            html += '<tr>' + cells.map(c => `<${tag}>${c.trim().replace(/\*\*/g, '').replace(/\*/g, '')}</${tag}>`).join('') + '</tr>';
+        } else {
+            if (inTable) {
+                html += '</tbody></table>';
+                inTable = false;
+            }
+
+            // 제목 (### ## #)
+            if (line.startsWith('### ')) {
+                html += `<h6 class="mt-3 mb-2 fw-bold">${line.replace(/^###\s*/, '').replace(/\*\*/g, '')}</h6>`;
+            } else if (line.startsWith('## ')) {
+                html += `<h5 class="mt-3 mb-2 fw-bold">${line.replace(/^##\s*/, '').replace(/\*\*/g, '')}</h5>`;
+            } else if (line.startsWith('# ')) {
+                html += `<h5 class="mt-3 mb-2 fw-bold">${line.replace(/^#\s*/, '').replace(/\*\*/g, '')}</h5>`;
+            } else if (line.startsWith('- ') || line.startsWith('• ')) {
+                html += `<li>${line.replace(/^[-•]\s*/, '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*/g, '')}</li>`;
+            } else if (/^\d+\.\s/.test(line)) {
+                html += `<p class="mb-1"><strong>${line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*/g, '')}</strong></p>`;
+            } else if (line === '') {
+                html += '<br>';
+            } else {
+                html += `<p class="mb-1">${line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*/g, '')}</p>`;
+            }
+        }
+    }
+    if (inTable) html += '</tbody></table>';
+
+    return html;
+}
+
+function requestAiAnalysis() {
+    document.getElementById('aiPassword').value = '';
+    new bootstrap.Modal(document.getElementById('aiPasswordModal')).show();
+    setTimeout(() => document.getElementById('aiPassword').focus(), 300);
+}
+
+function submitAiPassword() {
+    const password = document.getElementById('aiPassword').value;
+    if (!password) return;
+    bootstrap.Modal.getInstance(document.getElementById('aiPasswordModal')).hide();
+
+    // 현재 탭 판별
+    const tabMap = { '#tabQS': 'QS', '#tabTHE': 'THE', '#tabARWU': 'ARWU' };
+    const tab = tabMap[currentActiveTab] || 'QS';
+
+    // 현재 페이지의 테이블 데이터 수집
+    let tableData = '';
+
+    // 종합 지표 카드
+    const overviewEl = document.getElementById('overviewCards');
+    if (overviewEl) tableData += '[종합 지표]\n' + overviewEl.innerText + '\n\n';
+
+    // 현재 탭의 상세 내용
+    const tabContentId = { '#tabQS': 'qsContent', '#tabTHE': 'theContent', '#tabARWU': 'arwuContent' };
+    const contentEl = document.getElementById(tabContentId[currentActiveTab]);
+    if (contentEl) tableData += `[${tab} 지표]\n` + contentEl.innerText + '\n\n';
+
+    // 공시자료
+    const instMetricsId = { '#tabQS': 'qsInstitutionMetrics', '#tabTHE': 'theInstitutionMetrics' };
+    const instEl = document.getElementById(instMetricsId[currentActiveTab]);
+    if (instEl && instEl.innerText.trim()) tableData += '[대학공시자료]\n' + instEl.innerText + '\n\n';
+
+    // 기관명
+    const insts = getSelectedInstitutions();
+    const instName = insts.map(i => INST_NAMES[i]).join(' vs ');
+
+    document.getElementById('aiAnalysisLoading').style.display = 'block';
+    document.getElementById('aiAnalysisResult').style.display = 'none';
+    document.getElementById('aiAnalysisBtn').disabled = true;
+
+    fetch('/api/ai_analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            password: password,
+            tab: tab,
+            table_data: tableData,
+            institution_name: instName,
+            current_institution: INST_NAMES[CURRENT_INST] || CURRENT_INST,
+            compare_institutions: insts.filter(i => i !== CURRENT_INST).map(i => INST_NAMES[i]),
+            ranking_history: ''
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('aiAnalysisLoading').style.display = 'none';
+        document.getElementById('aiAnalysisBtn').disabled = false;
+
+        if (data.error) {
+            alert('오류: ' + data.error);
+            return;
+        }
+
+        document.getElementById('aiTabLabel').textContent = `(${tab})`;
+        document.getElementById('aiAnalysisContent').innerHTML = formatAiResponse(data.analysis);
+        document.getElementById('aiAnalysisResult').style.display = 'block';
+        document.getElementById('aiAnalysisResult').scrollIntoView({ behavior: 'smooth' });
+    })
+    .catch(err => {
+        document.getElementById('aiAnalysisLoading').style.display = 'none';
+        document.getElementById('aiAnalysisBtn').disabled = false;
+        alert('AI 분석 실패: ' + err);
     });
 }
 

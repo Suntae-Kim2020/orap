@@ -59,6 +59,86 @@
     </div>
 </div>
 
+<!-- 대학 순위 관리 -->
+<div class="card mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-chart-line"></i> 대학 순위 관리 (QS / THE / ARWU)</span>
+        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addRankingModal">
+            <i class="fas fa-plus"></i> 순위 추가
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>기관</th>
+                        <th>평가</th>
+                        <th>연도</th>
+                        <th>순위</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inst in institutions %}
+                        {% for r in rankings.get(inst.inst_key, []) %}
+                        <tr>
+                            <td>{{ inst.inst_name }}</td>
+                            <td><span class="badge bg-{{ 'primary' if r.ranking_system == 'QS' else 'success' if r.ranking_system == 'THE' else 'warning text-dark' }}">{{ r.ranking_system }}</span></td>
+                            <td>{{ r.ranking_year }}</td>
+                            <td><strong>{{ r.ranking_value }}</strong>위</td>
+                            <td><button class="btn btn-sm btn-outline-danger" onclick="deleteRanking({{ r.id }})"><i class="fas fa-times"></i></button></td>
+                        </tr>
+                        {% endfor %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 순위 추가 모달 -->
+<div class="modal fade" id="addRankingModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus"></i> 순위 추가</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">기관</label>
+                    <select class="form-select" id="rankInstKey">
+                        {% for inst in institutions %}
+                        <option value="{{ inst.inst_key }}">{{ inst.inst_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">평가 기관</label>
+                    <select class="form-select" id="rankSystem">
+                        <option value="QS">QS</option>
+                        <option value="THE">THE</option>
+                        <option value="ARWU">ARWU</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">연도</label>
+                    <input type="number" class="form-control" id="rankYear" value="2025" min="2020" max="2030">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">순위</label>
+                    <input type="text" class="form-control" id="rankValue" placeholder="예: 396, 501-550, 801-1000">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="addRanking()">추가</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 새 기관 추가 모달 -->
 <div class="modal fade" id="addInstModal" tabindex="-1">
     <div class="modal-dialog">
@@ -130,6 +210,35 @@ function toggleInstitution(instKey, currentStatus) {
     if (!confirm(`이 기관을 ${action}하시겠습니까?`)) return;
 
     fetch(`/api/institutions/${instKey}/toggle`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { location.reload(); }
+        else { alert('오류: ' + data.error); }
+    });
+}
+
+function addRanking() {
+    const inst_key = document.getElementById('rankInstKey').value;
+    const ranking_system = document.getElementById('rankSystem').value;
+    const ranking_year = document.getElementById('rankYear').value;
+    const ranking_value = document.getElementById('rankValue').value.trim();
+    if (!ranking_value) { alert('순위를 입력해주세요.'); return; }
+
+    fetch('/api/institution_ranking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inst_key, ranking_system, ranking_year: parseInt(ranking_year), ranking_value })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { location.reload(); }
+        else { alert('오류: ' + data.error); }
+    });
+}
+
+function deleteRanking(id) {
+    if (!confirm('이 순위를 삭제하시겠습니까?')) return;
+    fetch(`/api/institution_ranking/${id}`, { method: 'DELETE' })
     .then(r => r.json())
     .then(data => {
         if (data.success) { location.reload(); }
