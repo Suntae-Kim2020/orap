@@ -66,17 +66,20 @@
 <div class="tab-pane fade show active" id="tabQS">
     <div class="row" id="qsContent"></div>
     <div id="qsInstitutionMetrics"></div>
+    <div id="qsSimulator" class="mt-4"></div>
 </div>
 
 <!-- THE 탭 -->
 <div class="tab-pane fade" id="tabTHE">
     <div class="row" id="theContent"></div>
     <div id="theInstitutionMetrics"></div>
+    <div id="theSimulator" class="mt-4"></div>
 </div>
 
 <!-- ARWU 탭 -->
 <div class="tab-pane fade" id="tabARWU">
     <div class="row" id="arwuContent"></div>
+    <div id="arwuSimulator" class="mt-4"></div>
 </div>
 
 <!-- 연도별 추이 탭 -->
@@ -230,6 +233,8 @@ function loadWrData() {
             renderCompareTHE(selectedInsts, PERIODS.the.label);
             renderCompareInstitutionMetrics(selectedInsts, 'the');
             renderCompareARWU(selectedInsts, PERIODS.arwu_pub.label, PERIODS.arwu_hcr.label);
+            // 비교 모드: 격차 분석 시뮬레이터
+            renderGapAnalysis(selectedInsts);
         } else {
             renderOverview(primaryData.main.overview, PERIODS.qs.label);
             renderQS(primaryData.main.qs, PERIODS.qs.label);
@@ -239,6 +244,12 @@ function loadWrData() {
             const ap = primaryData.arwuPub.arwu || { top1_count:0, top1_rate:0, total_pubs:0, author_count:0, per_capita_output:0, per_capita_citations:0 };
             const ah = primaryData.arwuHcr.arwu || ap;
             renderARWU(ap, ah, PERIODS.arwu_pub.label, PERIODS.arwu_hcr.label);
+
+            // 단일 기관: 시뮬레이터 숨김
+            ['qsSimulator', 'theSimulator', 'arwuSimulator'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = '';
+            });
         }
         if (isCompare) {
             renderCompareTrends(selectedInsts);
@@ -286,13 +297,13 @@ function renderCompareOverview(insts, periodLabel) {
             <tbody>
                 ${compareRow('총 논문수', 'total_pubs', '편', insts, getVal('total_pubs'), fmtNum)}
                 ${compareRow('총 인용수', 'total_citations', '회', insts, getVal('total_citations'), v => Math.round(v).toLocaleString())}
-                ${compareRow('논문당 평균 인용수 <small class="text-primary">(QS)</small>', 'avg_citations', '회', insts, getVal('avg_citations'), fmtDec)}
+                ${compareRow('논문당 평균 인용수 <small class="text-muted">QS</small>', 'avg_citations', '회', insts, getVal('avg_citations'), fmtDec)}
                 ${compareRow('대학 평균 FWCI <small class="text-danger">(THE)</small>', 'avg_fwci', '', insts, getVal('avg_fwci'), fmtDec)}
-                ${compareRow('국제공동연구 비율 <small class="text-primary">(QS·THE)</small>', 'intl_rate', '', insts, getVal('intl_rate'), fmtPct)}
-                ${compareRow('Top 10% 논문 비율 <small class="text-success">(THE)</small>', 'top10_rate', '', insts, getVal('top10_rate'), fmtPct)}
+                ${compareRow('국제공동연구 비율 <small class="text-muted">QS 5% / THE 7.5%</small>', 'intl_rate', '', insts, getVal('intl_rate'), fmtPct)}
+                ${compareRow('Top 10% 논문 비율 <small class="text-muted">THE</small>', 'top10_rate', '', insts, getVal('top10_rate'), fmtPct)}
                 ${compareRow('Top 25% 저널 비율', 'top25_rate', '', insts, getVal('top25_rate'), fmtPct)}
                 ${compareRow('오픈액세스 비율', 'oa_rate', '', insts, getVal('oa_rate'), fmtPct)}
-                ${compareRow('SDG 연구 비율 <small class="text-primary">(QS)</small>', 'sdg_rate', '', insts, getVal('sdg_rate'), fmtPct)}
+                ${compareRow('SDG 연구 비율 <small class="text-muted">QS</small>', 'sdg_rate', '', insts, getVal('sdg_rate'), fmtPct)}
                 ${compareRow('전임교원 수', 'author_count', '명', insts, getVal('author_count'), fmtNum)}
                 ${compareRow('교원당 논문수', 'per_capita_pubs', '편/인', insts, getVal('per_capita_pubs'), fmtDec)}
                 ${compareRow('교원당 인용수', 'per_capita_citations', '회/인', insts, getVal('per_capita_citations'), fmtDec)}
@@ -443,13 +454,13 @@ function renderOverview(o, periodLabel) {
     document.getElementById('overviewCards').innerHTML =
         metricCard('fa-file-alt', '총 논문수', o.total_pubs.toLocaleString(), '편', 'primary', '')
         + metricCard('fa-quote-right', '총 인용수', Math.round(o.total_citations).toLocaleString(), '회', 'info', '')
-        + metricCard('fa-chart-bar', '논문당 평균 인용수', o.avg_citations, '회', 'success', 'QS 핵심 지표')
-        + metricCard('fa-bullseye', '대학 평균 FWCI', o.avg_fwci, '', 'danger', '1.0 = 세계 평균 (THE 핵심 지표)')
-        + metricCard('fa-globe', '국제공동연구 비율', o.intl_rate, '%', 'primary', 'QS·THE 공통 지표')
-        + metricCard('fa-award', 'Top 10% 논문 비율', o.top10_rate, '%', 'warning', 'THE 연구 우수성 지표')
+        + metricCard('fa-chart-bar', '논문당 평균 인용수', o.avg_citations, '회', 'success', 'QS 배점: 20%')
+        + metricCard('fa-bullseye', '대학 평균 FWCI', o.avg_fwci, '', 'danger', '1.0 = 세계 평균, THE 배점: 30%')
+        + metricCard('fa-globe', '국제공동연구 비율', o.intl_rate, '%', 'primary', 'QS 배점: 5%, THE 배점: 7.5%')
+        + metricCard('fa-award', 'Top 10% 논문 비율', o.top10_rate, '%', 'warning', 'THE 배점: 연구품질 30%')
         + metricCard('fa-journal-whills', 'Top 25% 저널 비율', o.top25_rate, '%', 'success', '')
         + metricCard('fa-lock-open', '오픈액세스 비율', o.oa_rate, '%', 'info', '')
-        + metricCard('fa-leaf', 'SDG 연구 비율', o.sdg_rate, '%', 'success', 'QS 지속가능성 지표');
+        + metricCard('fa-leaf', 'SDG 연구 비율', o.sdg_rate, '%', 'success', 'QS 배점: 지속가능성 5%');
 }
 
 function indicatorCard(title, value, unit, color, explanation, details) {
@@ -563,22 +574,22 @@ function renderCompareInstitutionMetrics(insts, tab) {
     if (tab === 'qs') {
         rows = cRow('전임교원 수', 'full_time_faculty', fmtN)
             + cRow('재학생 수', 'total_students', fmtN)
-            + cRow('교원1인당 학생수 <small class="text-primary">(10%)</small>', 'student_faculty_ratio', v => v != null ? v.toFixed(1) : '-')
-            + cRow('외국인 전임교원 비율 <small class="text-primary">(5%)</small>', 'international_faculty_ratio', v => v != null ? v + '%' : '-')
-            + cRow('외국학생 비율 <small class="text-primary">(5%)</small>', 'international_student_ratio', v => v != null ? v + '%' : '-')
-            + cRow('취업률 <small class="text-primary">(5%)</small>', 'employment_rate', v => v != null ? v + '%' : '-');
+            + cRow('교원1인당 학생수 <small class="text-muted">배점 10%</small>', 'student_faculty_ratio', v => v != null ? v.toFixed(1) : '-')
+            + cRow('외국인 전임교원 비율 <small class="text-muted">배점 5%</small>', 'international_faculty_ratio', v => v != null ? v + '%' : '-')
+            + cRow('외국학생 비율 <small class="text-muted">배점 5%</small>', 'international_student_ratio', v => v != null ? v + '%' : '-')
+            + cRow('취업률 <small class="text-muted">배점 5%</small>', 'employment_rate', v => v != null ? v + '%' : '-');
     } else if (tab === 'the') {
         rows = cRow('전임교원 수', 'full_time_faculty', fmtN)
             + cRow('연구비 총액', 'research_funding', v => fmtW(v ? v * 1000 : null))
             + cRow('교원1인당 연구비', 'research_funding_per_faculty', v => fmtW(v ? v * 1000 : null))
-            + cRow('기술이전 수입 <small class="text-success">(4%)</small>', 'tech_transfer_revenue', fmtW)
-            + cRow('산학협력수익 <small class="text-success">(4%)</small>', 'industry_revenue', fmtW)
+            + cRow('기술이전 수입 <small class="text-muted">배점 4%</small>', 'tech_transfer_revenue', fmtW)
+            + cRow('산학협력수익 <small class="text-muted">배점 4%</small>', 'industry_revenue', fmtW)
             + cRow('특허 등록 (국내/해외)', 'patent_domestic_granted', (v) => {
                 const inst = insts[0]; // 간단히 첫번째만... 실제로는 별도 처리 필요
                 return fmtN(v);
             })
-            + cRow('외국인 교원 비율 <small class="text-success">(7.5%)</small>', 'international_faculty_ratio', v => v != null ? v + '%' : '-')
-            + cRow('외국학생 비율 <small class="text-success">(7.5%)</small>', 'international_student_ratio', v => v != null ? v + '%' : '-');
+            + cRow('외국인 교원 비율 <small class="text-muted">배점 7.5%</small>', 'international_faculty_ratio', v => v != null ? v + '%' : '-')
+            + cRow('외국학생 비율 <small class="text-muted">배점 7.5%</small>', 'international_student_ratio', v => v != null ? v + '%' : '-');
     }
 
     const el = document.getElementById(tab + 'InstitutionMetrics');
@@ -613,20 +624,20 @@ function renderInstitutionMetrics(metrics, tab) {
         html += `
             ${metricCard('fa-chalkboard-teacher', '전임교원 수', fmt(m('full_time_faculty')), '명', 'primary', '교수당 인용수 산출 기준')}
             ${metricCard('fa-user-graduate', '재학생 수', fmt(m('total_students')), '명', 'info', '')}
-            ${metricCard('fa-users', '교원1인당 학생수', m('student_faculty_ratio') != null ? m('student_faculty_ratio').toFixed(1) : '-', '명', 'danger', 'QS 교수/학생 비율 (10%)')}
-            ${metricCard('fa-globe-europe', '외국인 전임교원', fmt(m('international_faculty')), '명 (' + fmt(m('international_faculty_ratio')) + '%)', 'primary', 'QS 국제 교수 비율 (5%)')}
-            ${metricCard('fa-passport', '외국학생', fmt(m('international_students')), '명 (' + fmt(m('international_student_ratio')) + '%)', 'primary', 'QS 국제 학생 비율 (5%)')}
-            ${metricCard('fa-briefcase', '취업률', fmt(m('employment_rate')), '%', 'success', 'QS 취업성과 (5%)')}`;
+            ${metricCard('fa-users', '교원1인당 학생수', m('student_faculty_ratio') != null ? m('student_faculty_ratio').toFixed(1) : '-', '명', 'danger', 'QS 배점: 10%')}
+            ${metricCard('fa-globe-europe', '외국인 전임교원', fmt(m('international_faculty')), '명 (비율 ' + fmt(m('international_faculty_ratio')) + '%)', 'primary', 'QS 배점: 5%')}
+            ${metricCard('fa-passport', '외국학생', fmt(m('international_students')), '명 (비율 ' + fmt(m('international_student_ratio')) + '%)', 'primary', 'QS 배점: 5%')}
+            ${metricCard('fa-briefcase', '취업률', fmt(m('employment_rate')), '%', 'success', 'QS 배점: 5%')}`;
     } else if (tab === 'the') {
         html += `
             ${metricCard('fa-chalkboard-teacher', '전임교원 수', fmt(m('full_time_faculty')), '명', 'success', '연구 생산성 산출 기준')}
-            ${metricCard('fa-flask', '연구비 총액', fmtWon(m('research_funding') ? m('research_funding') * 1000 : null), '', 'success', 'THE 연구환경 (29%)')}
+            ${metricCard('fa-flask', '연구비 총액', fmtWon(m('research_funding') ? m('research_funding') * 1000 : null), '', 'success', 'THE 배점: 연구환경 29%')}
             ${metricCard('fa-flask', '교원1인당 연구비', fmtWon(m('research_funding_per_faculty') ? m('research_funding_per_faculty') * 1000 : null), '', 'success', '')}
-            ${metricCard('fa-exchange-alt', '기술이전 수입', fmtWon(m('tech_transfer_revenue')), '', 'success', 'THE 산업체 수입 (4%)')}
-            ${metricCard('fa-building', '산학협력수익', fmtWon(m('industry_revenue')), '', 'success', 'THE 산업체 수입 (4%)')}
+            ${metricCard('fa-exchange-alt', '기술이전 수입', fmtWon(m('tech_transfer_revenue')), '', 'success', 'THE 배점: 산업체 수입 4%')}
+            ${metricCard('fa-building', '산학협력수익', fmtWon(m('industry_revenue')), '', 'success', 'THE 배점: 산업체 수입 4%')}
             ${metricCard('fa-copyright', '특허 등록', fmt(m('patent_domestic_granted')) + ' (국내) / ' + fmt(m('patent_intl_granted')) + ' (해외)', '건', 'success', '')}
-            ${metricCard('fa-globe-europe', '외국인 교원 비율', fmt(m('international_faculty_ratio')), '%', 'success', 'THE 국제적 시각 (7.5%)')}
-            ${metricCard('fa-passport', '외국학생 비율', fmt(m('international_student_ratio')), '%', 'success', 'THE 국제적 시각 (7.5%)')}
+            ${metricCard('fa-globe-europe', '외국인 교원 비율', fmt(m('international_faculty_ratio')), '%', 'success', 'THE 배점: 국제적 시각 7.5%')}
+            ${metricCard('fa-passport', '외국학생 비율', fmt(m('international_student_ratio')), '%', 'success', 'THE 배점: 국제적 시각 7.5%')}
             ${metricCard('fa-money-bill', '운영수익 총계', fmtWon(m('total_revenue')), '', 'success', '대학 재정 규모')}`;
     }
 
@@ -774,6 +785,156 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
         document.getElementById('aiAnalysisResult').style.display = 'none';
     });
 });
+
+// ========================================
+// 격차 분석 (비교 모드)
+// ========================================
+
+const GAP_INDICATORS = {
+    QS: [
+        { key: 'avg_citations', label: '논문당 인용수', weight: 20, unit: '회', source: 'overview' },
+        { key: 'student_faculty_ratio', label: '교원1인당 학생수', weight: 10, unit: '명', source: 'metrics', inverse: true },
+        { key: 'international_faculty_ratio', label: '외국인 교원 비율', weight: 5, unit: '%', source: 'metrics' },
+        { key: 'international_student_ratio', label: '외국학생 비율', weight: 5, unit: '%', source: 'metrics' },
+        { key: 'intl_rate', label: '국제공동연구 비율', weight: 5, unit: '%', source: 'overview' },
+        { key: 'employment_rate', label: '취업률', weight: 5, unit: '%', source: 'metrics' },
+        { key: 'sdg_rate', label: 'SDG 연구 비율', weight: 5, unit: '%', source: 'overview' },
+    ],
+    THE: [
+        { key: 'avg_fwci', label: 'FWCI (인용 영향력)', weight: 30, unit: '', source: 'overview' },
+        { key: 'top10_rate', label: 'Top 10% 논문 비율', weight: 10, unit: '%', source: 'overview' },
+        { key: 'per_capita_pubs', label: '교원당 논문수', weight: 10, unit: '편', source: 'overview' },
+        { key: 'intl_rate', label: '국제공동연구 비율', weight: 7.5, unit: '%', source: 'overview' },
+        { key: 'international_faculty_ratio', label: '외국인 교원 비율', weight: 3, unit: '%', source: 'metrics' },
+        { key: 'international_student_ratio', label: '외국학생 비율', weight: 3, unit: '%', source: 'metrics' },
+        { key: 'patent_cited_rate', label: '특허인용 비율', weight: 4, unit: '%', source: 'overview' },
+    ],
+    ARWU: [
+        { key: 'top1_rate', label: 'Top 1% 논문 비율', weight: 20, unit: '%', source: 'overview' },
+        { key: 'total_pubs', label: '총 논문수', weight: 20, unit: '편', source: 'overview' },
+        { key: 'per_capita_pubs', label: '교원당 논문수', weight: 10, unit: '편', source: 'overview' },
+        { key: 'per_capita_citations', label: '교원당 인용수', weight: 10, unit: '회', source: 'overview' },
+    ]
+};
+
+function renderGapAnalysis(insts) {
+    if (insts.length < 2) return;
+    const myInst = insts[0];
+    const benchInsts = insts.slice(1);
+
+    ['QS', 'THE', 'ARWU'].forEach(tab => {
+        const containerId = tab.toLowerCase() + 'Simulator';
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const indicators = GAP_INDICATORS[tab];
+        if (!indicators) return;
+
+        const myData = wrAllData[myInst];
+        if (!myData) return;
+
+        const getVal = (data, ind) => {
+            if (ind.source === 'metrics') {
+                const im = data.main.institution_metrics || {};
+                return im[ind.key] ? im[ind.key].value : null;
+            }
+            return data.main.overview[ind.key] || 0;
+        };
+
+        const fmtVal = v => v == null ? '-' : (typeof v === 'number' ? (v % 1 === 0 && v > 100 ? v.toLocaleString() : (Number.isInteger(v) ? v : v.toFixed(2))) : v);
+        const stars = p => p >= 5 ? '★★★' : p >= 2 ? '★★' : '★';
+        const colorClass = tab === 'QS' ? 'primary' : tab === 'THE' ? 'success' : 'warning';
+
+        // 벤치마킹 대학별로 각각 카드 생성
+        let allCards = '';
+        benchInsts.forEach(benchInst => {
+            const benchData = wrAllData[benchInst];
+            if (!benchData) return;
+
+            let gaps = [];
+            let tableRows = '';
+
+            indicators.forEach(ind => {
+                const myVal = getVal(myData, ind);
+                const benchVal = getVal(benchData, ind);
+                let gapPct = 0;
+                if (myVal != null && benchVal != null && benchVal !== 0) {
+                    gapPct = ((myVal - benchVal) / Math.abs(benchVal)) * 100;
+                }
+                const effectiveGap = ind.inverse ? -gapPct : gapPct;
+                const priority = Math.abs(effectiveGap) * ind.weight / 100;
+                const gapColor = effectiveGap >= 0 ? 'text-success' : 'text-danger';
+                const gapSign = gapPct >= 0 ? '+' : '';
+                const priorityBadge = effectiveGap < -1 ? `<span class="text-danger fw-bold">${stars(priority)}</span>` : '<span class="text-success">-</span>';
+
+                gaps.push({
+                    label: ind.label, weight: ind.weight, unit: ind.unit,
+                    myVal, benchVal, gapPct, effectiveGap, priority,
+                    needsImprovement: effectiveGap < -1
+                });
+
+                tableRows += `<tr>
+                    <td>${ind.label} <small class="text-muted">(${ind.weight}%)</small></td>
+                    <td class="text-center"><strong>${fmtVal(myVal)}${ind.unit}</strong></td>
+                    <td class="text-center">${fmtVal(benchVal)}${ind.unit}</td>
+                    <td class="text-center ${gapColor}">${gapSign}${gapPct.toFixed(1)}%</td>
+                    <td class="text-center">${priorityBadge}</td>
+                </tr>`;
+            });
+
+            // TOP 3 개선 과제
+            const improvements = gaps.filter(g => g.needsImprovement).sort((a, b) => b.priority - a.priority).slice(0, 3);
+            let top3Html = '';
+            if (improvements.length > 0) {
+                top3Html = `<div class="alert alert-danger mt-3 mb-0 py-2">
+                    <strong><i class="fas fa-exclamation-triangle"></i> ${INST_NAMES[benchInst]} 대비 최우선 개선 과제 TOP ${improvements.length}</strong>
+                    <ol class="mb-0 mt-1">`;
+                improvements.forEach(g => {
+                    top3Html += `<li><strong>${g.label}</strong>: 현재 ${fmtVal(g.myVal)}${g.unit} → 목표 ${fmtVal(g.benchVal)}${g.unit} (격차 ${Math.abs(g.gapPct).toFixed(1)}%, 배점 ${g.weight}%)</li>`;
+                });
+                top3Html += '</ol></div>';
+            }
+
+            // 강점
+            const strengths = gaps.filter(g => !g.needsImprovement);
+            let strengthHtml = '';
+            if (strengths.length > 0) {
+                strengthHtml = `<div class="alert alert-success mt-2 mb-0 py-2">
+                    <strong><i class="fas fa-thumbs-up"></i> ${INST_NAMES[benchInst]} 대비 강점 지표</strong>: ${strengths.map(g => g.label).join(', ')}
+                </div>`;
+            }
+
+            allCards += `
+                <div class="card border-${colorClass} mb-3">
+                    <div class="card-header bg-dark text-white py-2">
+                        <i class="fas fa-chart-bar"></i> ${tab} 격차 분석:
+                        <strong style="color:${INST_COLORS[myInst]}">${INST_NAMES[myInst]}</strong> vs
+                        <strong style="color:${INST_COLORS[benchInst]}">${INST_NAMES[benchInst]}</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>지표 (배점)</th>
+                                        <th class="text-center" style="color:${INST_COLORS[myInst]}">${INST_NAMES[myInst]}</th>
+                                        <th class="text-center" style="color:${INST_COLORS[benchInst]}">${INST_NAMES[benchInst]}</th>
+                                        <th class="text-center">격차</th>
+                                        <th class="text-center">개선 우선순위</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${tableRows}</tbody>
+                            </table>
+                        </div>
+                        ${top3Html}
+                        ${strengthHtml}
+                    </div>
+                </div>`;
+        });
+
+        container.innerHTML = allCards;
+    });
+}
 
 function formatAiResponse(text) {
     // 마크다운 테이블 → HTML 테이블
