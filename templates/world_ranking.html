@@ -114,48 +114,21 @@
 
 </div><!-- tab-content -->
 
-<!-- AI 분석 버튼 + 결과 -->
-<div id="aiAnalysisSection" class="mt-4">
-    <div class="card mb-3">
-        <div class="card-header py-2 bg-dark text-white"><i class="fas fa-robot"></i> AI 분석</div>
-        <div class="card-body py-2">
-            <button class="btn btn-dark" id="aiAnalysisBtn" onclick="requestAiAnalysis()">
-                <i class="fas fa-robot"></i> AI 분석 실행
-            </button>
-            <small class="text-muted ms-2">선택 탭(QS/THE/ARWU) 기준, 관리자가 입력한 순위 데이터를 기반으로 분석합니다</small>
-        </div>
-    </div>
-    <div id="aiAnalysisLoading" class="mt-3" style="display:none;">
-        <div class="d-flex align-items-center">
-            <div class="spinner-border text-dark me-3"></div>
-            <span>AI가 분석 중입니다... (최대 30초 소요)</span>
-        </div>
-    </div>
-    <!-- 비밀번호 모달 -->
-    <div class="modal fade" id="aiPasswordModal" tabindex="-1">
-        <div class="modal-dialog modal-sm">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h6 class="modal-title"><i class="fas fa-lock"></i> AI 분석 비밀번호</h6>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="password" class="form-control" id="aiPassword" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter') submitAiPassword()">
-                </div>
-                <div class="modal-footer py-1">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
-                    <button type="button" class="btn btn-sm btn-dark" onclick="submitAiPassword()">확인</button>
-                </div>
+<!-- 비밀번호 모달 (공통) -->
+<div class="modal fade" id="aiPasswordModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title"><i class="fas fa-lock"></i> AI 분석 비밀번호</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-        </div>
-    </div>
-
-    <div id="aiAnalysisResult" class="mt-3" style="display:none;">
-        <div class="card border-dark">
-            <div class="card-header bg-dark text-white">
-                <i class="fas fa-robot"></i> AI 분석 결과 <span id="aiTabLabel"></span>
+            <div class="modal-body">
+                <input type="password" class="form-control" id="aiPassword" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter') submitAiPassword()">
             </div>
-            <div class="card-body" id="aiAnalysisContent"></div>
+            <div class="modal-footer py-1">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-sm btn-dark" onclick="submitAiPassword()">확인</button>
+            </div>
         </div>
     </div>
 </div>
@@ -770,19 +743,13 @@ function renderTrends(t) {
 
 // AI 분석
 let currentActiveTab = '#tabQS';
+let aiAuthenticated = false; // 세션 내 비밀번호 인증 상태
+let pendingAiCall = null; // 인증 후 실행할 콜백
 
-// 탭 변경 시 현재 탭 추적 + 연도별추이에서는 AI 버튼 숨김
+// 탭 변경 시 현재 탭 추적
 document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
     tab.addEventListener('shown.bs.tab', function(e) {
         currentActiveTab = e.target.getAttribute('data-bs-target');
-        const aiSection = document.getElementById('aiAnalysisSection');
-        if (currentActiveTab === '#tabTrends') {
-            aiSection.style.display = 'none';
-        } else {
-            aiSection.style.display = 'block';
-        }
-        // 이전 분석 결과 숨김
-        document.getElementById('aiAnalysisResult').style.display = 'none';
     });
 });
 
@@ -928,12 +895,164 @@ function renderGapAnalysis(insts) {
                         </div>
                         ${top3Html}
                         ${strengthHtml}
+
+                        <!-- 연간 개선 로드맵 -->
+                        <div class="mt-3 border-top pt-3">
+                            <div class="d-flex align-items-center mb-2">
+                                <strong><i class="fas fa-road"></i> 연간 개선 로드맵</strong>
+                                <div class="ms-3">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-secondary ${tab}_roadmap_btn" onclick="renderRoadmap('${tab}', '${myInst}', '${benchInst}', 3, this)">3년</button>
+                                        <button class="btn btn-outline-secondary ${tab}_roadmap_btn active" onclick="renderRoadmap('${tab}', '${myInst}', '${benchInst}', 5, this)">5년</button>
+                                        <button class="btn btn-outline-secondary ${tab}_roadmap_btn" onclick="renderRoadmap('${tab}', '${myInst}', '${benchInst}', 7, this)">7년</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="roadmap_${tab}_${benchInst}"></div>
+                        </div>
                     </div>
                 </div>`;
+
+            // 기본 5년 로드맵 렌더링
+            setTimeout(() => renderRoadmap(tab, myInst, benchInst, 5), 100);
         });
 
         container.innerHTML = allCards;
     });
+}
+
+function renderRoadmap(tab, myInst, benchInst, years, btn) {
+    // 버튼 활성화
+    if (btn) {
+        document.querySelectorAll(`.${tab}_roadmap_btn`).forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+
+    const container = document.getElementById(`roadmap_${tab}_${benchInst}`);
+    if (!container) return;
+
+    const indicators = GAP_INDICATORS[tab];
+    if (!indicators) return;
+
+    const myData = wrAllData[myInst];
+    const benchData = wrAllData[benchInst];
+    if (!myData || !benchData) return;
+
+    const getVal = (data, ind) => {
+        if (ind.source === 'metrics') {
+            const im = data.main.institution_metrics || {};
+            return im[ind.key] ? im[ind.key].value : null;
+        }
+        return data.main.overview[ind.key] || 0;
+    };
+
+    const fmtVal = v => v == null ? '-' : (typeof v === 'number' ? (v % 1 === 0 && v > 100 ? v.toLocaleString() : v.toFixed(2)) : v);
+    const currentYear = new Date().getFullYear();
+
+    // 개선 필요 지표만 (배점 × 격차 순)
+    let roadmapItems = [];
+    indicators.forEach(ind => {
+        const myVal = getVal(myData, ind);
+        const benchVal = getVal(benchData, ind);
+        if (myVal == null || benchVal == null) return;
+
+        const effectiveGap = ind.inverse
+            ? ((myVal - benchVal) / Math.abs(benchVal)) * -100
+            : ((myVal - benchVal) / Math.abs(benchVal)) * 100;
+
+        if (effectiveGap >= -1) return; // 이미 앞서거나 비슷
+
+        const gap = benchVal - myVal;
+        const annualChange = gap / years;
+        const priority = Math.abs(effectiveGap) * ind.weight / 100;
+
+        roadmapItems.push({
+            label: ind.label,
+            weight: ind.weight,
+            unit: ind.unit,
+            myVal, benchVal, gap, annualChange, priority,
+            inverse: ind.inverse
+        });
+    });
+
+    roadmapItems.sort((a, b) => b.priority - a.priority);
+
+    if (roadmapItems.length === 0) {
+        container.innerHTML = '<p class="text-success text-center mb-0"><i class="fas fa-check-circle"></i> 모든 지표에서 벤치마킹 수준 이상입니다.</p>';
+        return;
+    }
+
+    // 연도별 헤더
+    let yearHeaders = '';
+    for (let y = 1; y <= years; y++) {
+        yearHeaders += `<th class="text-center small">${currentYear + y}년<br>(${y}년차)</th>`;
+    }
+
+    let rows = '';
+    roadmapItems.forEach(item => {
+        let yearCells = '';
+        for (let y = 1; y <= years; y++) {
+            let targetVal;
+            if (item.inverse) {
+                targetVal = item.myVal + (item.benchVal - item.myVal) * y / years;
+            } else {
+                targetVal = item.myVal + item.annualChange * y;
+            }
+            const isLast = (y === years);
+            yearCells += `<td class="text-center small ${isLast ? 'fw-bold text-success' : ''}">${fmtVal(targetVal)}${item.unit}</td>`;
+        }
+
+        const annualDisplay = item.inverse
+            ? fmtVal(Math.abs(item.annualChange))
+            : (item.annualChange > 0 ? '+' : '') + fmtVal(item.annualChange);
+
+        rows += `<tr>
+            <td>${item.label} <small class="text-muted">(${item.weight}%)</small></td>
+            <td class="text-center">${fmtVal(item.myVal)}${item.unit}</td>
+            <td class="text-center text-success fw-bold">${fmtVal(item.benchVal)}${item.unit}</td>
+            <td class="text-center"><span class="badge bg-info">${annualDisplay}${item.unit}/년</span></td>
+            ${yearCells}
+        </tr>`;
+    });
+
+    container.innerHTML = `
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0" style="font-size: 0.85rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th>지표 (배점)</th>
+                        <th class="text-center">현재</th>
+                        <th class="text-center text-success">목표<br>(${INST_NAMES[benchInst]})</th>
+                        <th class="text-center">연간 개선</th>
+                        ${yearHeaders}
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+        <small class="text-muted mt-1 d-block"><i class="fas fa-info-circle"></i> 배점이 높고 격차가 큰 지표 순으로 표시됩니다. 매년 균등하게 개선한다고 가정한 로드맵입니다.</small>`;
+
+    // AI 분석 버튼 추가
+    container.innerHTML += `
+        <div class="mt-3 text-center" id="aiSection_${tab}_${benchInst}">
+            <button class="btn btn-dark" onclick="runAiForCard('${tab}', '${myInst}', '${benchInst}')">
+                <i class="fas fa-robot"></i> AI 전략 분석
+            </button>
+            <div id="aiLoading_${tab}_${benchInst}" style="display:none;" class="mt-3">
+                <div class="d-flex align-items-center justify-content-center">
+                    <div class="spinner-border text-dark me-3"></div>
+                    <span>AI가 분석 중입니다... (최대 30초 소요)</span>
+                </div>
+            </div>
+            <div id="aiResult_${tab}_${benchInst}" class="mt-3 text-start" style="display:none;">
+                <div class="card border-dark">
+                    <div class="card-header bg-dark text-white py-2">
+                        <i class="fas fa-robot"></i> AI 전략 분석 결과
+                    </div>
+                    <div class="card-body" id="aiContent_${tab}_${benchInst}"></div>
+                </div>
+            </div>
+        </div>`;
 }
 
 function formatAiResponse(text) {
@@ -988,10 +1107,15 @@ function formatAiResponse(text) {
     return html;
 }
 
-function requestAiAnalysis() {
-    document.getElementById('aiPassword').value = '';
-    new bootstrap.Modal(document.getElementById('aiPasswordModal')).show();
-    setTimeout(() => document.getElementById('aiPassword').focus(), 300);
+function runAiForCard(tab, myInst, benchInst) {
+    if (!aiAuthenticated) {
+        pendingAiCall = () => runAiForCard(tab, myInst, benchInst);
+        document.getElementById('aiPassword').value = '';
+        new bootstrap.Modal(document.getElementById('aiPasswordModal')).show();
+        setTimeout(() => document.getElementById('aiPassword').focus(), 300);
+        return;
+    }
+    executeAiAnalysis(tab, myInst, benchInst);
 }
 
 function submitAiPassword() {
@@ -999,66 +1123,81 @@ function submitAiPassword() {
     if (!password) return;
     bootstrap.Modal.getInstance(document.getElementById('aiPasswordModal')).hide();
 
-    // 현재 탭 판별
-    const tabMap = { '#tabQS': 'QS', '#tabTHE': 'THE', '#tabARWU': 'ARWU' };
-    const tab = tabMap[currentActiveTab] || 'QS';
+    // 비밀번호를 서버에서 검증 (첫 호출 시)
+    aiAuthenticated = true;
+    window._aiPassword = password;
 
-    // 현재 페이지의 테이블 데이터 수집
+    if (pendingAiCall) {
+        pendingAiCall();
+        pendingAiCall = null;
+    }
+}
+
+function executeAiAnalysis(tab, myInst, benchInst) {
+    const sectionEl = document.getElementById(`aiSection_${tab}_${benchInst}`);
+    if (!sectionEl) { alert('AI 분석 영역을 찾을 수 없습니다.'); return; }
+    const loadingEl = document.getElementById(`aiLoading_${tab}_${benchInst}`);
+    const resultEl = document.getElementById(`aiResult_${tab}_${benchInst}`);
+    const contentEl = document.getElementById(`aiContent_${tab}_${benchInst}`);
+    const btnEl = sectionEl.querySelector('button');
+
+    // 격차 분석 카드의 테이블 내용 수집
+    const cardContainer = document.getElementById(`${tab.toLowerCase()}Simulator`);
     let tableData = '';
+    if (cardContainer) {
+        // 해당 벤치마킹 카드에서 텍스트 수집
+        const cards = cardContainer.querySelectorAll('.card');
+        cards.forEach(card => {
+            const header = card.querySelector('.card-header');
+            if (header && header.textContent.includes(INST_NAMES[benchInst])) {
+                tableData = card.innerText;
+            }
+        });
+    }
 
-    // 종합 지표 카드
+    // 종합 지표도 추가
     const overviewEl = document.getElementById('overviewCards');
-    if (overviewEl) tableData += '[종합 지표]\n' + overviewEl.innerText + '\n\n';
+    if (overviewEl) tableData = '[종합 지표]\n' + overviewEl.innerText + '\n\n' + '[격차 분석 + 개선 과제]\n' + tableData;
 
-    // 현재 탭의 상세 내용
-    const tabContentId = { '#tabQS': 'qsContent', '#tabTHE': 'theContent', '#tabARWU': 'arwuContent' };
-    const contentEl = document.getElementById(tabContentId[currentActiveTab]);
-    if (contentEl) tableData += `[${tab} 지표]\n` + contentEl.innerText + '\n\n';
-
-    // 공시자료
-    const instMetricsId = { '#tabQS': 'qsInstitutionMetrics', '#tabTHE': 'theInstitutionMetrics' };
-    const instEl = document.getElementById(instMetricsId[currentActiveTab]);
-    if (instEl && instEl.innerText.trim()) tableData += '[대학공시자료]\n' + instEl.innerText + '\n\n';
-
-    // 기관명
-    const insts = getSelectedInstitutions();
-    const instName = insts.map(i => INST_NAMES[i]).join(' vs ');
-
-    document.getElementById('aiAnalysisLoading').style.display = 'block';
-    document.getElementById('aiAnalysisResult').style.display = 'none';
-    document.getElementById('aiAnalysisBtn').disabled = true;
+    loadingEl.style.display = 'block';
+    resultEl.style.display = 'none';
+    btnEl.disabled = true;
 
     fetch('/api/ai_analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            password: password,
+            password: window._aiPassword,
             tab: tab,
             table_data: tableData,
-            institution_name: instName,
-            current_institution: INST_NAMES[CURRENT_INST] || CURRENT_INST,
-            compare_institutions: insts.filter(i => i !== CURRENT_INST).map(i => INST_NAMES[i]),
+            institution_name: `${INST_NAMES[myInst]} vs ${INST_NAMES[benchInst]}`,
+            current_institution: INST_NAMES[myInst],
+            compare_institutions: [INST_NAMES[benchInst]],
             ranking_history: ''
         })
     })
     .then(r => r.json())
     .then(data => {
-        document.getElementById('aiAnalysisLoading').style.display = 'none';
-        document.getElementById('aiAnalysisBtn').disabled = false;
+        loadingEl.style.display = 'none';
+        btnEl.disabled = false;
 
         if (data.error) {
-            alert('오류: ' + data.error);
+            if (data.error.includes('비밀번호')) {
+                aiAuthenticated = false;
+                alert(data.error);
+            } else {
+                alert('오류: ' + data.error);
+            }
             return;
         }
 
-        document.getElementById('aiTabLabel').textContent = `(${tab})`;
-        document.getElementById('aiAnalysisContent').innerHTML = formatAiResponse(data.analysis);
-        document.getElementById('aiAnalysisResult').style.display = 'block';
-        document.getElementById('aiAnalysisResult').scrollIntoView({ behavior: 'smooth' });
+        contentEl.innerHTML = formatAiResponse(data.analysis);
+        resultEl.style.display = 'block';
+        resultEl.scrollIntoView({ behavior: 'smooth' });
     })
     .catch(err => {
-        document.getElementById('aiAnalysisLoading').style.display = 'none';
-        document.getElementById('aiAnalysisBtn').disabled = false;
+        loadingEl.style.display = 'none';
+        btnEl.disabled = false;
         alert('AI 분석 실패: ' + err);
     });
 }
