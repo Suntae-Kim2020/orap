@@ -73,3 +73,23 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json.env
+
+# Secrets / personal documents
+cookies.txt
+auth_code.txt
+등록증.pdf
+설문 결과 분석.pdf
+ORAP기능설명.hwpx
+Pure 교원 리스트.xlsx
+
+# Raw data (대용량 원자료)
+rawData/
+rawData.zip
+rawdata001/
+rawdata001.zip
+대학공시자료/
+20260329/
+orap_submit.zip
+
+# Runtime artifacts
+snapshots/
