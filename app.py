@@ -7296,6 +7296,7 @@ def api_strategic_field_collaborators():
 @admin_required
 def admin_users():
     """사용자 관리 페이지"""
+    log_activity('페이지 조회', '사용자 관리')
     conn = sqlite3.connect(USERS_DB)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -8281,6 +8282,7 @@ def api_delete_research_field_category(category):
 @super_admin_required
 def admin_institutions():
     """기관 관리 페이지"""
+    log_activity('페이지 조회', '기관 관리')
     conn = sqlite3.connect(USERS_DB)
     conn.row_factory = sqlite3.Row
     institutions = conn.execute("SELECT * FROM institutions ORDER BY id").fetchall()
