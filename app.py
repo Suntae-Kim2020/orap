@@ -120,7 +120,8 @@ def init_institution_db(db_file):
         most_recent_publication INTEGER, citations INTEGER, citations_per_publication REAL,
         field_weighted_citation_impact REAL, h_index INTEGER, output_in_top_10_percentile INTEGER,
         oldest_publication INTEGER, scopus_author_profile TEXT, primary_affiliation TEXT,
-        orcid TEXT, created_at TEXT, updated_at TEXT
+        orcid TEXT, created_at TEXT, updated_at TEXT,
+        korean_name TEXT, college_ko TEXT, department_ko TEXT
     )''')
 
     # researcher_score 테이블
@@ -307,6 +308,17 @@ def init_activity_logs_db():
     conn.close()
 
 init_activity_logs_db()
+
+
+@app.context_processor
+def inject_analysis_scope():
+    """모든 페이지에 분석 대상 범위 주입"""
+    try:
+        if not session.get('authenticated'):
+            return {'analysis_scope': 'all'}
+        return {'analysis_scope': get_analysis_scope()}
+    except Exception:
+        return {'analysis_scope': 'all'}
 
 
 @app.context_processor
@@ -594,6 +606,17 @@ def migrate_database():
         )
     """)
 
+    # Pure 교원 마스터 컬럼 (한글성명, 단과대학, 학과)
+    cursor.execute("PRAGMA table_info(author)")
+    author_columns = [c[1] for c in cursor.fetchall()]
+    for col in ['korean_name', 'college_ko', 'department_ko']:
+        if col not in author_columns:
+            try:
+                cursor.execute(f"ALTER TABLE author ADD COLUMN {col} TEXT")
+                print(f"Added author column: {col}")
+            except sqlite3.Error as e:
+                print(f"Error adding author column {col}: {e}")
+
     # publication 테이블 중복 제거 (EID 기반)
     cursor.execute("""
         SELECT eid, COUNT(*) as cnt FROM publication
@@ -817,6 +840,142 @@ try:
 except Exception as e:
     print(f"Database migration failed: {e}")
     print("Continuing with application startup...")
+
+# app_settings 테이블 (기관별 키-값 설정)
+def _ensure_app_settings_table():
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    for db_file in set(INSTITUTION_DB.values()):
+        db_path = os.path.join(app_dir, db_file)
+        if not os.path.exists(db_path):
+            continue
+        try:
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[{db_file}] app_settings ensure failed: {e}")
+
+
+def get_setting(key, default=None):
+    """현재 기관 DB에서 설정 값 조회."""
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)")
+        c.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else default
+    except Exception:
+        return default
+
+
+def set_setting(key, value):
+    """현재 기관 DB에 설정 저장."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)")
+    c.execute("""
+        INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+    """, (key, str(value)))
+    conn.commit()
+    conn.close()
+
+
+def get_analysis_scope():
+    """분석 대상 범위: 'pure' (전임교원만) | 'non_pure' (비전임교원만) | 'all' (전체).
+
+    하위호환: 기존 pure_only=1 설정은 'pure'로 매핑.
+    """
+    scope = get_setting('analysis_scope')
+    if scope in ('pure', 'non_pure', 'all'):
+        return scope
+    if get_setting('pure_only', '0') == '1':
+        return 'pure'
+    return 'all'
+
+
+# 하위호환 래퍼 (기존 호출부 유지)
+def is_pure_only_enabled():
+    return get_analysis_scope() == 'pure'
+
+
+def get_pure_scopus_ids():
+    """현재 요청에서 매핑된(전임교원) scopus_author_id 집합 반환. 요청 단위 캐싱."""
+    from flask import g
+    if not hasattr(g, '_pure_ids'):
+        try:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("SELECT scopus_author_id FROM author WHERE korean_name IS NOT NULL AND korean_name != ''")
+            g._pure_ids = {r[0] for r in c.fetchall() if r[0]}
+            conn.close()
+        except Exception:
+            g._pure_ids = set()
+    return g._pure_ids
+
+
+def apply_pure_filter(results, key='scopus_author_id'):
+    """현재 설정된 analysis_scope에 따라 결과 리스트를 필터링.
+
+    - 'all' (기본): 그대로 반환
+    - 'pure': 매핑된(Pure) scopus_id만 유지
+    - 'non_pure': 매핑되지 않은 scopus_id만 유지 (외부 공동저자 등)
+    """
+    scope = get_analysis_scope()
+    if scope == 'all':
+        return results
+    ids = get_pure_scopus_ids()
+    if scope == 'pure':
+        return [r for r in results if r.get(key) in ids]
+    if scope == 'non_pure':
+        return [r for r in results if r.get(key) not in ids]
+    return results
+
+
+# 모든 기관 DB에 Pure 교원 마스터 컬럼 보장
+def _ensure_author_meta_columns():
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    for db_file in set(INSTITUTION_DB.values()):
+        db_path = os.path.join(app_dir, db_file)
+        if not os.path.exists(db_path):
+            continue
+        try:
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='author'")
+            if not cur.fetchone():
+                conn.close()
+                continue
+            cur.execute("PRAGMA table_info(author)")
+            cols = [c[1] for c in cur.fetchall()]
+            for col in ['korean_name', 'college_ko', 'department_ko']:
+                if col not in cols:
+                    cur.execute(f"ALTER TABLE author ADD COLUMN {col} TEXT")
+                    print(f"[{db_file}] Added author column: {col}")
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[{db_file}] author meta column ensure failed: {e}")
+
+try:
+    _ensure_author_meta_columns()
+except Exception as e:
+    print(f"author meta column migration failed: {e}")
+
+try:
+    _ensure_app_settings_table()
+except Exception as e:
+    print(f"app_settings table init failed: {e}")
 
 # ============================================
 # 인증 및 기관 선택 라우트
@@ -1870,6 +2029,8 @@ def api_researcher_scores():
                     r['score_total'] = r['score_total_median']
                 results.append(r)
 
+            results = apply_pure_filter(results)
+            total_count = len(results)
             return jsonify({
                 'total_count': total_count,
                 'returned_count': len(results),
@@ -1962,10 +2123,226 @@ def api_researcher_scores():
 
         conn.close()
 
+        results = apply_pure_filter(results)
+        total_count = len(results)
         return jsonify({
             'total_count': total_count,
             'returned_count': len(results),
             'fwci_method': fwci_method,
+            'researchers': results
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@app.route('/api/author_meta_map')
+def api_author_meta_map():
+    """Pure 교원 마스터 매핑 (scopus_author_id → 한글성명/단과대학/학과).
+
+    모든 간략화면 테이블에 한글성명·소속을 표출하기 위한 공용 lookup map.
+    프론트엔드에서 한 번 fetch 후 전역 캐시.
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT scopus_author_id, korean_name, college_ko, department_ko
+            FROM author
+            WHERE scopus_author_id IS NOT NULL
+              AND (korean_name IS NOT NULL OR college_ko IS NOT NULL OR department_ko IS NOT NULL)
+        """)
+        result = {}
+        for row in cursor.fetchall():
+            result[row['scopus_author_id']] = {
+                'n': row['korean_name'] or '',
+                'c': row['college_ko'] or '',
+                'd': row['department_ko'] or ''
+            }
+        conn.close()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/top_researchers')
+def api_top_researchers():
+    """Top 연구자 다중 뷰 API.
+    view 파라미터로 카테고리를 전환한다.
+    - national_senior: 국가대표급 시니어 (h × FWCI × log(인용+1) 합성점수)
+    - impact_master:   임팩트 거장 (Top 10% 논문 수 절대값 정렬)
+    - citation_giant:  누적 인용 거장 (인용수 절대값 정렬)
+    - field_leader:    분야별 1인자 (각 ASJC 분야 합성점수 1위)
+    - veteran_active:  30년+ 현역 (경력 25년↑ AND 최근3년 ≥5편)
+    """
+    try:
+        import math
+        from datetime import datetime
+
+        view = request.args.get('view', 'national_senior')
+        limit = request.args.get('limit', 50, type=int)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        affiliation = get_institution_affiliation()
+
+        results = []
+
+        # 공통: 후보 저자 풀 (모든 뷰가 공유하는 기본 필터)
+        cursor.execute("""
+            SELECT scopus_author_id, name, scholarly_output, citations,
+                   field_weighted_citation_impact AS fwci, h_index,
+                   output_in_top_10_percentile AS top10,
+                   oldest_publication, most_recent_publication,
+                   scopus_author_profile AS profile_url
+            FROM author
+            WHERE primary_affiliation LIKE ?
+              AND scholarly_output >= 10
+              AND h_index > 0
+              AND citations > 0
+              AND field_weighted_citation_impact > 0
+        """, (f'%{affiliation}%',))
+        authors = [dict(r) for r in cursor.fetchall()]
+
+        def make_record(d, extra=None):
+            cit = d['citations'] or 0
+            fwci = d['fwci'] or 0
+            h = d['h_index'] or 0
+            career_years = None
+            if d['oldest_publication'] and d['most_recent_publication']:
+                career_years = d['most_recent_publication'] - d['oldest_publication'] + 1
+            rec = {
+                'scopus_author_id': d['scopus_author_id'],
+                'name': d['name'],
+                'scholarly_output': d['scholarly_output'] or 0,
+                'citations': cit,
+                'fwci': round(fwci, 2),
+                'h_index': h,
+                'top10': d['top10'] or 0,
+                'career_years': career_years,
+                'composite_score': round(h * fwci * math.log10(cit + 1), 2),
+                'profile_url': d['profile_url']
+            }
+            if extra:
+                rec.update(extra)
+            return rec
+
+        if view == 'national_senior':
+            for d in authors:
+                results.append(make_record(d))
+            results.sort(key=lambda x: x['composite_score'], reverse=True)
+
+        elif view == 'impact_master':
+            # Top 10% 논문 수 절대값 정렬. top10>0인 사람만.
+            for d in authors:
+                if (d['top10'] or 0) <= 0:
+                    continue
+                rec = make_record(d)
+                rec['top10_ratio'] = round((d['top10'] / d['scholarly_output']) * 100, 1) if d['scholarly_output'] else 0
+                results.append(rec)
+            results.sort(key=lambda x: (x['top10'], x['citations']), reverse=True)
+
+        elif view == 'citation_giant':
+            # 인용수 절대값 정렬.
+            for d in authors:
+                rec = make_record(d)
+                rec['cpp'] = round(d['citations'] / d['scholarly_output'], 1) if d['scholarly_output'] else 0
+                results.append(rec)
+            results.sort(key=lambda x: x['citations'], reverse=True)
+
+        elif view == 'field_leader':
+            # 각 ASJC 분야의 1위 1명. 연구자의 "주분야" = 그 사람의 논문이 가장 많은 ASJC 분야.
+            cursor.execute("""
+                SELECT scopus_author_ids, all_science_journal_classification_asjc_field_name AS fields
+                FROM publication
+                WHERE scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+                  AND all_science_journal_classification_asjc_field_name IS NOT NULL
+            """)
+            # author_id -> field -> count
+            author_field_counts = {}
+            for pub in cursor.fetchall():
+                sids = [s.strip() for s in (pub['scopus_author_ids'] or '').replace(';', '|').split('|') if s.strip()]
+                fields = [f.strip() for f in (pub['fields'] or '').split('|') if f.strip()]
+                if not sids or not fields:
+                    continue
+                for sid in sids:
+                    if sid not in author_field_counts:
+                        author_field_counts[sid] = {}
+                    for f in fields:
+                        author_field_counts[sid][f] = author_field_counts[sid].get(f, 0) + 1
+
+            # 후보 저자별 주분야 결정 + 합성점수 계산
+            field_to_top = {}  # field -> best record
+            for d in authors:
+                sid = d['scopus_author_id']
+                fc = author_field_counts.get(sid)
+                if not fc:
+                    continue
+                # 가장 많은 논문이 있는 분야 (동률 시 알파벳 우선)
+                primary_field = max(fc.items(), key=lambda kv: (kv[1], -ord(kv[0][0]) if kv[0] else 0))[0]
+                primary_field_count = fc[primary_field]
+                if primary_field_count < 5:  # 분야 내 논문 5편 미만 제외
+                    continue
+                rec = make_record(d, extra={
+                    'primary_field': primary_field,
+                    'primary_field_count': primary_field_count
+                })
+                cur_best = field_to_top.get(primary_field)
+                if not cur_best or rec['composite_score'] > cur_best['composite_score']:
+                    field_to_top[primary_field] = rec
+            results = list(field_to_top.values())
+            results.sort(key=lambda x: x['composite_score'], reverse=True)
+
+        elif view == 'veteran_active':
+            # 경력 25년 이상 AND 최근3년 논문 5편 이상.
+            current_year = datetime.now().year
+            recent_cutoff = current_year - 2  # 최근 3년: cutoff~current
+
+            cursor.execute("""
+                SELECT scopus_author_ids, year
+                FROM publication
+                WHERE scopus_author_ids IS NOT NULL AND scopus_author_ids != ''
+            """)
+            recent_counts = {}
+            for pub in cursor.fetchall():
+                try:
+                    yr = int(float(pub['year'])) if pub['year'] else 0
+                except (ValueError, TypeError):
+                    yr = 0
+                if not (recent_cutoff <= yr <= current_year):
+                    continue
+                for sid in (pub['scopus_author_ids'] or '').replace(';', '|').split('|'):
+                    sid = sid.strip()
+                    if sid:
+                        recent_counts[sid] = recent_counts.get(sid, 0) + 1
+
+            for d in authors:
+                if not (d['oldest_publication'] and d['most_recent_publication']):
+                    continue
+                career_years = d['most_recent_publication'] - d['oldest_publication'] + 1
+                if career_years < 25:
+                    continue
+                rc = recent_counts.get(d['scopus_author_id'], 0)
+                if rc < 5:
+                    continue
+                rec = make_record(d, extra={'recent_3yr_count': rc})
+                results.append(rec)
+            results.sort(key=lambda x: x['composite_score'], reverse=True)
+
+        conn.close()
+
+        results = apply_pure_filter(results)
+        total_count = len(results)
+        if limit > 0:
+            results = results[:limit]
+
+        return jsonify({
+            'view': view,
+            'total_count': total_count,
+            'returned_count': len(results),
             'researchers': results
         })
     except Exception as e:
@@ -2106,6 +2483,7 @@ def api_bibliometric_ranking():
             sort_by = 'h_index'
         results.sort(key=lambda x: (x[sort_by] if x[sort_by] is not None else -1), reverse=(sort_by != 'name'))
 
+        results = apply_pure_filter(results)
         total_count = len(results)
         if limit > 0:
             results = results[:limit]
@@ -2657,7 +3035,7 @@ def api_potential_researchers():
             FROM author a
             LEFT JOIN researcher_score rs ON a.scopus_author_id = rs.scopus_author_id
             WHERE a.primary_affiliation = ?
-            AND a.scholarly_output >= 5
+            AND a.scholarly_output >= 10
             AND a.most_recent_publication >= {recent_cutoff}
         """, (affiliation,))
         authors = cursor.fetchall()
@@ -2902,6 +3280,7 @@ def api_potential_researchers():
 
     conn.close()
 
+    results = apply_pure_filter(results)
     return jsonify({
         'analysis_type': analysis_type,
         'count': len(results),
@@ -3155,6 +3534,7 @@ def api_high_citation_potential():
 
     conn.close()
 
+    results = apply_pure_filter(results)
     return jsonify({
         'analysis_type': analysis_type,
         'count': len(results),
@@ -3429,6 +3809,7 @@ def api_collaboration_analysis():
 
     conn.close()
 
+    results = apply_pure_filter(results)
     return jsonify({
         'analysis_type': analysis_type,
         'count': len(results),
@@ -3658,6 +4039,7 @@ def api_research_trajectory():
 
     conn.close()
 
+    results = apply_pure_filter(results)
     return jsonify({
         'analysis_type': analysis_type,
         'count': len(results),
@@ -3842,6 +4224,7 @@ def api_societal_impact():
 
     conn.close()
 
+    results = apply_pure_filter(results)
     return jsonify({
         'analysis_type': analysis_type,
         'count': len(results),
@@ -4155,6 +4538,7 @@ def api_strategic_portfolio():
 
     conn.close()
 
+    results = apply_pure_filter(results)
     return jsonify({
         'analysis_type': analysis_type,
         'count': len(results),
@@ -4170,35 +4554,73 @@ def api_strategic_portfolio():
 @login_required
 def field_analysis():
     log_activity('페이지 조회', '학문분야분석')
-    return render_template('field_analysis.html')
+    return render_template('field_analysis.html',
+                           institutions=INSTITUTION_NAMES,
+                           current_institution=session.get('institution', 'jbnu'))
 
 
 @app.route('/api/field_list')
 def api_field_list():
-    """학문분야 목록 조회 — ASJC 분야명별 논문 수 (5편 이상)"""
+    """학문분야 목록 조회 — ASJC 분야명별 논문 수 (5편 이상).
+    설정된 분석 범위(전임/비전임/전체)에 따라 해당 범위 연구자가 저자로 포함된 논문만 집계.
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT all_science_journal_classification_asjc_field_name
-        FROM publication
-        WHERE all_science_journal_classification_asjc_field_name IS NOT NULL
-              AND all_science_journal_classification_asjc_field_name != ''
-    """)
+    scope = get_analysis_scope()
+    if scope == 'all':
+        # 전체: 빠른 경로 — 저자 필터 없이 모든 publication 집계
+        cursor.execute("""
+            SELECT all_science_journal_classification_asjc_field_name
+            FROM publication
+            WHERE all_science_journal_classification_asjc_field_name IS NOT NULL
+                  AND all_science_journal_classification_asjc_field_name != ''
+        """)
+        rows = cursor.fetchall()
+        conn.close()
 
-    field_counts = {}
-    for pub in cursor.fetchall():
-        fields = [f.strip() for f in (pub['all_science_journal_classification_asjc_field_name'] or '').replace('|', ',').split(',') if f.strip()]
-        for field in fields:
-            field_counts[field] = field_counts.get(field, 0) + 1
+        field_counts = {}
+        for pub in rows:
+            fields = [f.strip() for f in (pub['all_science_journal_classification_asjc_field_name'] or '').replace('|', ',').split(',') if f.strip()]
+            for field in fields:
+                field_counts[field] = field_counts.get(field, 0) + 1
+    else:
+        # 전임/비전임: 해당 scope 연구자 ID 집합과 publication.scopus_author_ids 매칭
+        pure_ids = get_pure_scopus_ids()
+        # 현재 기관의 모든 author scopus_id 도 함께 가져와서 non_pure 판정에 사용
+        cursor.execute("SELECT scopus_author_id FROM author WHERE scopus_author_id IS NOT NULL")
+        all_author_ids = {r[0] for r in cursor.fetchall()}
+        if scope == 'pure':
+            target_ids = pure_ids
+        else:  # non_pure
+            target_ids = all_author_ids - pure_ids
 
-    conn.close()
+        cursor.execute("""
+            SELECT all_science_journal_classification_asjc_field_name, scopus_author_ids
+            FROM publication
+            WHERE all_science_journal_classification_asjc_field_name IS NOT NULL
+                  AND all_science_journal_classification_asjc_field_name != ''
+                  AND scopus_author_ids IS NOT NULL
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+
+        field_counts = {}
+        for pub in rows:
+            raw_ids = (pub['scopus_author_ids'] or '').replace(';', '|')
+            author_ids = {a.strip() for a in raw_ids.split('|') if a.strip()}
+            # 해당 논문에 scope에 속하는 저자가 한 명이라도 있으면 카운트
+            if not (author_ids & target_ids):
+                continue
+            fields = [f.strip() for f in (pub['all_science_journal_classification_asjc_field_name'] or '').replace('|', ',').split(',') if f.strip()]
+            for field in fields:
+                field_counts[field] = field_counts.get(field, 0) + 1
 
     result = [{'name': name, 'pub_count': cnt}
               for name, cnt in field_counts.items() if cnt >= 5]
     result.sort(key=lambda x: x['pub_count'], reverse=True)
 
-    return jsonify({'fields': result})
+    return jsonify({'fields': result, 'analysis_scope': scope})
 
 
 @app.route('/api/field_analysis/overview')
@@ -4440,6 +4862,7 @@ def api_field_analysis_researchers():
             'profile_url': author['profile_url']
         })
 
+    results = apply_pure_filter(results)
     results.sort(key=lambda x: x['field_pubs'], reverse=True)
     results = results[:200]
 
@@ -4527,57 +4950,74 @@ def api_field_analysis_trend():
 
 
 @app.route('/api/field_analysis/collaborators')
+@login_required
 def api_field_analysis_collaborators():
     """
     분야별 기관 간 공동연구자 API
-    - 전북대와 고려대 연구자 간의 공동 저자 관계를 분석
+    - 현재 로그인 기관과 선택된 대상 기관 간의 공동 저자 관계를 분석
+    - target_institution 파라미터로 비교 대상 기관 지정
     """
     import sqlite3
+    import os
 
     fields_param = request.args.get('fields', '')
     selected_fields = [f.strip() for f in fields_param.split('|||') if f.strip()]
     year_from = request.args.get('year_from')
     year_to = request.args.get('year_to')
+    target_institution = request.args.get('target_institution', '').strip()
 
     if not selected_fields:
         return jsonify({'count': 0, 'collaborators': []})
 
-    # 두 DB 모두 열기 (원본 파일 사용)
-    import os
+    current_institution = session.get('institution', 'jbnu')
+    # target 미지정 시 첫 번째 다른 기관 자동 선택
+    if not target_institution:
+        for k in INSTITUTION_DB.keys():
+            if k != current_institution:
+                target_institution = k
+                break
+    if not target_institution or target_institution == current_institution:
+        return jsonify({'count': 0, 'collaborators': [], 'error': '비교할 다른 기관을 선택하세요.'})
+    if target_institution not in INSTITUTION_DB:
+        return jsonify({'count': 0, 'collaborators': [], 'error': '잘못된 대상 기관입니다.'})
+
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    jbnu_db_path = os.path.join(base_dir, 'jbnu.db')
-    korea_db_path = os.path.join(base_dir, 'korea.db')
+    current_db_path = os.path.join(base_dir, INSTITUTION_DB[current_institution])
+    target_db_path = os.path.join(base_dir, INSTITUTION_DB[target_institution])
+    target_affiliation = INSTITUTION_AFFILIATIONS.get(target_institution, '')
 
     try:
-        jbnu_conn = sqlite3.connect(jbnu_db_path)
-        jbnu_conn.row_factory = sqlite3.Row
-        jbnu_cursor = jbnu_conn.cursor()
+        cur_conn = sqlite3.connect(current_db_path)
+        cur_conn.row_factory = sqlite3.Row
+        cur_cursor = cur_conn.cursor()
 
-        korea_conn = sqlite3.connect(korea_db_path)
-        korea_conn.row_factory = sqlite3.Row
-        korea_cursor = korea_conn.cursor()
+        tgt_conn = sqlite3.connect(target_db_path)
+        tgt_conn.row_factory = sqlite3.Row
+        tgt_cursor = tgt_conn.cursor()
     except Exception as e:
         return jsonify({'count': 0, 'collaborators': [], 'error': f'DB 연결 실패: {str(e)}'})
 
-    # 전북대 연구자 목록 (scopus_author_id -> name)
-    jbnu_cursor.execute("SELECT scopus_author_id, name FROM author WHERE scopus_author_id IS NOT NULL")
-    jbnu_authors = {row['scopus_author_id']: row['name'] for row in jbnu_cursor.fetchall()}
+    # 현재 기관 연구자 목록 (scopus_author_id -> name)
+    cur_cursor.execute("SELECT scopus_author_id, name FROM author WHERE scopus_author_id IS NOT NULL")
+    current_authors = {row['scopus_author_id']: row['name'] for row in cur_cursor.fetchall()}
 
-    # 고려대 연구자 목록 (scopus_author_id -> name)
-    korea_cursor.execute("SELECT scopus_author_id, name FROM author WHERE scopus_author_id IS NOT NULL AND primary_affiliation = 'Korea University'")
-    korea_authors = {row['scopus_author_id']: row['name'] for row in korea_cursor.fetchall()}
+    # 대상 기관 연구자 목록
+    tgt_cursor.execute(
+        "SELECT scopus_author_id, name FROM author WHERE scopus_author_id IS NOT NULL AND primary_affiliation LIKE ?",
+        (f'%{target_affiliation}%',)
+    )
+    target_authors = {row['scopus_author_id']: row['name'] for row in tgt_cursor.fetchall()}
 
     # 연도 조건
     year_condition = ""
     if year_from and year_to:
         year_condition = f"AND CAST(year AS INTEGER) >= {int(year_from)} AND CAST(year AS INTEGER) <= {int(year_to)}"
 
-    # 전북대 논문에서 공동저자 찾기
+    # 현재 기관 논문에서 공동저자 찾기
     selected_set = set(selected_fields)
-    collaborations = {}  # (jbnu_id, korea_id, field) -> {pub_count, pubs}
+    collaborations = {}
 
-    # 전북대 논문의 저자 정보 조회
-    jbnu_cursor.execute(f"""
+    cur_cursor.execute(f"""
         SELECT eid, all_science_journal_classification_asjc_field_name,
                scopus_author_ids, title, year
         FROM publication
@@ -4586,31 +5026,28 @@ def api_field_analysis_collaborators():
               {year_condition}
     """)
 
-    for pub in jbnu_cursor.fetchall():
+    for pub in cur_cursor.fetchall():
         fields = [f.strip() for f in (pub['all_science_journal_classification_asjc_field_name'] or '').replace('|', ',').split(',') if f.strip()]
         matched_fields = [f for f in fields if f in selected_set]
         if not matched_fields:
             continue
 
-        # 저자 ID 파싱 (파이프 또는 세미콜론으로 구분)
         raw_ids = (pub['scopus_author_ids'] or '').replace(';', '|')
         author_ids = [a.strip() for a in raw_ids.split('|') if a.strip()]
 
-        # 전북대 저자와 고려대 저자 식별
-        jbnu_in_pub = [aid for aid in author_ids if aid in jbnu_authors]
-        korea_in_pub = [aid for aid in author_ids if aid in korea_authors]
+        cur_in_pub = [aid for aid in author_ids if aid in current_authors]
+        tgt_in_pub = [aid for aid in author_ids if aid in target_authors]
 
-        # 공동 저자 쌍 기록
-        for jbnu_id in jbnu_in_pub:
-            for korea_id in korea_in_pub:
+        for cur_id in cur_in_pub:
+            for tgt_id in tgt_in_pub:
                 for field in matched_fields:
-                    key = (jbnu_id, korea_id, field)
+                    key = (cur_id, tgt_id, field)
                     if key not in collaborations:
                         collaborations[key] = {
-                            'jbnu_id': jbnu_id,
-                            'jbnu_name': jbnu_authors.get(jbnu_id, 'Unknown'),
-                            'korea_id': korea_id,
-                            'korea_name': korea_authors.get(korea_id, 'Unknown'),
+                            'current_id': cur_id,
+                            'current_name': current_authors.get(cur_id, 'Unknown'),
+                            'target_id': tgt_id,
+                            'target_name': target_authors.get(tgt_id, 'Unknown'),
                             'field': field,
                             'pub_count': 0,
                             'eids': set()
@@ -4618,28 +5055,35 @@ def api_field_analysis_collaborators():
                     collaborations[key]['pub_count'] += 1
                     collaborations[key]['eids'].add(pub['eid'])
 
-    jbnu_conn.close()
-    korea_conn.close()
+    cur_conn.close()
+    tgt_conn.close()
 
     # 결과 정리
     result = []
     for key, collab in collaborations.items():
         result.append({
-            'jbnu_id': collab['jbnu_id'],
-            'jbnu_name': collab['jbnu_name'],
-            'korea_id': collab['korea_id'],
-            'korea_name': collab['korea_name'],
+            'current_id': collab['current_id'],
+            'current_name': collab['current_name'],
+            'target_id': collab['target_id'],
+            'target_name': collab['target_name'],
             'field': collab['field'],
-            'pub_count': len(collab['eids']),  # 고유 논문 수
-            'jbnu_profile': f"https://www.scopus.com/authid/detail.uri?authorId={collab['jbnu_id']}",
-            'korea_profile': f"https://www.scopus.com/authid/detail.uri?authorId={collab['korea_id']}"
+            'pub_count': len(collab['eids']),
+            'current_profile': f"https://www.scopus.com/authid/detail.uri?authorId={collab['current_id']}",
+            'target_profile': f"https://www.scopus.com/authid/detail.uri?authorId={collab['target_id']}"
         })
 
+    # 분석 대상 범위 필터 (현재 기관 측 current_id 기준)
+    result = apply_pure_filter(result, key='current_id')
+
     # 논문 수 기준 내림차순 정렬
-    result.sort(key=lambda x: (-x['pub_count'], x['field'], x['jbnu_name']))
+    result.sort(key=lambda x: (-x['pub_count'], x['field'], x['current_name']))
 
     return jsonify({
         'count': len(result),
+        'current_institution_key': current_institution,
+        'current_institution_name': INSTITUTION_NAMES.get(current_institution, current_institution),
+        'target_institution_key': target_institution,
+        'target_institution_name': INSTITUTION_NAMES.get(target_institution, target_institution),
         'collaborators': result
     })
 
@@ -5420,6 +5864,8 @@ def api_researcher_scores_custom():
                 r['score_total'] = r['score_total_median']
             results.append(r)
 
+        results = apply_pure_filter(results)
+        total_count = len(results)
         return jsonify({
             'total_count': total_count,
             'returned_count': len(results),
@@ -6396,6 +6842,18 @@ def api_strategic_field_analysis():
 
     conn.close()
 
+    # 분석 대상 범위 필터 (전임/비전임/전체) 적용
+    researchers = apply_pure_filter(researchers)
+    scope = get_analysis_scope()
+    if scope == 'all':
+        filtered_ids = list(jbnu_researcher_stats.keys())
+    else:
+        pure_ids = get_pure_scopus_ids()
+        if scope == 'pure':
+            filtered_ids = [aid for aid in jbnu_researcher_stats.keys() if aid in pure_ids]
+        else:  # non_pure
+            filtered_ids = [aid for aid in jbnu_researcher_stats.keys() if aid not in pure_ids]
+
     return jsonify({
         'category': category,
         'subcategory': subcategory,
@@ -6403,8 +6861,8 @@ def api_strategic_field_analysis():
         'total_papers': total_papers,
         'total_citations': total_citations,
         'avg_fwci': avg_fwci,
-        'researcher_count': len(jbnu_researcher_stats),
-        'researcher_ids': list(jbnu_researcher_stats.keys()),  # 분야 연구자 ID 목록
+        'researcher_count': len(filtered_ids),
+        'researcher_ids': filtered_ids,  # 분야 연구자 ID 목록 (scope 적용)
         'researchers': researchers,
         'yearly_trend': yearly_trend
     })
@@ -6499,6 +6957,7 @@ def api_strategic_field_ranking():
             'has_oa': row_dict.get('has_oa', 0) or 0
         })
 
+    results = apply_pure_filter(results)
     return jsonify({
         'count': len(results),
         'fwci_method': fwci_method,
@@ -6594,6 +7053,7 @@ def api_strategic_field_modules():
 
         results.append(result)
 
+    results = apply_pure_filter(results)
     return jsonify({
         'count': len(results),
         'module_type': module_type,
@@ -6709,6 +7169,7 @@ def api_strategic_field_strategy():
 
         results.append(result)
 
+    results = apply_pure_filter(results)
     return jsonify({
         'count': len(results),
         'strategy_type': strategy_type,
@@ -6805,8 +7266,12 @@ def api_strategic_field_collaborators():
                             'citations': pub['citations']
                         })
 
+    # 분석 대상 범위 필터 (현재 기관 측 current_id 기준)
+    pre_filter = list(collab_pairs.values())
+    pre_filter = apply_pure_filter(pre_filter, key='current_id')
+
     # 정렬 (논문 수 내림차순)
-    result = sorted(collab_pairs.values(), key=lambda x: x['paper_count'], reverse=True)[:100]
+    result = sorted(pre_filter, key=lambda x: x['paper_count'], reverse=True)[:100]
 
     return jsonify({
         'count': len(result),
@@ -7487,6 +7952,240 @@ def detect_data_type_from_file(filepath, original_filename=''):
 # ========================================
 # 기관 관리
 # ========================================
+
+@app.route('/admin/settings', methods=['GET', 'POST'])
+@admin_required
+def admin_settings():
+    """기관 설정 페이지 (분석 대상 범위 등)"""
+    if request.method == 'POST':
+        scope = request.form.get('analysis_scope', 'all')
+        if scope not in ('pure', 'non_pure', 'all'):
+            scope = 'all'
+        set_setting('analysis_scope', scope)
+        # 하위호환 키 동기화
+        set_setting('pure_only', '1' if scope == 'pure' else '0')
+        log_activity('설정 변경', f'analysis_scope={scope}')
+        flash('설정이 저장되었습니다.', 'success')
+        return redirect(url_for('admin_settings'))
+
+    log_activity('페이지 조회', '설정')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM author")
+    total_authors = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM author WHERE korean_name IS NOT NULL AND korean_name != ''")
+    mapped_authors = cursor.fetchone()[0]
+    conn.close()
+
+    return render_template('admin_settings.html',
+                           analysis_scope=get_analysis_scope(),
+                           total_authors=total_authors,
+                           mapped_authors=mapped_authors,
+                           non_mapped_authors=total_authors - mapped_authors,
+                           institution=session.get('institution', 'jbnu'),
+                           institution_name=session.get('institution_name', ''))
+
+
+@app.route('/admin/researchers')
+@admin_required
+def admin_researchers():
+    """연구자 관리 페이지 (Pure 교원 마스터 매핑)"""
+    log_activity('페이지 조회', '연구자 관리')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 전체 통계
+    cursor.execute("SELECT COUNT(*) FROM author")
+    total_authors = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM author WHERE korean_name IS NOT NULL AND korean_name != ''")
+    mapped_authors = cursor.fetchone()[0]
+
+    # 단과대학별 매핑 분포
+    cursor.execute("""
+        SELECT college_ko, COUNT(*) as cnt
+        FROM author
+        WHERE korean_name IS NOT NULL AND korean_name != ''
+        GROUP BY college_ko
+        ORDER BY cnt DESC
+    """)
+    college_stats = [dict(r) for r in cursor.fetchall()]
+
+    conn.close()
+    return render_template('admin_researchers.html',
+                           total_authors=total_authors,
+                           mapped_authors=mapped_authors,
+                           unmapped_authors=total_authors - mapped_authors,
+                           college_stats=college_stats,
+                           institution=session.get('institution', 'jbnu'),
+                           institution_name=session.get('institution_name', ''))
+
+
+@app.route('/api/admin/researchers/upload', methods=['POST'])
+@admin_required
+def api_admin_researchers_upload():
+    """Pure 교원 리스트 xlsx 업로드 → scopus_author_id 매핑"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': '파일이 첨부되지 않았습니다.'}), 400
+        f = request.files['file']
+        if not f.filename:
+            return jsonify({'error': '파일명이 비어있습니다.'}), 400
+        if not f.filename.lower().endswith(('.xlsx', '.xls')):
+            return jsonify({'error': 'xlsx/xls 파일만 지원합니다.'}), 400
+
+        # 옵션: 기존 매핑 초기화 여부
+        clear_existing = request.form.get('clear_existing', 'false').lower() == 'true'
+
+        import openpyxl
+        wb = openpyxl.load_workbook(f, data_only=True)
+        ws = wb[wb.sheetnames[0]]
+
+        # 헤더 매핑 (한글성명, Unit1_Level1(국문), Unit1_Level2(국문), Scopus ID)
+        header = [str(c.value).strip() if c.value else '' for c in next(ws.iter_rows(min_row=1, max_row=1))]
+        def find_col(*candidates):
+            for cand in candidates:
+                for i, h in enumerate(header):
+                    if cand in h:
+                        return i
+            return -1
+
+        col_name = find_col('한글성명', '성명', 'Name')
+        col_l1 = find_col('Unit1_Level1(국문)', 'Unit1_Level1국문', 'Level1')
+        col_l2 = find_col('Unit1_Level2(국문)', 'Unit1_Level2국문', 'Level2')
+        col_sid = find_col('Scopus ID', 'Scopus_ID', 'ScopusID', 'scopus')
+
+        if col_sid < 0 or col_name < 0:
+            return jsonify({
+                'error': f'필수 컬럼을 찾을 수 없습니다. (헤더: {header})'
+            }), 400
+
+        # 행 파싱
+        parsed_rows = []
+        seen_sids = set()
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row or len(row) <= col_sid:
+                continue
+            sid = row[col_sid]
+            if not sid:
+                continue
+            sid = str(sid).strip()
+            if not sid or sid in seen_sids:
+                continue
+            seen_sids.add(sid)
+            parsed_rows.append({
+                'scopus_id': sid,
+                'name': str(row[col_name]).strip() if col_name >= 0 and row[col_name] else '',
+                'college': str(row[col_l1]).strip() if col_l1 >= 0 and row[col_l1] else '',
+                'department': str(row[col_l2]).strip() if col_l2 >= 0 and row[col_l2] else '',
+            })
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        if clear_existing:
+            cursor.execute("UPDATE author SET korean_name = NULL, college_ko = NULL, department_ko = NULL")
+
+        updated = 0
+        not_found = []
+        for r in parsed_rows:
+            cursor.execute("""
+                UPDATE author
+                SET korean_name = ?, college_ko = ?, department_ko = ?
+                WHERE scopus_author_id = ?
+            """, (r['name'], r['college'], r['department'], r['scopus_id']))
+            if cursor.rowcount > 0:
+                updated += 1
+            else:
+                not_found.append(r)
+
+        conn.commit()
+
+        # 사후 통계
+        cursor.execute("SELECT COUNT(*) FROM author")
+        total_authors = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM author WHERE korean_name IS NOT NULL AND korean_name != ''")
+        mapped_authors = cursor.fetchone()[0]
+
+        conn.close()
+
+        log_activity('데이터 업로드', f'Pure 연구자 매핑: {updated}건 갱신')
+
+        return jsonify({
+            'success': True,
+            'parsed': len(parsed_rows),
+            'updated': updated,
+            'not_found_count': len(not_found),
+            'not_found_sample': not_found[:50],
+            'total_authors': total_authors,
+            'mapped_authors': mapped_authors,
+            'unmapped_authors': total_authors - mapped_authors
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
+@app.route('/api/admin/researchers/list')
+@admin_required
+def api_admin_researchers_list():
+    """매핑 결과 조회 (status: mapped/unmapped/all, q: 검색어)"""
+    try:
+        status = request.args.get('status', 'mapped')
+        q = (request.args.get('q') or '').strip()
+        limit = request.args.get('limit', 200, type=int)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        where = []
+        filter_params = []
+        if status == 'mapped':
+            where.append("(korean_name IS NOT NULL AND korean_name != '')")
+        elif status == 'unmapped':
+            where.append("(korean_name IS NULL OR korean_name = '')")
+        if q:
+            where.append("(name LIKE ? OR korean_name LIKE ? OR scopus_author_id LIKE ? OR college_ko LIKE ? OR department_ko LIKE ?)")
+            like = f'%{q}%'
+            filter_params.extend([like, like, like, like, like])
+
+        where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+        cursor.execute(f"""
+            SELECT scopus_author_id, name, korean_name, college_ko, department_ko,
+                   scholarly_output, h_index, primary_affiliation
+            FROM author{where_sql}
+            ORDER BY (CASE WHEN korean_name IS NULL OR korean_name='' THEN 1 ELSE 0 END),
+                     scholarly_output DESC
+            LIMIT ?
+        """, filter_params + [limit])
+        rows = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute(f"SELECT COUNT(*) FROM author{where_sql}", filter_params)
+        total = cursor.fetchone()[0]
+        conn.close()
+
+        return jsonify({'rows': rows, 'total': total, 'shown': len(rows)})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
+@app.route('/api/admin/researchers/clear', methods=['POST'])
+@admin_required
+def api_admin_researchers_clear():
+    """모든 author 행의 한글성명/소속 매핑 초기화"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE author SET korean_name = NULL, college_ko = NULL, department_ko = NULL")
+        affected = cursor.rowcount
+        conn.commit()
+        conn.close()
+        log_activity('데이터 초기화', f'Pure 매핑 초기화: {affected}건')
+        return jsonify({'success': True, 'cleared': affected})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/admin/research_fields')
 @admin_required

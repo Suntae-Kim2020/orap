@@ -38,6 +38,11 @@
             <i class="fas fa-chart-bar"></i> <span data-i18n="researcher_ranking.tab_bibliometric">계량서지학 지표 랭킹</span>
         </button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="top-tab" data-bs-toggle="tab" data-bs-target="#topRanking" type="button" role="tab" onclick="initTopTab()">
+            <i class="fas fa-trophy"></i> <span data-i18n="researcher_ranking.tab_top">Top 연구자</span>
+        </button>
+    </li>
 </ul>
 
 <div class="tab-content" id="rankingTabContent">
@@ -872,6 +877,78 @@
 </div>
 
 </div><!-- end tab 2: biblioRanking -->
+
+<!-- 탭 3: Top 연구자 -->
+<div class="tab-pane fade" id="topRanking" role="tabpanel">
+
+    <!-- 뷰 선택 버튼 그룹 -->
+    <div class="row mb-3">
+        <div class="col-md-9">
+            <div class="btn-group flex-wrap" role="group" id="topViewGroup">
+                <button type="button" class="btn btn-outline-primary active" onclick="loadTopResearchers('national_senior', this)">
+                    <i class="fas fa-medal"></i> <span data-i18n="researcher_ranking.top_view_national_senior">국가대표급 시니어</span>
+                </button>
+                <button type="button" class="btn btn-outline-primary" onclick="loadTopResearchers('impact_master', this)">
+                    <i class="fas fa-bolt"></i> <span data-i18n="researcher_ranking.top_view_impact_master">임팩트 거장</span>
+                </button>
+                <button type="button" class="btn btn-outline-primary" onclick="loadTopResearchers('citation_giant', this)">
+                    <i class="fas fa-quote-right"></i> <span data-i18n="researcher_ranking.top_view_citation_giant">누적 인용 거장</span>
+                </button>
+                <button type="button" class="btn btn-outline-primary" onclick="loadTopResearchers('field_leader', this)">
+                    <i class="fas fa-flag"></i> <span data-i18n="researcher_ranking.top_view_field_leader">분야별 1인자</span>
+                </button>
+                <button type="button" class="btn btn-outline-primary" onclick="loadTopResearchers('veteran_active', this)">
+                    <i class="fas fa-user-clock"></i> <span data-i18n="researcher_ranking.top_view_veteran_active">30년+ 현역</span>
+                </button>
+            </div>
+        </div>
+        <div class="col-md-3 text-end">
+            <span id="topResultCount" class="badge bg-info fs-6"></span>
+            <button class="btn btn-sm btn-outline-secondary ms-2" onclick="downloadTopCSV()" title="CSV">
+                <i class="fas fa-download"></i> CSV
+            </button>
+        </div>
+    </div>
+
+    <!-- 설명 카드 -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white">
+            <i class="fas fa-trophy"></i> <span id="topViewTitle" data-i18n="researcher_ranking.top_title_national_senior">국가대표급 시니어 연구자</span>
+        </div>
+        <div class="card-body">
+            <div class="card border-0 mb-3" style="background-color: #f0f4fa;">
+                <div class="card-body py-3" style="font-size: 0.875rem;">
+                    <div class="mb-2">
+                        <strong><i class="fas fa-gavel text-primary"></i> <span data-i18n="analysis_modules.decision_label">의사결정 활용</span></strong><br>
+                        <span id="topDecision" class="text-muted"></span>
+                    </div>
+                    <hr class="my-2">
+                    <div class="mb-2">
+                        <strong><i class="fas fa-search text-primary"></i> <span data-i18n="analysis_modules.insights_label">파악 가능 사항</span></strong><br>
+                        <span id="topInsights" class="text-muted"></span>
+                    </div>
+                    <hr class="my-2">
+                    <div>
+                        <strong><i class="fas fa-calculator text-primary"></i> <span data-i18n="analysis_modules.formula_label">컬럼 산출 공식</span></strong><br>
+                        <span id="topFormulas" class="text-muted"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover" id="topTable">
+                    <thead class="table-light">
+                        <tr id="topHeader"></tr>
+                    </thead>
+                    <tbody id="topBody">
+                        <tr><td colspan="10" class="text-center text-muted">탭을 클릭하면 데이터가 로드됩니다.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div><!-- end tab 3: topRanking -->
 </div><!-- end tab-content -->
 
 {% endblock %}
@@ -1167,6 +1244,7 @@ function renderRankingTable() {
     const headerRow = document.getElementById('rankingHeader');
     headerRow.innerHTML = rkThP(i18n.t('researcher_ranking.table_rank'), 'style="width:50px;"')
         + rkThS(i18n.t('researcher_ranking.table_researcher'), 'name', '')
+        + window.authorMetaHeaders()
         + rkThS(i18n.t('researcher_ranking.table_papers'), 'scholarly_output', '')
         + rkThS(i18n.t('researcher_ranking.table_citations'), 'citations', '')
         + rkThS(i18n.t('researcher_ranking.table_fwci'), 'fwci', '')
@@ -1193,6 +1271,7 @@ function renderRankingTable() {
         row.innerHTML = `
             <td><strong>${idx + 1}</strong></td>
             <td>${r.name}</td>
+            ${authorMetaCells(r)}
             <td>${r.scholarly_output || 0}</td>
             <td>${(r.citations || 0).toLocaleString()}</td>
             <td>${(r.fwci || 0).toFixed(2)}</td>
@@ -1664,6 +1743,7 @@ function renderBiblioTable() {
     headerRow.innerHTML =
         '<th style="width:50px;">' + i18n.t('researcher_ranking.table_rank') + '</th>'
         + biblioThS(i18n.t('researcher_ranking.table_researcher'), 'name')
+        + window.authorMetaHeaders()
         + biblioThS(i18n.t('researcher_ranking.table_papers'), 'scholarly_output')
         + biblioThS(i18n.t('researcher_ranking.table_citations'), 'citations')
         + biblioThS('FWCI', 'fwci')
@@ -1686,6 +1766,7 @@ function renderBiblioTable() {
         row.innerHTML = `
             <td><strong>${idx + 1}</strong></td>
             <td>${r.name}</td>
+            ${authorMetaCells(r)}
             <td>${r.scholarly_output || 0}</td>
             <td>${(r.citations || 0).toLocaleString()}</td>
             <td>${r.fwci != null ? r.fwci.toFixed(2) : '-'}</td>
@@ -2173,5 +2254,190 @@ if (window.i18n && window.i18n.ready) {
 } else {
     window.addEventListener('i18nReady', initPage);
 }
+
+// =====================================================================
+// Top 연구자 탭
+// =====================================================================
+let topData = [];
+let currentTopView = 'national_senior';
+let topTabInitialized = false;
+
+function initTopTab() {
+    if (topTabInitialized) return;
+    topTabInitialized = true;
+    loadTopResearchers('national_senior');
+}
+
+function updateTopInfo(view) {
+    document.getElementById('topViewTitle').textContent = i18n.t('researcher_ranking.top_title_' + view);
+    document.getElementById('topDecision').innerHTML = i18n.t('researcher_ranking.top_decision_' + view);
+    document.getElementById('topInsights').innerHTML = i18n.t('researcher_ranking.top_insight_' + view);
+    document.getElementById('topFormulas').innerHTML = i18n.t('researcher_ranking.top_formula_' + view);
+}
+
+function loadTopResearchers(view, clickedBtn) {
+    currentTopView = view;
+
+    document.querySelectorAll('#topViewGroup .btn').forEach(b => b.classList.remove('active'));
+    if (clickedBtn) {
+        clickedBtn.classList.add('active');
+    } else {
+        const firstBtn = document.querySelector('#topViewGroup .btn');
+        if (firstBtn) firstBtn.classList.add('active');
+    }
+
+    updateTopInfo(view);
+    document.getElementById('topBody').innerHTML = `<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> ${i18n.t('common.loading')}</td></tr>`;
+
+    fetch(`/api/top_researchers?view=${view}&limit=50`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('topBody').innerHTML = `<tr><td colspan="10" class="text-center text-danger">${data.error}</td></tr>`;
+                return;
+            }
+            document.getElementById('topResultCount').textContent = `${data.returned_count} / ${data.total_count}${i18n.t('analysis_modules.persons_unit')}`;
+            renderTopTable(data.researchers, view);
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('topBody').innerHTML = `<tr><td colspan="10" class="text-center text-danger">${i18n.t('analysis_modules.data_load_fail')}</td></tr>`;
+        });
+}
+
+function renderTopTable(researchers, view) {
+    topData = researchers;
+    const header = document.getElementById('topHeader');
+    const body = document.getElementById('topBody');
+
+    const tName = i18n.t('analysis_modules.researcher_name');
+    const tPapers = i18n.t('analysis_modules.papers');
+    const tCitations = i18n.t('analysis_modules.citations');
+    const tFwci = i18n.t('researcher_ranking.fwci');
+    const tH = i18n.t('analysis_modules.h_index');
+    const tCareer = i18n.t('researcher_ranking.career_years');
+    const tScore = i18n.t('researcher_ranking.composite_score');
+    const tRank = i18n.t('common.rank');
+    const tProfile = i18n.t('analysis_modules.profile');
+
+    let headerHTML = '';
+    let rowFn = null;
+    let colspan = 10;
+
+    const metaHdr = window.authorMetaHeaders();
+
+    if (view === 'national_senior') {
+        headerHTML = `<th>${tRank}</th><th>${tName}</th>${metaHdr}<th>${tPapers}</th><th>${tCitations}</th><th>${tFwci}</th><th>${tH}</th><th>Top10%</th><th>${tCareer}</th><th>${tScore}</th><th>${tProfile}</th>`;
+        colspan = 13;
+        rowFn = (r, i) => `<tr>
+            <td>${i+1}</td><td><strong>${r.name}</strong></td>
+            ${authorMetaCells(r)}
+            <td>${r.scholarly_output}</td><td>${(r.citations||0).toLocaleString()}</td>
+            <td>${r.fwci}</td><td>${r.h_index}</td><td>${r.top10}</td>
+            <td>${r.career_years||'-'}</td>
+            <td><span class="badge bg-primary">${r.composite_score}</span></td>
+            <td><a href="${r.profile_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+        </tr>`;
+    } else if (view === 'impact_master') {
+        headerHTML = `<th>${tRank}</th><th>${tName}</th>${metaHdr}<th>${tPapers}</th><th>Top10%편수</th><th>Top10%비율</th><th>${tCitations}</th><th>${tFwci}</th><th>${tH}</th><th>${tProfile}</th>`;
+        colspan = 12;
+        rowFn = (r, i) => `<tr>
+            <td>${i+1}</td><td><strong>${r.name}</strong></td>
+            ${authorMetaCells(r)}
+            <td>${r.scholarly_output}</td>
+            <td><span class="badge bg-warning text-dark">${r.top10}</span></td>
+            <td>${r.top10_ratio}%</td>
+            <td>${(r.citations||0).toLocaleString()}</td>
+            <td>${r.fwci}</td><td>${r.h_index}</td>
+            <td><a href="${r.profile_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+        </tr>`;
+    } else if (view === 'citation_giant') {
+        headerHTML = `<th>${tRank}</th><th>${tName}</th>${metaHdr}<th>${tPapers}</th><th>${tCitations}</th><th>인용/편</th><th>${tFwci}</th><th>${tH}</th><th>Top10%</th><th>${tProfile}</th>`;
+        colspan = 12;
+        rowFn = (r, i) => `<tr>
+            <td>${i+1}</td><td><strong>${r.name}</strong></td>
+            ${authorMetaCells(r)}
+            <td>${r.scholarly_output}</td>
+            <td><span class="badge bg-success">${(r.citations||0).toLocaleString()}</span></td>
+            <td>${r.cpp}</td><td>${r.fwci}</td><td>${r.h_index}</td><td>${r.top10}</td>
+            <td><a href="${r.profile_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+        </tr>`;
+    } else if (view === 'field_leader') {
+        headerHTML = `<th>${tRank}</th><th>${tName}</th>${metaHdr}<th>주분야 (ASJC)</th><th>분야논문</th><th>${tCitations}</th><th>${tFwci}</th><th>${tH}</th><th>${tScore}</th><th>${tProfile}</th>`;
+        colspan = 12;
+        rowFn = (r, i) => `<tr>
+            <td>${i+1}</td><td><strong>${r.name}</strong></td>
+            ${authorMetaCells(r)}
+            <td><small>${r.primary_field}</small></td>
+            <td>${r.primary_field_count}</td>
+            <td>${(r.citations||0).toLocaleString()}</td>
+            <td>${r.fwci}</td><td>${r.h_index}</td>
+            <td><span class="badge bg-primary">${r.composite_score}</span></td>
+            <td><a href="${r.profile_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+        </tr>`;
+    } else if (view === 'veteran_active') {
+        headerHTML = `<th>${tRank}</th><th>${tName}</th>${metaHdr}<th>${tCareer}</th><th>최근3년</th><th>${tPapers}</th><th>${tCitations}</th><th>${tFwci}</th><th>${tH}</th><th>${tScore}</th><th>${tProfile}</th>`;
+        colspan = 13;
+        rowFn = (r, i) => `<tr>
+            <td>${i+1}</td><td><strong>${r.name}</strong></td>
+            ${authorMetaCells(r)}
+            <td><span class="badge bg-info">${r.career_years}년</span></td>
+            <td>${r.recent_3yr_count}편</td>
+            <td>${r.scholarly_output}</td>
+            <td>${(r.citations||0).toLocaleString()}</td>
+            <td>${r.fwci}</td><td>${r.h_index}</td>
+            <td><span class="badge bg-primary">${r.composite_score}</span></td>
+            <td><a href="${r.profile_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+        </tr>`;
+    }
+
+    header.innerHTML = headerHTML;
+    if (!researchers || researchers.length === 0) {
+        body.innerHTML = `<tr><td colspan="${colspan}" class="text-center">${i18n.t('common.no_data')}</td></tr>`;
+        return;
+    }
+    body.innerHTML = researchers.map(rowFn).join('');
+}
+
+function downloadTopCSV() {
+    if (!topData || topData.length === 0) {
+        alert(i18n.t('common.no_data'));
+        return;
+    }
+    let csv = '\ufeff';
+    const v = currentTopView;
+    if (v === 'national_senior') {
+        csv += 'Rank,Name,Papers,Citations,FWCI,h-index,Top10%,CareerYears,CompositeScore\n';
+        topData.forEach((r, i) => csv += `${i+1},"${r.name}",${r.scholarly_output},${r.citations},${r.fwci},${r.h_index},${r.top10},${r.career_years||''},${r.composite_score}\n`);
+    } else if (v === 'impact_master') {
+        csv += 'Rank,Name,Papers,Top10Count,Top10Ratio(%),Citations,FWCI,h-index\n';
+        topData.forEach((r, i) => csv += `${i+1},"${r.name}",${r.scholarly_output},${r.top10},${r.top10_ratio},${r.citations},${r.fwci},${r.h_index}\n`);
+    } else if (v === 'citation_giant') {
+        csv += 'Rank,Name,Papers,Citations,CitationsPerPaper,FWCI,h-index,Top10%\n';
+        topData.forEach((r, i) => csv += `${i+1},"${r.name}",${r.scholarly_output},${r.citations},${r.cpp},${r.fwci},${r.h_index},${r.top10}\n`);
+    } else if (v === 'field_leader') {
+        csv += 'Rank,Name,PrimaryField,FieldPapers,Citations,FWCI,h-index,CompositeScore\n';
+        topData.forEach((r, i) => csv += `${i+1},"${r.name}","${r.primary_field}",${r.primary_field_count},${r.citations},${r.fwci},${r.h_index},${r.composite_score}\n`);
+    } else if (v === 'veteran_active') {
+        csv += 'Rank,Name,CareerYears,Recent3yr,Papers,Citations,FWCI,h-index,CompositeScore\n';
+        topData.forEach((r, i) => csv += `${i+1},"${r.name}",${r.career_years},${r.recent_3yr_count},${r.scholarly_output},${r.citations},${r.fwci},${r.h_index},${r.composite_score}\n`);
+    }
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `TopResearchers_${v}_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// 한글성명 매핑이 늦게 로드되면 캐시된 결과를 다시 그려서 셀 채우기
+window.addEventListener('authorMetaLoaded', function() {
+    try {
+        if (currentData && currentData.length > 0) renderRankingTable();
+        if (biblioData && biblioData.length > 0) renderBiblioTable();
+        if (topData && topData.length > 0 && typeof currentTopView !== 'undefined') renderTopTable(topData, currentTopView);
+    } catch (e) {}
+});
 </script>
 {% endblock %}

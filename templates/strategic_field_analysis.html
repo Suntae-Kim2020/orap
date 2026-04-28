@@ -707,6 +707,9 @@ function renderAnalysisResult(data) {
                                 <tr>
                                     <th>#</th>
                                     <th data-i18n="strategic_field.researcher_name">연구자명</th>
+                                    <th>한글성명</th>
+                                    <th>단과대학</th>
+                                    <th>학과</th>
                                     <th>ORCID</th>
                                     <th data-i18n="strategic_field.papers">논문</th>
                                     <th data-i18n="strategic_field.citations">인용</th>
@@ -725,6 +728,7 @@ function renderAnalysisResult(data) {
                 <tr>
                     <td>${idx + 1}</td>
                     <td>${r.name}</td>
+                    ${authorMetaCells(r)}
                     <td>${orcidLink}</td>
                     <td>${r.paper_count}</td>
                     <td>${r.citations.toLocaleString()}</td>
@@ -733,7 +737,7 @@ function renderAnalysisResult(data) {
             `;
         });
     } else {
-        html += `<tr><td colspan="6" class="text-center text-muted">${i18n.t('strategic_field.no_data')}</td></tr>`;
+        html += `<tr><td colspan="9" class="text-center text-muted">${i18n.t('strategic_field.no_data')}</td></tr>`;
     }
 
     html += `
@@ -1061,6 +1065,9 @@ function renderRankingResult(data) {
                             <tr>
                                 <th>${i18n.t('strategic_field.rank')}</th>
                                 <th>${i18n.t('strategic_field.researcher_name')}</th>
+                                <th>한글성명</th>
+                                <th>단과대학</th>
+                                <th>학과</th>
                                 <th>ORCID</th>
                                 <th>${i18n.t('strategic_field.papers')}</th>
                                 <th>${i18n.t('strategic_field.citations')}</th>
@@ -1081,6 +1088,7 @@ function renderRankingResult(data) {
                 <tr>
                     <td><span class="badge ${r.rank <= 3 ? 'bg-warning text-dark' : 'bg-secondary'}">${r.rank}</span></td>
                     <td>${r.name}</td>
+                    ${authorMetaCells(r)}
                     <td>${orcidLink}</td>
                     <td>${r.scholarly_output}</td>
                     <td>${r.citations.toLocaleString()}</td>
@@ -1091,7 +1099,7 @@ function renderRankingResult(data) {
             `;
         });
     } else {
-        html += `<tr><td colspan="8" class="text-center text-muted">${i18n.t('strategic_field.no_data')}</td></tr>`;
+        html += `<tr><td colspan="11" class="text-center text-muted">${i18n.t('strategic_field.no_data')}</td></tr>`;
     }
 
     html += `
@@ -1188,6 +1196,9 @@ function renderModulesResult(data, moduleType) {
                             <tr>
                                 <th>#</th>
                                 <th>${i18n.t('strategic_field.researcher_name')}</th>
+                                <th>한글성명</th>
+                                <th>단과대학</th>
+                                <th>학과</th>
                                 <th>${i18n.t('strategic_field.papers')}</th>
                                 <th>${i18n.t('strategic_field.citations')}</th>
                                 <th>FWCI</th>
@@ -1214,6 +1225,7 @@ function renderModulesResult(data, moduleType) {
                 <tr>
                     <td>${idx + 1}</td>
                     <td>${r.name}</td>
+                    ${authorMetaCells(r)}
                     <td>${r.scholarly_output}</td>
                     <td>${r.citations.toLocaleString()}</td>
                     <td>${r.fwci}</td>
@@ -1233,7 +1245,7 @@ function renderModulesResult(data, moduleType) {
             html += '</tr>';
         });
     } else {
-        const colSpan = moduleType === 'collaboration' ? 9 : 7;
+        const colSpan = moduleType === 'collaboration' ? 12 : 10;
         html += `<tr><td colspan="${colSpan}" class="text-center text-muted">${i18n.t('strategic_field.no_data')}</td></tr>`;
     }
 
@@ -1331,6 +1343,9 @@ function renderStrategyResult(data, strategyType) {
                             <tr>
                                 <th>#</th>
                                 <th>${i18n.t('strategic_field.researcher_name')}</th>
+                                <th>한글성명</th>
+                                <th>단과대학</th>
+                                <th>학과</th>
                                 <th>${i18n.t('strategic_field.papers')}</th>
                                 <th>${i18n.t('strategic_field.citations')}</th>
                                 <th>FWCI</th>
@@ -1357,6 +1372,7 @@ function renderStrategyResult(data, strategyType) {
                 <tr>
                     <td>${idx + 1}</td>
                     <td>${r.name}</td>
+                    ${authorMetaCells(r)}
                     <td>${r.scholarly_output}</td>
                     <td>${r.citations.toLocaleString()}</td>
                     <td>${r.fwci}</td>
@@ -1377,7 +1393,7 @@ function renderStrategyResult(data, strategyType) {
             html += '</tr>';
         });
     } else {
-        const colSpan = strategyType === 'societal' ? 11 : 7;
+        const colSpan = strategyType === 'societal' ? 14 : 10;
         html += `<tr><td colspan="${colSpan}" class="text-center text-muted">${i18n.t('strategic_field.no_data')}</td></tr>`;
     }
 
@@ -1555,9 +1571,14 @@ function renderCollaboratorsHtml(data) {
     let rows = '';
     data.collaborators.forEach((c, idx) => {
         const papers = c.papers ? c.papers.map(p => `${p.title} (${p.year})`).join('<br>') : '';
+        // 현재 기관(전북대) 연구자에 대한 한글성명/소속/학과 룩업
+        const meta = (window.AUTHOR_META && window.AUTHOR_META[c.current_id]) || {n:'', c:'', d:''};
         rows += `<tr>
             <td>${idx + 1}</td>
             <td><a href="https://www.scopus.com/authid/detail.url?authorId=${c.current_id}" target="_blank"><strong>${c.current_name}</strong> <i class="fas fa-external-link-alt small"></i></a></td>
+            <td>${meta.n || '-'}</td>
+            <td>${meta.c || '-'}</td>
+            <td>${meta.d || '-'}</td>
             <td><a href="https://www.scopus.com/authid/detail.url?authorId=${c.target_id}" target="_blank"><strong>${c.target_name}</strong> <i class="fas fa-external-link-alt small"></i></a></td>
             <td class="text-center"><span class="badge bg-primary">${c.paper_count}</span></td>
             <td class="text-center">${(c.total_citations || 0).toLocaleString()}</td>
@@ -1575,10 +1596,13 @@ function renderCollaboratorsHtml(data) {
                 <table class="table table-sm table-hover mb-0">
                     <thead class="table-light sticky-top">
                         <tr>
-                            <th>#</th>
+                            <th>순위</th>
                             <th>${data.current_institution} 연구자</th>
+                            <th>한글성명</th>
+                            <th>단과대학</th>
+                            <th>학과</th>
                             <th>${data.target_institution} 연구자</th>
-                            <th class="text-center">공동논문</th>
+                            <th class="text-center">공동 논문수</th>
                             <th class="text-center">총 인용수</th>
                             <th>논문 목록</th>
                         </tr>
@@ -1647,5 +1671,10 @@ function downloadResearchersCSV() {
 
 // 탭 로깅 설정
 if (typeof setupTabLogging === 'function') setupTabLogging('연구분야분석');
+
+// 한글성명 매핑이 늦게 로드되는 경우, 현재 화면을 다시 그려서 한글성명/소속/학과 셀 채우기
+window.addEventListener('authorMetaLoaded', function() {
+    try { loadCurrentAnalysisType(); } catch (e) {}
+});
 </script>
 {% endblock %}

@@ -3,12 +3,79 @@
 
 {% block content %}
 <div class="container-fluid">
-    <h2 class="mb-4"><i class="fas fa-layer-group"></i> <span data-i18n="field_analysis.title">학문분야분석</span></h2>
+    <h2 class="mb-3"><i class="fas fa-layer-group"></i> <span data-i18n="field_analysis.title">학문분야분석</span></h2>
 
-    <p class="text-muted mb-4">
+    <p class="text-muted mb-3">
         <span data-i18n="field_analysis.subtitle">ASJC 분류 기준으로 분야별 연구 현황을 비교 분석합니다</span><br>
         <small><i class="fas fa-database"></i> <span data-i18n="analysis_modules.data_note">본 분석은 Scopus 등재 논문 및 전북대학교 소속 연구자만을 대상으로 합니다.</span></small>
     </p>
+
+    <!-- 안내 카드: ASJC 분류 + 전략 등급 -->
+    <div class="card mb-4 border-info">
+        <div class="card-header bg-info bg-opacity-25 py-2" data-bs-toggle="collapse" data-bs-target="#fieldAnalysisInfo" style="cursor:pointer;">
+            <i class="fas fa-info-circle text-info"></i>
+            <strong>분류 기준 및 전략 등급 안내</strong>
+            <small class="text-muted ms-2">(클릭하여 펼치기/접기)</small>
+        </div>
+        <div class="collapse show" id="fieldAnalysisInfo">
+            <div class="card-body py-3">
+                <div class="row">
+                    <!-- ASJC 설명 -->
+                    <div class="col-md-5">
+                        <h6 class="text-info"><i class="fas fa-sitemap"></i> ASJC 분류 체계</h6>
+                        <p class="small mb-2">
+                            <strong>ASJC</strong>(All Science Journal Classification)는 Elsevier의 Scopus가 채택한 학술지 분류 표준으로,
+                            전 세계 모든 학술지를 27개 대분류 / 약 334개 세부분야로 분류합니다.
+                        </p>
+                        <ul class="small mb-0 ps-3">
+                            <li>한 논문은 게재 학술지의 분류에 따라 <strong>여러 분야에 동시 매핑</strong>될 수 있습니다 (다중 분야).</li>
+                            <li>본 화면의 분야 목록은 ASJC 세부분야명이며, 옆의 숫자는 해당 분야로 분류된 논문 편수입니다.</li>
+                            <li>편수는 <strong>설정 → 분석 대상 범위</strong>(전임/비전임/전체)에 따라 달라집니다.</li>
+                        </ul>
+                    </div>
+                    <!-- 전략 등급 설명 -->
+                    <div class="col-md-7">
+                        <h6 class="text-info"><i class="fas fa-chess-knight"></i> 전략 등급 산정 기준</h6>
+                        <p class="small mb-2">
+                            종합 현황 탭의 <strong>전략 등급</strong>은 분야별 평균 FWCI와 국제공동연구 비율, 논문 규모를 종합해 4단계로 분류합니다.
+                            (위에서 아래로 우선 순위 적용 — 첫 조건을 만족하는 등급으로 결정)
+                        </p>
+                        <table class="table table-sm table-bordered mb-2 small">
+                            <thead class="table-light">
+                                <tr><th style="width:120px;">등급</th><th>판정 기준</th><th>의미</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="badge bg-success">핵심 강점</span></td>
+                                    <td>평균 FWCI ≥ 1.5 <strong>그리고</strong> 국제공동연구 비율 ≥ 40%</td>
+                                    <td>질적 우수성 + 글로벌 협력 모두 강함 — 주력 분야</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-primary">성장 분야</span></td>
+                                    <td>평균 FWCI ≥ 1.0</td>
+                                    <td>세계 평균 이상의 영향력을 갖춘 분야 — 투자 확대 후보</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-info">규모 우위</span></td>
+                                    <td>논문 수 ≥ 50편 (FWCI 1.0 미만)</td>
+                                    <td>생산성은 충분하나 영향력 보강 필요</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-warning text-dark">육성 필요</span></td>
+                                    <td>위 조건 모두 미해당</td>
+                                    <td>규모·영향력 모두 보강 필요한 신생/소규모 분야</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p class="small text-muted mb-0">
+                            * <strong>FWCI</strong>(Field-Weighted Citation Impact): 동일 분야·연도·문헌유형 평균 인용을 1.0으로 정규화한 영향력 지표.
+                            1.0 = 세계 평균, 1.5 = 평균 대비 50% 더 인용됨.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- 분야 선택 영역 -->
     <div class="card mb-3">
@@ -162,9 +229,22 @@
 
             <!-- 공동연구자 탭 -->
             <div class="tab-pane fade" id="collaborators" role="tabpanel">
-                <div class="alert alert-info mb-3">
-                    <i class="fas fa-info-circle"></i>
-                    <span data-i18n="field_analysis.collab_desc">전북대학교와 고려대학교 연구자 간의 공동연구 현황을 보여줍니다.</span>
+                <!-- 공동연구 대상 기관 선택 -->
+                <div class="card mb-3">
+                    <div class="card-body py-2">
+                        <div class="row align-items-center">
+                            <div class="col-auto"><strong><i class="fas fa-exchange-alt"></i> 공동연구 대상 기관:</strong></div>
+                            <div class="col-auto">
+                                <select class="form-select form-select-sm" id="collabTargetInst" style="width: 220px;" onchange="onCollabTargetChange()">
+                                    {% for key, name in institutions.items() %}
+                                        {% if key != current_institution %}
+                                        <option value="{{ key }}">{{ name }}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <div class="d-flex align-items-center gap-2">
@@ -427,11 +507,37 @@ function runAnalysis() {
         });
 
     // 공동연구자 API 호출
-    const pairsUnit = i18n.t('field_analysis.pairs_unit') || '건';
-    fetch(`/api/field_analysis/collaborators?fields=${fieldsParam}${yearParams}`)
+    loadCollaborators();
+}
+
+// 공동연구자 데이터 로드 (대상 기관 변경 시에도 호출)
+let collabCurrentInstName = '';
+let collabTargetInstName = '';
+function loadCollaborators() {
+    if (!selectedFields || selectedFields.length === 0) return;
+    const fieldsParam = selectedFields.map(f => encodeURIComponent(f)).join('|||');
+    let yearParams = '';
+    if (faYearFrom && faYearTo) {
+        yearParams = `&year_from=${faYearFrom}&year_to=${faYearTo}`;
+    }
+    const targetInst = document.getElementById('collabTargetInst')?.value || '';
+    const targetParam = targetInst ? `&target_institution=${targetInst}` : '';
+
+    const pairsUnit = '건';
+    const loadFail = '데이터 로드 실패';
+
+    document.getElementById('collaboratorsBody').innerHTML = `<tr><td colspan="10" class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> 로딩...</td></tr>`;
+
+    fetch(`/api/field_analysis/collaborators?fields=${fieldsParam}${yearParams}${targetParam}`)
         .then(r => r.json())
         .then(data => {
+            if (data.error) {
+                document.getElementById('collaboratorsBody').innerHTML = `<tr><td colspan="10" class="text-center text-danger">${data.error}</td></tr>`;
+                return;
+            }
             collaboratorsData = data.collaborators || [];
+            collabCurrentInstName = data.current_institution_name || '';
+            collabTargetInstName = data.target_institution_name || '';
             document.getElementById('collaboratorsCount').textContent = `${data.count}${pairsUnit}`;
             sortStates.collaborators = { key: null, asc: true };
             updateCollaboratorFieldFilter();
@@ -441,6 +547,10 @@ function runAnalysis() {
             console.error(err);
             document.getElementById('collaboratorsBody').innerHTML = `<tr><td colspan="10" class="text-center text-danger">${loadFail}</td></tr>`;
         });
+}
+
+function onCollabTargetChange() {
+    loadCollaborators();
 }
 
 // ========== 종합 현황 탭 ==========
@@ -524,6 +634,7 @@ function renderResearchersTable() {
 
     let hdr = '<tr>' + thP('#')
         + thS('researchers', i18n.t('field_analysis.researcher_name'), 'name')
+        + window.authorMetaHeaders()
         + thS('researchers', i18n.t('field_analysis.field'), 'field')
         + thS('researchers', i18n.t('field_analysis.field_pubs'), 'field_pubs')
         + thS('researchers', i18n.t('field_analysis.field_fwci'), 'field_fwci')
@@ -555,6 +666,7 @@ function renderResearchersTable() {
         html += `<tr>
             <td>${idx + 1}</td>
             <td><strong>${r.name}</strong></td>
+            ${authorMetaCells(r)}
             <td><span class="badge bg-secondary">${r.field}</span></td>
             <td>${r.field_pubs}</td>
             <td>${r.field_fwci}</td>
@@ -842,13 +954,17 @@ function renderCollaboratorsTable() {
     const body = document.getElementById('collaboratorsBody');
     const unit = i18n.t('field_analysis.papers_unit');
 
-    let hdr = '<tr>' + thP('#')
-        + thS('collaborators', i18n.t('field_analysis.jbnu_researcher') || '전북대 연구자', 'jbnu_name')
-        + thS('collaborators', i18n.t('field_analysis.korea_researcher') || '고려대 연구자', 'korea_name')
-        + thS('collaborators', i18n.t('field_analysis.field'), 'field')
-        + thS('collaborators', i18n.t('field_analysis.collab_pubs') || '공동 논문수', 'pub_count')
-        + thP(i18n.t('field_analysis.jbnu_profile') || '전북대 프로필')
-        + thP(i18n.t('field_analysis.korea_profile') || '고려대 프로필')
+    const curName = collabCurrentInstName || '현재 기관';
+    const tgtName = collabTargetInstName || '대상 기관';
+
+    let hdr = '<tr>' + thP('순위')
+        + thS('collaborators', `${curName} 연구자`, 'current_name')
+        + '<th>한글성명</th><th>단과대학</th><th>학과</th>'
+        + thS('collaborators', `${tgtName} 연구자`, 'target_name')
+        + thS('collaborators', '분야', 'field')
+        + thS('collaborators', '공동 논문수', 'pub_count')
+        + thP(`${curName} 프로필`)
+        + thP(`${tgtName} 프로필`)
         + '</tr>';
     header.innerHTML = hdr;
 
@@ -863,20 +979,25 @@ function renderCollaboratorsTable() {
     const sorted = ss.key ? sortByKey(data, ss.key, ss.asc) : data;
 
     if (sorted.length === 0) {
-        body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">${i18n.t('field_analysis.no_collaborators') || '공동연구 데이터가 없습니다.'}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">공동연구 데이터가 없습니다.</td></tr>`;
         return;
     }
 
     let html = '';
     sorted.forEach((c, idx) => {
+        // 현재 기관 연구자 한글성명/소속 룩업 (current_id 기준)
+        const meta = (window.AUTHOR_META && window.AUTHOR_META[c.current_id]) || {n:'', c:'', d:''};
         html += `<tr>
             <td>${idx + 1}</td>
-            <td><strong>${c.jbnu_name}</strong></td>
-            <td><strong>${c.korea_name}</strong></td>
+            <td><strong>${c.current_name}</strong></td>
+            <td>${meta.n || '-'}</td>
+            <td>${meta.c || '-'}</td>
+            <td>${meta.d || '-'}</td>
+            <td><strong>${c.target_name}</strong></td>
             <td><span class="badge bg-secondary">${c.field}</span></td>
             <td><span class="badge bg-primary">${c.pub_count}${unit}</span></td>
-            <td><a href="${c.jbnu_profile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
-            <td><a href="${c.korea_profile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+            <td><a href="${c.current_profile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
+            <td><a href="${c.target_profile}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt"></i></a></td>
         </tr>`;
     });
     body.innerHTML = html;
@@ -885,16 +1006,30 @@ function renderCollaboratorsTable() {
 function downloadCollaboratorsCSV() {
     if (!collaboratorsData || collaboratorsData.length === 0) { alert(i18n.t('field_analysis.alert_no_download')); return; }
     const filterField = document.getElementById('collaboratorFieldFilter').value;
-    const data = filterField ? collaboratorsData.filter(c => c.field === filterField) : collaboratorsData;
+    const base = filterField ? collaboratorsData.filter(c => c.field === filterField) : collaboratorsData;
+    // Pure 매핑 정보 inline 주입
+    const data = base.map(c => {
+        const m = (window.AUTHOR_META && window.AUTHOR_META[c.current_id]) || {};
+        return Object.assign({}, c, {
+            current_korean_name: m.n || '',
+            current_college: m.c || '',
+            current_department: m.d || ''
+        });
+    });
+    const curName = collabCurrentInstName || '현재 기관';
+    const tgtName = collabTargetInstName || '대상 기관';
     const cols = [
-        {key:'jbnu_name', header: i18n.t('field_analysis.jbnu_researcher') || '전북대 연구자'},
-        {key:'jbnu_id', header: 'JBNU Scopus ID'},
-        {key:'korea_name', header: i18n.t('field_analysis.korea_researcher') || '고려대 연구자'},
-        {key:'korea_id', header: 'Korea Univ Scopus ID'},
-        {key:'field', header: i18n.t('field_analysis.field')},
-        {key:'pub_count', header: i18n.t('field_analysis.collab_pubs') || '공동 논문수'}
+        {key:'current_name', header: `${curName} 연구자`},
+        {key:'current_korean_name', header: '한글성명'},
+        {key:'current_college', header: '단과대학'},
+        {key:'current_department', header: '학과'},
+        {key:'current_id', header: `${curName} Scopus ID`},
+        {key:'target_name', header: `${tgtName} 연구자`},
+        {key:'target_id', header: `${tgtName} Scopus ID`},
+        {key:'field', header: '분야'},
+        {key:'pub_count', header: '공동 논문수'}
     ];
-    triggerCSVDownload(generateCSV(data, cols), `${i18n.t('field_analysis.csv_collaborators') || '공동연구자'}_${getPeriodLabel()}.csv`);
+    triggerCSVDownload(generateCSV(data, cols), `공동연구자_${tgtName}_${getPeriodLabel()}.csv`);
 }
 
 // ========== 초기화 ==========
@@ -934,6 +1069,14 @@ if (window.i18n && window.i18n.ready) {
 } else {
     window.addEventListener('i18nReady', initPage);
 }
+
+// 한글성명 매핑이 늦게 로드되면 캐시된 화면을 다시 그려서 한글성명/소속/학과 채우기
+window.addEventListener('authorMetaLoaded', function() {
+    try {
+        if (researchersData && researchersData.length > 0) renderResearchersTable();
+        if (collaboratorsData && collaboratorsData.length > 0) renderCollaboratorsTable();
+    } catch (e) {}
+});
 
 // 탭 로깅 설정
 if (typeof setupTabLogging === 'function') setupTabLogging('학문분야분석');

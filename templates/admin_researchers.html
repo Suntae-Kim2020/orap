@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block title %}연구자 관리 - ORAP{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2><i class="fas fa-user-tie"></i> 연구자 관리</h2>
+        <p class="text-muted">{{ institution_name }} - Pure 교원 리스트(xlsx)를 업로드하여 Scopus ID 기준으로 한글성명·단과대학·학과를 매핑합니다.</p>
+    </div>
+</div>
+
+<!-- 매핑 통계 카드 -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card border-primary">
+            <div class="card-body text-center">
+                <div class="text-muted small">전체 연구자 (Author)</div>
+                <div class="display-6"><strong id="statTotal">{{ total_authors }}</strong></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-success">
+            <div class="card-body text-center">
+                <div class="text-muted small">매핑 완료</div>
+                <div class="display-6 text-success"><strong id="statMapped">{{ mapped_authors }}</strong></div>
+                <div class="small text-muted">
+                    <span id="statMappedPct">{% if total_authors %}{{ '%.1f' % (mapped_authors * 100 / total_authors) }}{% else %}0{% endif %}</span>%
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-secondary">
+            <div class="card-body text-center">
+                <div class="text-muted small">매핑 안 됨</div>
+                <div class="display-6 text-secondary"><strong id="statUnmapped">{{ unmapped_authors }}</strong></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 업로드 카드 -->
+<div class="card mb-4">
+    <div class="card-header bg-dark text-white">
+        <i class="fas fa-file-excel"></i> Pure 교원 리스트 업로드
+    </div>
+    <div class="card-body">
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="row align-items-end">
+                <div class="col-md-7 mb-3">
+                    <label class="form-label">xlsx 파일</label>
+                    <input type="file" class="form-control" id="fileInput" name="file" accept=".xlsx,.xls" required>
+                    <div class="form-text">
+                        필수 컬럼: <code>한글성명</code>, <code>Unit1_Level1(국문)</code>, <code>Unit1_Level2(국문)</code>, <code>Scopus ID</code>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="clearExisting" name="clear_existing">
+                        <label class="form-check-label" for="clearExisting">
+                            기존 매핑 초기화 후 적용
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <button type="submit" class="btn btn-primary w-100" id="uploadBtn">
+                        <i class="fas fa-upload"></i> 업로드 & 매핑
+                    </button>
+                </div>
+            </div>
+        </form>
+        <div id="uploadProgress" class="mt-2" style="display:none;">
+            <div class="progress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" style="width:100%">처리 중...</div>
+            </div>
+        </div>
+        <div id="uploadResult" class="mt-3"></div>
+    </div>
+</div>
+
+<!-- 단과대학 분포 -->
+{% if college_stats %}
+<div class="card mb-4">
+    <div class="card-header bg-light">
+        <i class="fas fa-chart-bar"></i> 단과대학별 매핑 분포
+    </div>
+    <div class="card-body">
+        <div class="row" id="collegeStatsBox">
+            {% for cs in college_stats %}
+            <div class="col-md-3 col-sm-6 mb-2">
+                <span class="badge bg-secondary">{{ cs.college_ko or '(없음)' }}</span>
+                <strong>{{ cs.cnt }}</strong>명
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 매핑 결과 조회 -->
+<div class="card">
+    <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-list"></i> 매핑 결과 조회</span>
+        <button class="btn btn-sm btn-outline-light" onclick="confirmClear()">
+            <i class="fas fa-trash"></i> 전체 매핑 초기화
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">상태</label>
+                <select class="form-select" id="filterStatus">
+                    <option value="mapped">매핑됨</option>
+                    <option value="unmapped">매핑 안됨</option>
+                    <option value="all">전체</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">검색 (이름/Scopus ID/단과대학/학과)</label>
+                <input type="text" class="form-control" id="filterQ" placeholder="검색어 입력...">
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-primary w-100" onclick="loadList()">
+                    <i class="fas fa-search"></i> 조회
+                </button>
+            </div>
+        </div>
+        <div class="text-muted small mb-2" id="listInfo">-</div>
+        <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light sticky-top">
+                    <tr>
+                        <th>#</th>
+                        <th>Scopus ID</th>
+                        <th>Name (Scopus)</th>
+                        <th>한글성명</th>
+                        <th>단과대학</th>
+                        <th>학과</th>
+                        <th class="text-end">논문수</th>
+                        <th class="text-end">h-index</th>
+                    </tr>
+                </thead>
+                <tbody id="listBody">
+                    <tr><td colspan="8" class="text-center text-muted py-4">조회 버튼을 누르거나 업로드 후 자동으로 표시됩니다</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fileInput = $('fileInput');
+    if (!fileInput.files.length) { alert('파일을 선택하세요.'); return; }
+
+    const fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    fd.append('clear_existing', $('clearExisting').checked ? 'true' : 'false');
+
+    $('uploadProgress').style.display = '';
+    $('uploadResult').innerHTML = '';
+    $('uploadBtn').disabled = true;
+
+    try {
+        const res = await fetch('/api/admin/researchers/upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            $('uploadResult').innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> ${data.error || '업로드 실패'}</div>`;
+            return;
+        }
+
+        // 통계 갱신
+        $('statTotal').textContent = data.total_authors;
+        $('statMapped').textContent = data.mapped_authors;
+        $('statUnmapped').textContent = data.unmapped_authors;
+        const pct = data.total_authors ? ((data.mapped_authors / data.total_authors) * 100).toFixed(1) : '0';
+        $('statMappedPct').textContent = pct;
+
+        let html = `
+            <div class="alert alert-success">
+                <h5><i class="fas fa-check-circle"></i> 업로드 성공</h5>
+                <ul class="mb-0">
+                    <li>파싱된 행: <strong>${data.parsed}</strong></li>
+                    <li>매핑(갱신): <strong>${data.updated}</strong></li>
+                    <li>DB에서 미발견 (Pure에는 있지만 author에 없음): <strong>${data.not_found_count}</strong></li>
+                </ul>
+            </div>
+        `;
+        if (data.not_found_count > 0) {
+            html += `<details class="mt-2"><summary class="text-muted">미발견 샘플 (최대 50건)</summary>
+                <div class="table-responsive mt-2"><table class="table table-sm table-bordered">
+                <thead><tr><th>Scopus ID</th><th>한글성명</th><th>단과대학</th><th>학과</th></tr></thead><tbody>
+                ${data.not_found_sample.map(r => `<tr>
+                    <td><code>${r.scopus_id}</code></td><td>${r.name||''}</td><td>${r.college||''}</td><td>${r.department||''}</td>
+                </tr>`).join('')}
+                </tbody></table></div></details>`;
+        }
+        $('uploadResult').innerHTML = html;
+
+        // 자동으로 매핑 결과 목록 갱신
+        loadList();
+    } catch (err) {
+        $('uploadResult').innerHTML = `<div class="alert alert-danger">에러: ${err.message}</div>`;
+    } finally {
+        $('uploadProgress').style.display = 'none';
+        $('uploadBtn').disabled = false;
+    }
+});
+
+async function loadList() {
+    const status = $('filterStatus').value;
+    const q = $('filterQ').value.trim();
+    $('listBody').innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> 로딩...</td></tr>`;
+    try {
+        const params = new URLSearchParams({ status, q, limit: 200 });
+        const res = await fetch('/api/admin/researchers/list?' + params);
+        const data = await res.json();
+        if (data.error) {
+            $('listBody').innerHTML = `<tr><td colspan="8" class="text-center text-danger">${data.error}</td></tr>`;
+            return;
+        }
+        $('listInfo').textContent = `총 ${data.total}건 중 ${data.shown}건 표시`;
+        if (!data.rows.length) {
+            $('listBody').innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">결과 없음</td></tr>`;
+            return;
+        }
+        $('listBody').innerHTML = data.rows.map((r, i) => `
+            <tr>
+                <td>${i + 1}</td>
+                <td><code>${r.scopus_author_id || '-'}</code></td>
+                <td>${r.name || '-'}</td>
+                <td>${r.korean_name ? '<strong>' + r.korean_name + '</strong>' : '<span class="text-muted">-</span>'}</td>
+                <td>${r.college_ko || '<span class="text-muted">-</span>'}</td>
+                <td>${r.department_ko || '<span class="text-muted">-</span>'}</td>
+                <td class="text-end">${r.scholarly_output || 0}</td>
+                <td class="text-end">${r.h_index || 0}</td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        $('listBody').innerHTML = `<tr><td colspan="8" class="text-center text-danger">에러: ${err.message}</td></tr>`;
+    }
+}
+
+async function confirmClear() {
+    if (!confirm('모든 연구자의 한글성명/단과대학/학과 매핑을 초기화합니다. 계속할까요?')) return;
+    try {
+        const res = await fetch('/api/admin/researchers/clear', { method: 'POST' });
+        const data = await res.json();
+        if (data.error) { alert('에러: ' + data.error); return; }
+        alert(`초기화 완료: ${data.cleared}건`);
+        location.reload();
+    } catch (err) {
+        alert('에러: ' + err.message);
+    }
+}
+
+// 검색 엔터키
+document.getElementById('filterQ').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') loadList();
+});
+
+// 페이지 진입 시 매핑된 목록 자동 로드
+loadList();
+</script>
+{% endblock %}

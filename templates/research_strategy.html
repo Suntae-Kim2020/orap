@@ -481,7 +481,7 @@ function renderTrajectoryTable(researchers, type) {
     const papersPerYearUnit = t('research_strategy.papers_per_year_unit');
     const yearsUnit = t('research_strategy.years_unit');
 
-    let headerHTML = thP('#') + thS('trajectory', t('research_strategy.researcher_name'), 'name') + thS('trajectory', t('research_strategy.papers'), 'scholarly_output') + thS('trajectory', t('research_strategy.citations'), 'citations') + thS('trajectory', t('research_strategy.fwci'), 'fwci') + thS('trajectory', t('research_strategy.h_index'), 'h_index');
+    let headerHTML = thP('#') + thS('trajectory', t('research_strategy.researcher_name'), 'name') + window.authorMetaHeaders() + thS('trajectory', t('research_strategy.papers'), 'scholarly_output') + thS('trajectory', t('research_strategy.citations'), 'citations') + thS('trajectory', t('research_strategy.fwci'), 'fwci') + thS('trajectory', t('research_strategy.h_index'), 'h_index');
 
     if (type === 'growth_trajectory') {
         headerHTML += thS('trajectory', `${ce-2}`, 'y1') + thS('trajectory', `${ce-1}`, 'y2') + thS('trajectory', `${ce}`, 'y3') + thS('trajectory', t('research_strategy.growth_rate'), 'growth_pct') + thS('trajectory', t('research_strategy.period_total'), 'total_period') + thP(t('research_strategy.profile'));
@@ -502,6 +502,7 @@ function renderTrajectoryTable(researchers, type) {
         bodyHTML += `<tr>
             <td>${idx + 1}</td>
             <td><strong>${r.name}</strong></td>
+            ${authorMetaCells(r)}
             <td>${r.scholarly_output}</td>
             <td>${r.citations?.toLocaleString() || 0}</td>
             <td>${r.fwci}</td>
@@ -600,7 +601,7 @@ function renderSocietalTable(researchers, type) {
     const papersUnit = t('research_strategy.papers_unit');
     const countUnit = t('research_strategy.count_unit');
 
-    let headerHTML = thP('#') + thS('societal', t('research_strategy.researcher_name'), 'name') + thS('societal', t('research_strategy.papers'), 'scholarly_output') + thS('societal', t('research_strategy.citations'), 'citations') + thS('societal', t('research_strategy.fwci'), 'fwci') + thS('societal', t('research_strategy.h_index'), 'h_index');
+    let headerHTML = thP('#') + thS('societal', t('research_strategy.researcher_name'), 'name') + window.authorMetaHeaders() + thS('societal', t('research_strategy.papers'), 'scholarly_output') + thS('societal', t('research_strategy.citations'), 'citations') + thS('societal', t('research_strategy.fwci'), 'fwci') + thS('societal', t('research_strategy.h_index'), 'h_index');
 
     if (type === 'patent_cited') {
         headerHTML += thS('societal', t('research_strategy.patent_papers'), 'patent_pubs') + thS('societal', t('research_strategy.patent_count'), 'total_patents') + thP(t('research_strategy.profile'));
@@ -621,6 +622,7 @@ function renderSocietalTable(researchers, type) {
         bodyHTML += `<tr>
             <td>${idx + 1}</td>
             <td><strong>${r.name}</strong></td>
+            ${authorMetaCells(r)}
             <td>${r.scholarly_output}</td>
             <td>${r.citations?.toLocaleString() || 0}</td>
             <td>${r.fwci}</td>
@@ -726,9 +728,9 @@ function renderPortfolioTable(researchers, type) {
     if (type === 'field_strategy_map') {
         headerHTML += thS('portfolio', t('research_strategy.field'), 'field') + thS('portfolio', t('research_strategy.papers'), 'pub_count') + thS('portfolio', t('research_strategy.avg_fwci'), 'avg_fwci') + thS('portfolio', t('research_strategy.intl_ratio'), 'intl_ratio') + thS('portfolio', t('research_strategy.top_cited'), 'top_cited_ratio') + thS('portfolio', t('research_strategy.top_journal'), 'top_journal_ratio') + thS('portfolio', t('research_strategy.total_citations'), 'total_citations') + thP(t('research_strategy.strategy_grade'));
     } else if (type === 'collab_effect') {
-        headerHTML += thS('portfolio', t('research_strategy.researcher_name'), 'name') + thS('portfolio', t('research_strategy.papers'), 'scholarly_output') + thS('portfolio', t('research_strategy.citations'), 'citations') + thS('portfolio', t('research_strategy.fwci'), 'fwci') + thS('portfolio', t('research_strategy.h_index'), 'h_index') + thS('portfolio', t('research_strategy.single'), 'single_fwci') + thS('portfolio', t('research_strategy.institutional'), 'inst_fwci') + thS('portfolio', t('research_strategy.domestic'), 'natl_fwci') + thS('portfolio', t('research_strategy.international'), 'intl_fwci') + thS('portfolio', t('research_strategy.intl_count'), 'intl_count') + thS('portfolio', t('research_strategy.boost'), 'collab_boost') + thP(t('research_strategy.profile'));
+        headerHTML += thS('portfolio', t('research_strategy.researcher_name'), 'name') + window.authorMetaHeaders() + thS('portfolio', t('research_strategy.papers'), 'scholarly_output') + thS('portfolio', t('research_strategy.citations'), 'citations') + thS('portfolio', t('research_strategy.fwci'), 'fwci') + thS('portfolio', t('research_strategy.h_index'), 'h_index') + thS('portfolio', t('research_strategy.single'), 'single_fwci') + thS('portfolio', t('research_strategy.institutional'), 'inst_fwci') + thS('portfolio', t('research_strategy.domestic'), 'natl_fwci') + thS('portfolio', t('research_strategy.international'), 'intl_fwci') + thS('portfolio', t('research_strategy.intl_count'), 'intl_count') + thS('portfolio', t('research_strategy.boost'), 'collab_boost') + thP(t('research_strategy.profile'));
     } else if (type === 'academic_corporate') {
-        headerHTML += thS('portfolio', t('research_strategy.researcher_name'), 'name') + thS('portfolio', t('research_strategy.papers'), 'scholarly_output') + thS('portfolio', t('research_strategy.citations'), 'citations') + thS('portfolio', t('research_strategy.fwci'), 'fwci') + thS('portfolio', t('research_strategy.h_index'), 'h_index') + thS('portfolio', t('research_strategy.corp_papers'), 'corp_pubs') + thS('portfolio', t('research_strategy.corp_ratio'), 'corp_ratio') + thS('portfolio', t('research_strategy.corp_fwci'), 'corp_avg_fwci') + thS('portfolio', t('research_strategy.corp_citations'), 'corp_citations') + thP(t('research_strategy.profile'));
+        headerHTML += thS('portfolio', t('research_strategy.researcher_name'), 'name') + window.authorMetaHeaders() + thS('portfolio', t('research_strategy.papers'), 'scholarly_output') + thS('portfolio', t('research_strategy.citations'), 'citations') + thS('portfolio', t('research_strategy.fwci'), 'fwci') + thS('portfolio', t('research_strategy.h_index'), 'h_index') + thS('portfolio', t('research_strategy.corp_papers'), 'corp_pubs') + thS('portfolio', t('research_strategy.corp_ratio'), 'corp_ratio') + thS('portfolio', t('research_strategy.corp_fwci'), 'corp_avg_fwci') + thS('portfolio', t('research_strategy.corp_citations'), 'corp_citations') + thP(t('research_strategy.profile'));
     }
     header.innerHTML = headerHTML;
 
@@ -754,6 +756,7 @@ function renderPortfolioTable(researchers, type) {
         } else if (type === 'collab_effect') {
             bodyHTML += `
                 <td><strong>${r.name}</strong></td>
+                ${authorMetaCells(r)}
                 <td>${r.scholarly_output}</td>
                 <td>${r.citations?.toLocaleString() || 0}</td>
                 <td>${r.fwci}</td>
@@ -768,6 +771,7 @@ function renderPortfolioTable(researchers, type) {
         } else if (type === 'academic_corporate') {
             bodyHTML += `
                 <td><strong>${r.name}</strong></td>
+                ${authorMetaCells(r)}
                 <td>${r.scholarly_output}</td>
                 <td>${r.citations?.toLocaleString() || 0}</td>
                 <td>${r.fwci}</td>
@@ -925,5 +929,14 @@ function downloadPortfolioCSV() {
 
 // 탭 로깅 설정
 if (typeof setupTabLogging === 'function') setupTabLogging('연구 전략');
+
+// 한글성명 매핑이 늦게 로드되면 캐시된 결과를 다시 그려서 셀 채우기
+window.addEventListener('authorMetaLoaded', function() {
+    try {
+        if (trajectoryData && trajectoryData.length > 0) renderTrajectoryTable(trajectoryData, currentTrajectoryType);
+        if (societalData && societalData.length > 0) renderSocietalTable(societalData, currentSocietalType);
+        if (portfolioData && portfolioData.length > 0) renderPortfolioTable(portfolioData, currentPortfolioType);
+    } catch (e) {}
+});
 </script>
 {% endblock %}

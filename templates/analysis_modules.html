@@ -488,7 +488,7 @@ function renderPotentialTable(researchers, type) {
     const recentKey = hasYF ? 'scholarly_output' : 'recent_3yr_count';
     const papersUnit = t('analysis_modules.papers_unit');
 
-    let headerHTML = thP('common.rank') + thS('potential','analysis_modules.researcher_name','name') + thS('potential','analysis_modules.papers','scholarly_output') + thS('potential','analysis_modules.citations','citations') + thS('potential','researcher_ranking.fwci','fwci') + thS('potential','analysis_modules.h_index','h_index');
+    let headerHTML = thP('common.rank') + thS('potential','analysis_modules.researcher_name','name') + window.authorMetaHeaders() + thS('potential','analysis_modules.papers','scholarly_output') + thS('potential','analysis_modules.citations','citations') + thS('potential','researcher_ranking.fwci','fwci') + thS('potential','analysis_modules.h_index','h_index');
 
     if (type === 'growth') {
         headerHTML += `<th style="cursor:pointer;user-select:none;white-space:nowrap;" onclick="handleSort('potential','${recentKey}')">${pColName}<span class="text-muted">${sortIcon('potential', recentKey)}</span></th>`;
@@ -511,6 +511,7 @@ function renderPotentialTable(researchers, type) {
         bodyHTML += `<tr>
             <td>${idx + 1}</td>
             <td><strong>${r.name}</strong></td>
+            ${authorMetaCells(r)}
             <td>${r.scholarly_output}</td>
             <td>${r.citations?.toLocaleString() || 0}</td>
             <td>${r.fwci}</td>
@@ -589,7 +590,7 @@ function renderCitationTable(researchers, type) {
     const body = document.getElementById('citationBody');
     const papersUnit = t('analysis_modules.papers_unit');
 
-    let headerHTML = thP('common.rank') + thS('citation','analysis_modules.researcher_name','name') + thS('citation','analysis_modules.papers','scholarly_output') + thS('citation','analysis_modules.citations','citations') + thS('citation','researcher_ranking.fwci','fwci') + thS('citation','analysis_modules.h_index','h_index');
+    let headerHTML = thP('common.rank') + thS('citation','analysis_modules.researcher_name','name') + window.authorMetaHeaders() + thS('citation','analysis_modules.papers','scholarly_output') + thS('citation','analysis_modules.citations','citations') + thS('citation','researcher_ranking.fwci','fwci') + thS('citation','analysis_modules.h_index','h_index');
 
     if (type === 'top_journal_low_citation') {
         headerHTML += thS('citation','analysis_modules.top_journal_pct','top_journal_pct') + thS('citation','analysis_modules.expected_citations','expected_citations') + thS('citation','analysis_modules.citation_gap','citation_gap') + thP('analysis_modules.recommendation') + thP('analysis_modules.profile');
@@ -611,6 +612,7 @@ function renderCitationTable(researchers, type) {
         bodyHTML += `<tr>
             <td>${idx + 1}</td>
             <td><strong>${r.name}</strong></td>
+            ${authorMetaCells(r)}
             <td>${r.scholarly_output}</td>
             <td>${r.citations?.toLocaleString() || 0}</td>
             <td>${r.fwci}</td>
@@ -689,7 +691,7 @@ function renderCollabTable(researchers, type) {
     const papersUnit = t('analysis_modules.papers_unit');
     const personsUnit = t('analysis_modules.persons_unit');
 
-    let headerHTML = thP('common.rank') + thS('collab','analysis_modules.researcher_name','name') + thS('collab','analysis_modules.papers','scholarly_output') + thS('collab','analysis_modules.citations','citations') + thS('collab','researcher_ranking.fwci','fwci') + thS('collab','analysis_modules.h_index','h_index');
+    let headerHTML = thP('common.rank') + thS('collab','analysis_modules.researcher_name','name') + window.authorMetaHeaders() + thS('collab','analysis_modules.papers','scholarly_output') + thS('collab','analysis_modules.citations','citations') + thS('collab','researcher_ranking.fwci','fwci') + thS('collab','analysis_modules.h_index','h_index');
 
     if (type === 'no_intl_high_performer') {
         headerHTML += thS('collab','analysis_modules.intl_collab_count','intl_collab_count') + thS('collab','analysis_modules.top_journal_pct','top_journal_pct') + thP('analysis_modules.recommendation') + thP('analysis_modules.profile');
@@ -711,6 +713,7 @@ function renderCollabTable(researchers, type) {
         bodyHTML += `<tr>
             <td>${idx + 1}</td>
             <td><strong>${r.name}</strong></td>
+            ${authorMetaCells(r)}
             <td>${r.scholarly_output}</td>
             <td>${r.citations?.toLocaleString() || 0}</td>
             <td>${r.fwci}</td>
@@ -872,5 +875,14 @@ function downloadCollabCSV() {
 
 // 탭 로깅 설정
 if (typeof setupTabLogging === 'function') setupTabLogging('분석 모듈');
+
+// 한글성명 매핑이 늦게 로드되면 캐시된 결과를 다시 그려서 셀 채우기
+window.addEventListener('authorMetaLoaded', function() {
+    try {
+        if (potentialData && potentialData.length > 0) renderPotentialTable(potentialData, currentPotentialType);
+        if (citationData && citationData.length > 0) renderCitationTable(citationData, currentCitationType);
+        if (collabData && collabData.length > 0) renderCollabTable(collabData, currentCollabType);
+    } catch (e) {}
+});
 </script>
 {% endblock %}
