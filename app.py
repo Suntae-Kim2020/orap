@@ -7640,6 +7640,48 @@ def api_log_download():
         return jsonify({'status': 'error', 'message': str(e)}), 400
 
 
+@app.route('/api/admin/activity_logs', methods=['DELETE'])
+@super_admin_required
+def api_delete_activity_logs():
+    """활동 로그 일괄/기간 삭제 (슈퍼관리자 전용)"""
+    data = request.get_json(silent=True) or {}
+    mode = data.get('mode', '')
+
+    conn = sqlite3.connect(USERS_DB)
+    cursor = conn.cursor()
+
+    if mode == 'all':
+        cursor.execute('SELECT COUNT(*) FROM activity_logs')
+        deleted = cursor.fetchone()[0]
+        cursor.execute('DELETE FROM activity_logs')
+        detail = f'전체 삭제: {deleted}건'
+    elif mode == 'range':
+        date_from = (data.get('from') or '').strip()
+        date_to = (data.get('to') or '').strip()
+        if not date_from or not date_to:
+            conn.close()
+            return jsonify({'error': 'from/to 날짜가 필요합니다'}), 400
+        cursor.execute(
+            "SELECT COUNT(*) FROM activity_logs WHERE DATE(created_at) BETWEEN ? AND ?",
+            (date_from, date_to)
+        )
+        deleted = cursor.fetchone()[0]
+        cursor.execute(
+            "DELETE FROM activity_logs WHERE DATE(created_at) BETWEEN ? AND ?",
+            (date_from, date_to)
+        )
+        detail = f'기간 삭제 ({date_from}~{date_to}): {deleted}건'
+    else:
+        conn.close()
+        return jsonify({'error': 'mode는 all 또는 range여야 합니다'}), 400
+
+    conn.commit()
+    conn.close()
+
+    log_activity('로그 삭제', detail)
+    return jsonify({'success': True, 'deleted': deleted, 'detail': detail})
+
+
 @app.route('/api/admin/activity_logs')
 @admin_required
 def api_activity_logs():
