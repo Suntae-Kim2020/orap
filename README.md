@@ -33,7 +33,8 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 
 pip install -r requirements.txt
 
-python app.py
+# 로컬에서는 GCS 동기화를 끄고 로컬 DB 그대로 사용
+GCS_SYNC_DISABLED=1 python app.py
 # http://127.0.0.1:57769
 ```
 
@@ -41,12 +42,20 @@ python app.py
 
 ## 배포
 
-PythonAnywhere로 배포합니다. 자세한 절차는 [`DEPLOY_PYTHONANYWHERE.md`](DEPLOY_PYTHONANYWHERE.md) 참고.
+GCP Cloud Run으로 배포합니다. **운영 URL: https://orap.ailibrary.kr**
+
+```bash
+./deploy.sh
+```
+
+상세 구조·운영 명령은 [`CLAUDE.md`](CLAUDE.md) 참고.
 
 ## 환경 변수
 
-- `PORT`: 서버 포트 (기본 57769)
-- `PYTHONANYWHERE`: PythonAnywhere 환경에서 1로 설정 (wsgi.py에서 자동 처리)
+- `PORT`: 서버 포트 (기본 57769, Cloud Run은 8080 자동 주입)
+- `GCS_BUCKET`: GCS 동기화 버킷명 (기본 `ailibrary-orap-data`)
+- `GCS_SYNC_DISABLED=1`: 로컬 개발 시 GCS 동기화 끄기
+- `FLASK_SECRET_KEY`: Flask 세션 키 (Cloud Run은 Secret Manager에서 주입)
 
 ## 데이터베이스
 

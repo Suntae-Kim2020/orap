@@ -21,10 +21,16 @@ import csv
 import json
 import time
 import threading
+import logging
 from deep_translator import GoogleTranslator
 
+# Cloud Run에서 SQLite 영속성을 위한 GCS 동기화 (로컬은 GCS_SYNC_DISABLED=1로 비활성)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message)s')
+import gcs_sync
+gcs_sync.init()
+
 app = Flask(__name__)
-app.secret_key = 'orap-secret-key-2024-secure'
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'orap-secret-key-2024-secure')
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 
 # 기관별 데이터베이스 매핑

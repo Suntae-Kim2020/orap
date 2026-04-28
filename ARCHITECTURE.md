@@ -16,25 +16,30 @@ JBNU ORAP는 전북대학교 연구처에서 학술성과, 연구사업 등의 �
 
 ### 기술 스택
 - **Backend**: Flask 3.1.2 (Python)
-- **Database**: SQLite 3 (기관별 파일 분리)
+- **Database**: SQLite 3 (기관별 파일 분리) + GCS 영속성 동기화
 - **Frontend**: HTML, CSS, JavaScript (Bootstrap 5)
 - **Data Processing**: Pandas 2.3.2, NumPy 2.0.2
 - **File Handling**: OpenPyXL 3.1.5, XlsxWriter 3.2.5
 - **번역**: deep-translator (Google)
-- **Deployment**: PythonAnywhere (WSGI), Gunicorn 21.2.0 (Production WSGI)
+- **Deployment**: GCP Cloud Run (asia-northeast1) + Gunicorn 21.2.0
+- **Storage**: GCS 버킷 (`ailibrary-orap-data`)
+- **Secret**: GCP Secret Manager
 
 ## 프로젝트 구조
 
 ```
 orap/
 ├── app.py                          # 메인 애플리케이션 서버 (단일 파일, ~9k 라인)
-├── wsgi.py                         # PythonAnywhere용 WSGI 엔트리포인트
+├── gcs_sync.py                     # GCS DB 동기화 (Cloud Run 영속성)
+├── Dockerfile                      # Cloud Run 컨테이너 정의
+├── deploy.sh                       # Cloud Run 배포 스크립트
+├── .gcloudignore                   # gcloud 빌드 컨텍스트 제외
 ├── requirements.txt                # Python 의존성
 ├── jbnu.db / korea.db / ...        # 기관별 SQLite DB
 ├── users.db                        # 사용자/권한/기관 매핑 DB
+├── CLAUDE.md                       # 프로젝트/배포 운영 가이드
 ├── README.md
 ├── ARCHITECTURE.md
-├── DEPLOY_PYTHONANYWHERE.md        # 배포 가이드
 ├── templates/                      # HTML 템플릿 (admin_*, analysis_*, field_*, survey 등)
 ├── static/                         # 정적 리소스 (js/, lang/ko.json, lang/en.json)
 ├── docs/                           # 기능/설계 문서
@@ -72,15 +77,23 @@ orap/
 
 ### 로컬 개발
 ```bash
-python app.py
+GCS_SYNC_DISABLED=1 python app.py
 # http://127.0.0.1:57769  (PORT 환경변수로 변경 가능)
 ```
 
-### 프로덕션
-- **PythonAnywhere** (WSGI manual configuration)
-- 진입점: `wsgi.py` → `from app import app as application`
-- 배포 절차: `DEPLOY_PYTHONANYWHERE.md` 참고
-- (이전 GCP Cloud Run 구성은 2026-03 커밋 `66bd615`에서 제거됨)
+### 프로덕션 (GCP Cloud Run, 2026-04 도입)
+- **운영 URL**: https://orap.ailibrary.kr
+- **GCP 프로젝트**: `ailibrary-orap` (asia-northeast1)
+- **컨테이너**: `Dockerfile` 기반, gunicorn 1 worker × 4 threads
+- **인스턴스**: min=1 / max=1 (24시간 운영, SQLite 동시쓰기 충돌 방지)
+- **메모리**: 2Gi RAM, 2 vCPU
+- **DB 영속성**: `gcs_sync.py`가 GCS 버킷 `ailibrary-orap-data`와 동기화
+  - 시작 시: 모든 DB 다운로드
+  - `users.db`: 5초 폴링 + 즉시 업로드 (write-through)
+  - 기관 DB: 60초 안정화 + 5분 일괄 업로드
+  - SIGTERM 시: 최종 업로드
+- **배포**: `./deploy.sh`
+- 운영 명령·비용 등은 [`CLAUDE.md`](CLAUDE.md) 참고
 
 ## 확장 계획
 

@@ -93,3 +93,6 @@ orap_submit.zip
 
 # Runtime artifacts
 snapshots/
+
+# GCS sync 임시 파일
+.*.upload_tmp

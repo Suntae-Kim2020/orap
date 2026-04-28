@@ -1,0 +1,60 @@
+# gcloud 빌드 시 업로드 제외 (Docker COPY와 무관 — 빌드 컨텍스트 축소용)
+.git/
+.gitignore
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# 로컬 환경
+.env
+.users_local.json
+cookies.txt
+auth_code.txt
+
+# 대용량 DB는 GCS에서 다운로드 (이미지에 포함 안 함)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 원자료 / 산출물
+rawData/
+rawData.zip
+rawdata001/
+rawdata001.zip
+대학공시자료/
+20260329/
+orap_submit.zip
+snapshots/
+uploads/
+
+# DB dump SQL
+*.sql
+*_dump.sql
+
+# 문서 / 개인 자료
+*.pdf
+*.hwpx
+*.xlsx
+*.docx
+docs/
+README.md
+ARCHITECTURE*.md
+DEPLOY_PYTHONANYWHERE.md
+계량서지학*.txt
+
+# 유틸리티 스크립트 (배포에 불필요)
+analyze_csv.py
+find_empty_rows.py
+import_korea.py
+import_rawdata.py
+calculate_korea_scores.py
+sqlite_to_postgresql.py
+migrate_to_cloudsql.py
+app_backup.py
+
+# 기타
+test/
