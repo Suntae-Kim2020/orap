@@ -1,0 +1,11 @@
+[Unit]
+Description=ORAP DB 백업 매일 실행
+
+[Timer]
+# 새벽 4 시. 사용자가 없는 시간이라 백업 중 쓰기와 겹칠 일이 적다.
+OnCalendar=*-*-* 04:00:00
+# 그 시각에 서버가 꺼져 있었으면 켜진 뒤에 한 번 돌린다.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

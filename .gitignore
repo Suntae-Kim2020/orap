@@ -22,6 +22,8 @@ wheels/
 
 # Virtual Environment
 .env
+# .env 패턴은 .env.local 을 덮지 않는다. 여기에 운영 FLASK_SECRET_KEY 가 들어 있다.
+.env.*
 .venv/
 env/
 venv/
@@ -51,7 +53,9 @@ instance/
 
 # Database
 *.db
-!jbnu.db
+# jbnu.db 는 예전에 Cloud Run 배포에 딸려 보내려고 예외로 추적했었다. 자체 서버
+# 로 옮긴 뒤로는 DB 가 서버 디스크에 그대로 남고 백업도 GCS 로 가므로, 커밋마다
+# 75MB 를 저장소에 쌓을 이유가 없다. (백업: selfhost/backup-to-gcs.sh)
 *.sqlite
 *.sqlite3
 *.db-journal
@@ -96,3 +100,6 @@ snapshots/
 
 # GCS sync 임시 파일
 .*.upload_tmp
+
+# DB 교체 전 로컬 백업본 (수동 생성)
+*.local-backup-*

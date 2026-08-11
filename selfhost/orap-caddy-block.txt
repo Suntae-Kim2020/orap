@@ -1,0 +1,41 @@
+
+# ── ORAP 학술성과 분석 플랫폼 (Flask, 자체 서버) ────────────────────
+# Cloud Run(ghs.googlehosted.com) 에서 이 서버로 옮겨 온 서비스.
+# 앱은 orap.service 가 127.0.0.1:5010 에 띄운다.
+orap.ailibrary.kr {
+	# teed·kisti 와 같은 이유로 공인 IP 에만 바인딩(태일넷 443 충돌 방지)
+	bind 113.198.48.78
+
+	encode zstd gzip
+
+	# 로그인 이력에 실제 접속자 IP 를 남긴다. 앱은 127.0.0.1 에만 묶여 있어
+	# 이 헤더를 만들 수 있는 건 Caddy 뿐이다.
+	reverse_proxy 127.0.0.1:5010 {
+		header_up X-Real-IP {remote_host}
+
+		# 대용량 CSV 임포트와 AI 분석이 수 분씩 걸린다. 기본 타임아웃으로는 끊긴다.
+		transport http {
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+
+	# 앱의 MAX_CONTENT_LENGTH(500MB) 와 맞춘다.
+	request_body {
+		max_size 500MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/orap.log {
+			roll_size 50MB
+			roll_keep 10
+		}
+	}
+}

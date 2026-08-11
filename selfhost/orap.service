@@ -1,0 +1,24 @@
+[Unit]
+Description=JBNU ORAP (Flask, self-hosted)
+After=network.target
+
+[Service]
+Type=simple
+User=user
+Group=user
+WorkingDirectory=/home/user/orap
+EnvironmentFile=/home/user/orap/.env.local
+# Cloud Run 과 동일한 구성: 단일 워커 + 4 스레드.
+# SQLite 를 여러 프로세스가 동시에 쓰면 잠금 충돌이 나므로 워커는 1 개로 고정한다.
+# 대용량 CSV 임포트와 AI 분석이 오래 걸려 타임아웃은 600 초로 둔다.
+ExecStart=/home/user/orap/venv/bin/gunicorn \
+    --bind 127.0.0.1:5010 \
+    --workers 1 \
+    --threads 4 \
+    --timeout 600 \
+    app:app
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

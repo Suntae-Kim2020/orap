@@ -1,0 +1,11 @@
+[Unit]
+Description=ORAP DB 백업 (GCS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=user
+Group=user
+WorkingDirectory=/home/user/orap
+ExecStart=/home/user/orap/selfhost/backup-to-gcs.sh
