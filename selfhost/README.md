@@ -7,8 +7,8 @@
 |------|-----------|------|
 | `orap.service` | `/etc/systemd/system/` | gunicorn 으로 앱 기동 (127.0.0.1:5010) |
 | `orap-caddy-block.txt` | `/etc/caddy/Caddyfile` 끝에 추가 | HTTPS 리버스 프록시 |
-| `orap-backup.service` / `.timer` | `/etc/systemd/system/` | 매일 04:00 GCS 백업 |
-| `backup-to-gcs.sh` | 이 폴더에서 실행 | 백업 본체 |
+| `orap-backup.service` / `.timer` | `/etc/systemd/system/` | 매일 04:00 디스크 백업 (30일 보관) |
+| `backup-db.sh` | 이 폴더에서 실행 | 백업 본체 |
 | `install-orap-server.sh` | — | 위 셋을 한 번에 설치 (idempotent) |
 
 ## 설치
@@ -36,16 +36,22 @@ FLASK_SECRET_KEY=<Secret Manager 의 orap-flask-secret>
   와일드카드로 잡는데, 태일넷 주소(100.x)의 443 은 다른 프로젝트가 이미 쓰고
   있어 충돌한다. teed·kisti 블록도 같은 이유로 공인 IP 에 묶여 있다.
 - **왜 GCS 실시간 동기화(`gcs_sync.py`)를 껐나**: 그건 파일시스템이 휘발하는
-  Cloud Run 때문에 있던 장치다. 이 서버는 디스크가 남으므로 필요 없고, 켜 두면
-  Cloud Run 과 같은 DB 를 양쪽에서 덮어써 데이터가 갈린다.
-- **왜 백업 경로가 `db/` 가 아니라 `backup/<날짜>/`**: `db/` 는 Cloud Run 이
-  쓰던 운영본이다. 덮어쓰면 되돌릴 수 없어 그대로 둔다.
+  Cloud Run 때문에 있던 장치다. 이 서버는 디스크가 남으므로 필요 없다. GCS
+  버킷도 없앴으므로 다시 켜면 기동조차 안 된다.
+- **왜 백업을 `/media/user/df9db4f3-.../` 에**: 시스템 디스크(NVMe)와 물리적으로
+  다른 15TB HDD 다. 같은 디스크에 두면 디스크가 죽을 때 원본과 백업이 함께
+  사라져 백업이 아니게 된다.
+- **왜 백업 스크립트가 `mountpoint` 를 검사하나**: 외장 디스크가 안 붙어 있으면
+  마운트 지점은 그냥 빈 디렉터리다. 모르고 쓰면 시스템 디스크에 백업이 쌓이면서
+  "백업이 되고 있다" 고 착각하게 된다. 그래서 마운트가 없으면 즉시 실패한다.
 
 ## 복원
 
 ```bash
-gcloud storage cp gs://ailibrary-orap-data/backup/2026-08-11/users.db ./users.db
-sudo systemctl restart orap
+sudo systemctl stop orap
+cp /media/user/df9db4f3-386b-4bd4-b1bf-fcebb530b180/orap-backups/2026-08-12/users.db \
+   /home/user/orap/users.db
+sudo systemctl start orap
 ```
 
 ## 자주 쓰는 명령

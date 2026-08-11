@@ -6,7 +6,7 @@
 # 하는 일:
 #   1. orap.service 설치 후 기동 (gunicorn → 127.0.0.1:5010)
 #   2. Caddyfile 에 orap.ailibrary.kr 블록 추가 후 reload
-#   3. 매일 새벽 GCS 백업 타이머 설치
+#   3. 매일 새벽 백업 타이머 설치 (별도 디스크)
 # 이미 설치돼 있으면 건너뛰므로 여러 번 실행해도 안전하다.
 set -euo pipefail
 

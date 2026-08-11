@@ -29,7 +29,7 @@ orap/
 │   ├── orap.service          #   gunicorn → 127.0.0.1:5010
 │   ├── orap-caddy-block.txt  #   Caddyfile 에 추가할 블록
 │   ├── orap-backup.{service,timer}
-│   └── backup-to-gcs.sh      #   매일 04:00 GCS 백업
+│   └── backup-db.sh          #   매일 04:00 별도 디스크 백업
 ├── .env.local                # 운영 환경변수 (600, git 제외)
 │
 ├── gcs_sync.py               # (구) GCS DB 동기화 — 현재 비활성
@@ -83,7 +83,7 @@ Cloud Run에서 사내 서버로 이전. 상세는 [`selfhost/README.md`](selfho
 | **운영 URL** | https://orap.ailibrary.kr |
 | **DNS** | Cafe24 (`orap` A → `113.198.48.78`) |
 | **환경변수** | `.env.local` (600, git 제외) — `FLASK_SECRET_KEY`, `PORT=5010`, `GCS_SYNC_DISABLED=1` |
-| **백업** | `orap-backup.timer` 매일 04:00 → `gs://ailibrary-orap-data/backup/<날짜>/`, 14일 보관 |
+| **백업** | `orap-backup.timer` 매일 04:00 → `/media/user/df9db4f3-.../orap-backups/<날짜>/`, 30일 보관 |
 | **DB/업로드** | 로컬 디스크가 원본. `uploads/`, `snapshots/`도 이제 영속 |
 
 앱은 `127.0.0.1`에만 묶는다. 로그인 이력의 접속자 IP는 Caddy가 넣는 `X-Real-IP`를 쓰는데, 로컬 바인딩이어야 그 헤더를 위조당하지 않는다.
@@ -105,10 +105,9 @@ sudo journalctl -u orap -n 30 --no-pager
 
 이전 방식. `gcs_sync.py`, `Dockerfile`, `deploy.sh`가 그 잔재이며 **현재 동작하지 않는다**(`GCS_SYNC_DISABLED=1`).
 
-- GCP 프로젝트 `ailibrary-orap` / 리전 `asia-northeast1` / 버킷 `gs://ailibrary-orap-data`
-- Secret Manager `orap-flask-secret`은 **지금도 사용** — 자체 서버의 `.env.local`에 그 값을 넣어 두었다(세션 쿠키 호환 유지).
-- `gs://ailibrary-orap-data/db/`에 마지막 운영본이 그대로 남아 있다. 롤백 대비용이라 덮어쓰지 않는다.
-- `gcs_sync.py`는 stateless 파일시스템 대응 장치였다. 디스크가 남는 서버에서는 필요 없을 뿐 아니라, 켜 두면 두 곳에서 같은 DB를 덮어써 데이터가 갈린다.
+- Cloud Run 서비스 / GCS 버킷 `gs://ailibrary-orap-data` 모두 삭제됨. 남은 GCP 리소스는 Secret Manager의 `orap-flask-secret` 뿐이다.
+- 그 시크릿은 **지금도 사용** — 자체 서버의 `.env.local`에 값을 넣어 두었다(세션 쿠키 호환 유지). 값 자체는 `.env.local`에 있으므로 GCP 없이도 서비스는 돈다.
+- `gcs_sync.py`는 stateless 파일시스템 대응 장치였다. 디스크가 남는 서버에서는 필요 없다.
 
 ---
 
@@ -162,25 +161,27 @@ sudo systemctl start orap-backup
 systemctl list-timers orap-backup.timer
 
 # 백업 목록
-gcloud storage ls gs://ailibrary-orap-data/backup/ --project=ailibrary-orap
+ls /media/user/df9db4f3-386b-4bd4-b1bf-fcebb530b180/orap-backups/
 
-# 복원 (예: 2026-08-11 시점 users.db)
-gcloud storage cp gs://ailibrary-orap-data/backup/2026-08-11/users.db ./users.db --project=ailibrary-orap
-sudo systemctl restart orap
+# 복원 (예: 2026-08-12 시점 users.db)
+sudo systemctl stop orap
+cp /media/user/df9db4f3-386b-4bd4-b1bf-fcebb530b180/orap-backups/2026-08-12/users.db ./users.db
+sudo systemctl start orap
 ```
 
 ---
 
 ## 비용
 
-자체 서버 이전으로 Cloud Run 비용(월 $30-50)이 사라졌다. 남는 것은 GCS 백업 스토리지뿐:
+자체 서버 이전으로 클라우드 비용이 사실상 0이 됐다.
 
-| 항목 | 월 비용 |
-|------|---------|
-| GCS 백업 (~340MB × 14일치 = ~4.7GB) | ~$0.1 |
-| GCS 구 운영본 `db/` (~340MB, 롤백 대비 보관) | ~$0.01 |
-| Secret Manager | ~$0 (free tier) |
-| 서버 / 전기 / 회선 | 기존 공용 서버 |
+| 항목 | 이전 (Cloud Run) | 현재 |
+|------|------------------|------|
+| Cloud Run 상시 인스턴스 | ~$30-50/월 | 삭제 |
+| GCS 스토리지 | ~$1-3/월 | 버킷 삭제 |
+| Secret Manager | ~$0 | ~$0 (free tier) |
+| 백업 | GCS | 별도 디스크(15TB HDD) — $0 |
+| 서버 / 전기 / 회선 | — | 기존 공용 서버 |
 
 ---
 

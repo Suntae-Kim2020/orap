@@ -1,11 +1,11 @@
 [Unit]
-Description=ORAP DB 백업 (GCS)
-After=network-online.target
-Wants=network-online.target
+Description=ORAP DB 백업 (별도 디스크)
+# 백업 디스크가 붙은 뒤에 돌아야 한다. 마운트가 없으면 스크립트가 스스로 실패한다.
+After=local-fs.target
 
 [Service]
 Type=oneshot
 User=user
 Group=user
 WorkingDirectory=/home/user/orap
-ExecStart=/home/user/orap/selfhost/backup-to-gcs.sh
+ExecStart=/home/user/orap/selfhost/backup-db.sh
